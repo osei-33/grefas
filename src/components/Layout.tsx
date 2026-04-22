@@ -261,7 +261,10 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Grefas Consult & Entertainment. All rights reserved.
+            <p>© {new Date().getFullYear()} Grefas Consult & Entertainment. All rights reserved.</p>
+            <p className="mt-2 text-xs opacity-70">
+              Grefas Consult & Entertainment was generated using <a href="https://ai.studio" target="_blank" rel="noopener noreferrer" className="hover:text-orange-600 underline decoration-orange-600/30">Google AI Studio</a>
+            </p>
           </div>
         </div>
       </footer>
