@@ -1,0 +1,163 @@
+{
+  "entities": {
+    "Service": {
+      "title": "Service",
+      "description": "A consulting or entertainment service offered by Grefas.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The name of the service" },
+        "description": { "type": "string", "description": "Detailed description of the service" },
+        "iconName": { "type": "string", "description": "Lucide icon name" },
+        "color": { "type": "string", "description": "Tailwind color classes for the icon background" },
+        "order": { "type": "number", "description": "Display order" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "iconName", "color"]
+    },
+    "GalleryItem": {
+      "title": "Gallery Item",
+      "description": "An image or video in the gallery.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["image", "video"], "description": "Type of media" },
+        "url": { "type": "string", "description": "URL of the image or video embed" },
+        "thumbnail": { "type": "string", "description": "Thumbnail URL for videos" },
+        "title": { "type": "string", "description": "Title of the item" },
+        "category": { "type": "string", "enum": ["events", "entertainment", "consulting"], "description": "Category for filtering" },
+        "likes": { "type": "array", "items": { "type": "string" }, "description": "Array of user UIDs who liked" },
+        "likesCount": { "type": "number", "description": "Total number of likes" },
+        "comments": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "userId": { "type": "string" },
+              "userName": { "type": "string" },
+              "text": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "url", "title", "category"]
+    },
+    "PortfolioItem": {
+      "title": "Portfolio Item",
+      "description": "A project or work sample.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "imageUrl", "category"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message in the live chat.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "text", "timestamp"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global website settings like contact info.",
+      "type": "object",
+      "properties": {
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "aboutContent": { "type": "string" },
+        "aboutImageUrl": { "type": "string" },
+        "dailyQuote": { "type": "string", "description": "Inspiring daily quote managed by admin" },
+        "facebook": { "type": "string" },
+        "youtube": { "type": "string" },
+        "tiktok": { "type": "string" },
+        "logoUrl": { "type": "string", "description": "URL of the website logo" }
+      }
+    },
+    "User": {
+      "title": "User",
+      "description": "Admin user profile.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "editor"] }
+      },
+      "required": ["email", "role"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A service booking request.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceTitle": { "type": "string" },
+        "date": { "type": "string", "description": "ISO date string (YYYY-MM-DD)" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userName", "userEmail", "date", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Collection of services"
+    },
+    "/gallery/{itemId}": {
+      "schema": "GalleryItem",
+      "description": "Collection of gallery items"
+    },
+    "/portfolio/{itemId}": {
+      "schema": "PortfolioItem",
+      "description": "Collection of portfolio items"
+    },
+    "/chat/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Collection of chat messages"
+    },
+    "/settings/{settingId}": {
+      "schema": "Settings",
+      "description": "Global settings document"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Admin user profiles"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Collection of bookings. bookingId is typically the date string YYYY-MM-DD to enforce uniqueness."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Collection of user notifications"
+    }
+  }
+}

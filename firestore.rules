@@ -1,0 +1,166 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: services
+    // Document ID: auto-generated
+    // Fields:
+    //   - title: string (required)
+    //   - description: string (required)
+    //   - iconName: string (required)
+    //   - color: string (required)
+    //   - order: number (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: gallery
+    // Document ID: auto-generated
+    // Fields:
+    //   - type: string (required, 'image' | 'video')
+    //   - url: string (required)
+    //   - thumbnail: string (optional)
+    //   - title: string (required)
+    //   - category: string (required, 'events' | 'entertainment' | 'consulting')
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: users
+    // Document ID: auth.uid
+    // Fields:
+    //   - email: string (required)
+    //   - role: string (required, 'admin' | 'editor')
+    //
+    // Collection: bookings
+    // Document ID: date string (YYYY-MM-DD)
+    // Fields:
+    //   - userName: string (required)
+    //   - userEmail: string (required)
+    //   - userPhone: string (optional)
+    //   - serviceId: string (optional)
+    //   - serviceTitle: string (optional)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - notes: string (optional)
+    //   - status: string (required, 'pending' | 'confirmed' | 'cancelled')
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "serwaahlinda1995@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isEditor() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor';
+    }
+
+    function isStaff() {
+      return isAdmin() || isEditor();
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidService(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 1000 &&
+             data.iconName is string && data.color is string;
+    }
+
+    function isValidGalleryItem(data) {
+      return data.type in ['image', 'video'] &&
+             data.url is string && data.url.size() > 0 &&
+             data.title is string && data.title.size() > 0 &&
+             data.category in ['events', 'entertainment', 'consulting'];
+    }
+
+    function isValidUser(data) {
+      return data.email is string && data.role in ['admin', 'editor', 'guest'];
+    }
+
+    function isValidBooking(data) {
+      return data.userName is string && data.userName.size() > 0 && data.userName.size() < 100 &&
+             data.userEmail is string && data.userEmail.size() > 0 &&
+             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.status in ['pending', 'confirmed', 'cancelled'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'guest';
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isStaff() && isValidService(request.resource.data);
+    }
+
+    match /gallery/{itemId} {
+      allow read: if true;
+      allow update: if isAuthenticated(); // For likes and comments
+      allow write: if isStaff() && isValidGalleryItem(request.resource.data);
+    }
+
+    match /portfolio/{itemId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    match /chat/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      // Allow anyone to check if a date is booked (by checking existence)
+      // and list them for the calendar. 
+      // NOTE: In a production app, you should denormalize busy dates to a 
+      // separate collection to avoid exposing PII in the bookings list.
+      allow get, list: if true;
+      allow create: if !exists(/databases/$(database)/documents/bookings/$(bookingId)) && isValidBooking(request.resource.data);
+      allow update, delete: if isStaff();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isStaff();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
