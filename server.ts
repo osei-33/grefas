@@ -5,6 +5,16 @@ import { fileURLToPath } from "url";
 import { Resend } from "resend";
 import twilio from "twilio";
 import dotenv from "dotenv";
+import compression from "compression";
+import fs from "fs";
+
+// Node version check
+const nodeVersion = process.versions.node.split(".")[0];
+if (parseInt(nodeVersion) < 20) {
+  console.error(`ERROR: Node.js version ${process.versions.node} is not supported.`);
+  console.error("This application requires Node.js 20 or higher.");
+  process.exit(1);
+}
 
 dotenv.config();
 
@@ -20,7 +30,13 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(compression());
   app.use(express.json());
+
+  // Health check
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
 
   // API Routes
   app.post("/api/notify-confirmation", async (req, res) => {
@@ -180,12 +196,31 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+    console.log("Running in development mode (Vite middleware enabled)");
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath, {
+        maxAge: '1d',
+        index: false // We handle index.html manually below for SPA fallback
+      }));
+      
+      app.get("*", (req, res) => {
+        const indexPath = path.join(distPath, "index.html");
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).send("Production build (index.html) not found. Please run 'npm run build'.");
+        }
+      });
+      console.log(`Serving production assets from ${distPath}`);
+    } else {
+      console.error(`CRITICAL ERROR: Production 'dist' directory not found at ${distPath}`);
+      app.get("*", (req, res) => {
+        res.status(500).send("Application is not built. Please contact administrator.");
+      });
+    }
   }
 
   app.listen(PORT, "0.0.0.0", () => {
