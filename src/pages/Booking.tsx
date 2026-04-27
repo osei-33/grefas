@@ -44,6 +44,8 @@ export default function Booking() {
     // Fetch services for the dropdown
     const unsubscribeServices = onSnapshot(collection(db, 'services'), (snapshot) => {
       setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching services:", error);
     });
 
     // Fetch existing bookings to disable dates

@@ -23,6 +23,8 @@ export default function Chat() {
     const q = query(collection(db, 'chat'), orderBy('timestamp', 'asc'), limit(50));
     const unsubscribeChat = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching chat messages:", error);
     });
 
     return () => {

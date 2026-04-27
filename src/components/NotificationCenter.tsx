@@ -39,6 +39,8 @@ export default function NotificationCenter() {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setNotifications(docs);
       setUnreadCount(docs.filter((n: any) => !n.read).length);
+    }, (error) => {
+      console.error("Error fetching notifications:", error);
     });
 
     return () => unsubscribe();

@@ -61,6 +61,8 @@ export default function Layout({ children }: LayoutProps) {
       if (doc.exists()) {
         setSettings(doc.data());
       }
+    }, (error) => {
+      console.error("Error fetching settings:", error);
     });
 
     return () => {

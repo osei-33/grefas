@@ -360,6 +360,46 @@ function ManageServices() {
     }
   };
 
+  const handleSendReminder = async (booking: any) => {
+    try {
+      const response = await fetch('/api/notify-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: booking.userEmail,
+          phone: booking.userPhone,
+          userName: booking.userName,
+          serviceTitle: booking.serviceTitle || 'General Consultation',
+          date: booking.date
+        })
+      });
+
+      const result = await response.json();
+      
+      // Also add an in-app notification
+      if (booking.userId && booking.userId !== 'anonymous') {
+        await addDoc(collection(db, 'notifications'), {
+          userId: booking.userId,
+          title: 'Booking Reminder',
+          message: `This is a reminder for your booking: ${booking.serviceTitle || 'General Consultation'} on ${booking.date}. We look forward to seeing you!`,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      if (result.results?.sms === "failed (unverified number)") {
+        toast.warning("Reminder sent via email, but SMS failed. (Twilio Trial Restriction: Recipient number must be verified in your Twilio Console).", {
+          duration: 6000,
+        });
+      } else {
+        toast.success("Reminder sent successfully!");
+      }
+    } catch (error) {
+      console.error("Failed to send reminder:", error);
+      toast.error("Failed to send reminder.");
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this service?')) return;
     try {

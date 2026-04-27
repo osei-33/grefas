@@ -56,12 +56,14 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
           (request.auth.token.email == "serwaahlinda1995@gmail.com" && request.auth.token.email_verified == true));
     }
 
     function isEditor() {
       return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor';
     }
 
@@ -133,8 +135,10 @@ service cloud.firestore {
     }
 
     match /chat/{messageId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read: if true;
+      allow create: if request.resource.data.text is string && 
+                      request.resource.data.text.size() > 0 && 
+                      request.resource.data.text.size() < 1000;
     }
 
     match /settings/{settingId} {

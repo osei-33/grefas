@@ -7,25 +7,22 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
-// Update logo URL in settings
-async function updateLogo() {
-  try {
-    await setDoc(doc(db, 'settings', 'global'), {
-      logoUrl: "https://i.imgur.com/b8m2z3K.png"
-    }, { merge: true });
-  } catch (error) {
-    console.error("Error updating logo:", error);
-  }
-}
-updateLogo();
+// Removed aggressive module-level logo update to prevent permission errors on startup
 
-// Test connection
+// Test connection only when needed or with better handling
 async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    // Only attempt if not obviously offline
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    
+    await getDocFromServer(doc(db, 'settings', 'global'));
+    console.log("Firestore connection successful");
   } catch (error) {
+    // Silently handle initial connectivity delays
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. The client is offline.");
+      // Don't log error here as it's often just a delay in initialization
+    } else {
+      console.warn("Firestore connection test encountered an issue:", error);
     }
   }
 }
