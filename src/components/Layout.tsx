@@ -17,6 +17,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [settings, setSettings] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
@@ -37,20 +38,25 @@ export default function Layout({ children }: LayoutProps) {
   }, [theme]);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      if (user) {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (authenticatedUser) => {
+      setUser(authenticatedUser);
+      if (authenticatedUser) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userDoc = await getDoc(doc(db, 'users', authenticatedUser.uid));
           if (userDoc.exists()) {
             setUserRole(userDoc.data().role);
-          } else if (user.email === "serwaahlinda1995@gmail.com") {
+          } else if (authenticatedUser.email === "serwaahlinda1995@gmail.com") {
             setUserRole('admin');
           } else {
             setUserRole('guest');
           }
         } catch (error) {
           console.error("Error fetching role in layout:", error);
-          setUserRole('guest');
+          if (authenticatedUser.email === "serwaahlinda1995@gmail.com") {
+            setUserRole('admin');
+          } else {
+            setUserRole('guest');
+          }
         }
       } else {
         setUserRole(null);
@@ -129,9 +135,20 @@ export default function Layout({ children }: LayoutProps) {
             >
               {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </Button>
-            {isAdmin && (
+            {isAdmin ? (
+              <Link to="/admin" className="text-sm font-medium text-orange-600">
+                Dashboard
+              </Link>
+            ) : user ? (
+              <button 
+                onClick={() => auth.signOut()}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                Sign Out
+              </button>
+            ) : (
               <Link to="/admin" className="text-sm font-medium text-muted-foreground hover:text-foreground">
-                Admin
+                Sign In
               </Link>
             )}
           </div>
@@ -176,13 +193,31 @@ export default function Layout({ children }: LayoutProps) {
                   {link.name}
                 </Link>
               ))}
-              {isAdmin && (
+              {isAdmin ? (
+                <Link
+                  to="/admin"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="block py-2 text-base font-medium text-orange-600"
+                >
+                  Dashboard
+                </Link>
+              ) : user ? (
+                <button
+                  onClick={() => {
+                    auth.signOut();
+                    setIsMenuOpen(false);
+                  }}
+                  className="block w-full text-left py-2 text-base font-medium text-muted-foreground"
+                >
+                  Sign Out
+                </button>
+              ) : (
                 <Link
                   to="/admin"
                   onClick={() => setIsMenuOpen(false)}
                   className="block py-2 text-base font-medium text-muted-foreground"
                 >
-                  Admin
+                  Admin Login
                 </Link>
               )}
             </div>

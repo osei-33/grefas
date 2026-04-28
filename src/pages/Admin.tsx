@@ -52,7 +52,11 @@ export default function Admin() {
           }
         } catch (error) {
           console.error("Error fetching role:", error);
-          setRole('guest');
+          if (user.email === "serwaahlinda1995@gmail.com") {
+            setRole('admin');
+          } else {
+            setRole('guest');
+          }
         }
       } else {
         setRole(null);
