@@ -5,7 +5,7 @@ import { MessageCircle, X, Send, User as UserIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { db, auth } from '@/firebase';
-import { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp, where, getDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp, where, getDoc, doc, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 export default function Chat() {
@@ -14,7 +14,39 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('');
   const [user, setUser] = useState<any>(null);
   const [isStaffTyping, setIsStaffTyping] = useState(false);
+  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const setUserTypingStatus = async (isTyping: boolean) => {
+    let chatId = user?.uid;
+    if (!chatId) {
+      chatId = localStorage.getItem('grefas_chat_id') || '';
+    }
+    if (!chatId) return;
+
+    try {
+      await setDoc(doc(db, 'chat_status', chatId), {
+        isUserTyping: isTyping,
+        userLastUpdated: serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.error("Error setting typing status", e);
+    }
+  };
+
+  const handleMessageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewMessage(e.target.value);
+    
+    // Set typing status
+    setUserTypingStatus(true);
+    
+    // Clear status after 3 seconds of inactivity
+    if (typingTimeout) clearTimeout(typingTimeout);
+    const timeout = setTimeout(() => {
+      setUserTypingStatus(false);
+    }, 3000);
+    setTypingTimeout(timeout);
+  };
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -95,6 +127,7 @@ export default function Chat() {
         isFromStaff: false
       });
       setNewMessage('');
+      setUserTypingStatus(false);
     } catch (error) {
       console.error("Error sending message:", error);
     }
@@ -195,7 +228,7 @@ export default function Chat() {
               <div className="flex space-x-2">
                 <Input
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  onChange={handleMessageChange}
                   placeholder="Type a message..."
                   className="flex-1 bg-muted/50 border-border"
                 />

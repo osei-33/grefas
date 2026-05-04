@@ -1390,6 +1390,7 @@ function ManageChat() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [reply, setReply] = useState('');
+  const [isUserTyping, setIsUserTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const setStaffTypingStatus = async (isTyping: boolean) => {
@@ -1430,10 +1431,15 @@ function ManageChat() {
         if (!grouped[m.chatId]) {
           grouped[m.chatId] = {
             id: m.chatId,
-            userName: m.userName,
+            userName: m.userName === 'Grefas Staff' ? 'Client' : m.userName,
             lastMessage: m.text,
             timestamp: m.timestamp,
           };
+        } else {
+          // If we found a message that is NOT from staff, use that for the name if we don't have a good one yet
+          if (!m.isFromStaff && (grouped[m.chatId].userName === 'Client' || grouped[m.chatId].userName === 'Grefas Staff')) {
+            grouped[m.chatId].userName = m.userName;
+          }
         }
       });
       setThreads(Object.values(grouped));
@@ -1452,7 +1458,20 @@ function ManageChat() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
-    return () => unsubscribe();
+
+    // Listen for client typing status
+    const unsubscribeTyping = onSnapshot(doc(db, 'chat_status', activeChatId), (docSnap) => {
+      if (docSnap.exists()) {
+        setIsUserTyping(docSnap.data().isUserTyping || false);
+      } else {
+        setIsUserTyping(false);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeTyping();
+    };
   }, [activeChatId]);
 
   const handleSendReply = async (e: React.FormEvent) => {
@@ -1518,6 +1537,16 @@ function ManageChat() {
                   <span className="text-[10px] mt-1 text-muted-foreground">{m.userName}</span>
                 </div>
               ))}
+              {isUserTyping && (
+                <div className="flex flex-col items-start animate-in fade-in slide-in-from-left-1">
+                  <div className="bg-muted text-foreground rounded-2xl rounded-tl-none px-4 py-2 text-sm flex items-center gap-1">
+                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce [animation-delay:-0.3s]" />
+                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce [animation-delay:-0.15s]" />
+                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce" />
+                    <span className="ml-1 text-[10px] italic">User is typing...</span>
+                  </div>
+                </div>
+              )}
             </div>
             <form onSubmit={handleSendReply} className="p-4 border-t border-border bg-muted/50">
               <div className="flex gap-2">
