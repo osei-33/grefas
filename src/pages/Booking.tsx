@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { db, auth } from '@/firebase';
+import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
@@ -15,7 +15,7 @@ import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle } from 'lu
 
 export default function Booking() {
   const [date, setDate] = useState<Date | undefined>(undefined);
-  const [bookedDates, setBookedDates] = useState<string[]>([]);
+  const [bookedDates, setBookedDates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -25,7 +25,8 @@ export default function Booking() {
     userPhone: '',
     notes: '',
     serviceId: '',
-    serviceTitle: ''
+    serviceTitle: '',
+    time: '09:00'
   });
   const [services, setServices] = useState<any[]>([]);
 
@@ -45,17 +46,31 @@ export default function Booking() {
     const unsubscribeServices = onSnapshot(collection(db, 'services'), (snapshot) => {
       setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
-      console.error("Error fetching services:", error);
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'services');
+      } catch (e) {
+        console.error("Error fetching services:", error);
+      }
     });
 
-    // Fetch existing bookings to disable dates
+    // Fetch existing bookings to count per day
     const unsubscribeBookings = onSnapshot(collection(db, 'bookings'), (snapshot) => {
-      const dates = snapshot.docs.map(doc => doc.id); // Doc IDs are YYYY-MM-DD
-      setBookedDates(dates);
+      const counts: Record<string, number> = {};
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.date) {
+          counts[data.date] = (counts[data.date] || 0) + 1;
+        }
+      });
+      setBookedDates(counts);
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching bookings:", error);
       setLoading(false);
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'bookings');
+      } catch (e) {
+        console.error("Error fetching bookings:", error);
+      }
     });
 
     return () => {
@@ -74,19 +89,16 @@ export default function Booking() {
 
     const dateStr = format(date, 'yyyy-MM-dd');
     
-    // Double check if date is already booked (real-time check)
-    if (bookedDates.includes(dateStr)) {
-      toast.error("This date has just been booked. Please choose another.");
+    // Check if day is full (limit 5)
+    if ((bookedDates[dateStr] || 0) >= 5) {
+      toast.error("This date is fully booked (max 5 bookings per day). Please choose another.");
       return;
     }
 
     setSubmitting(true);
     try {
-      const bookingRef = doc(db, 'bookings', dateStr);
-      
-      // Use setDoc to create the booking. 
-      // Our security rules prevent overwriting if it exists.
-      await setDoc(bookingRef, {
+      // Use addDoc to create a new booking with random ID
+      await addDoc(collection(db, 'bookings'), {
         ...formData,
         date: dateStr,
         userId: user?.uid || 'anonymous',
@@ -96,16 +108,22 @@ export default function Booking() {
 
       // Create a notification for the user as a receipt
       if (user) {
-        await addDoc(collection(db, 'notifications'), {
-          userId: user.uid,
-          title: 'Booking Received',
-          message: `Your booking request for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} has been received and is currently pending review.`,
-          read: false,
-          createdAt: serverTimestamp()
-        });
+        try {
+          await addDoc(collection(db, 'notifications'), {
+            userId: user.uid,
+            title: 'Booking Received',
+            message: `Your booking request for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time} has been received and is currently pending review.`,
+            read: false,
+            createdAt: serverTimestamp()
+          });
+        } catch (notifErr) {
+          try {
+            handleFirestoreError(notifErr, OperationType.CREATE, 'notifications');
+          } catch (e) {}
+        }
       }
 
-      toast.success(`Booking request for ${formData.serviceTitle || 'General Consultation'} submitted successfully! Notes: ${formData.notes || 'None'}`);
+      toast.success(`Booking request for ${formData.serviceTitle || 'General Consultation'} submitted successfully!`);
       setDate(undefined);
       setFormData({
         userName: user?.displayName || '',
@@ -113,13 +131,13 @@ export default function Booking() {
         userPhone: '',
         notes: '',
         serviceId: '',
-        serviceTitle: ''
+        serviceTitle: '',
+        time: '09:00'
       });
     } catch (error: any) {
-      console.error("Booking error:", error);
-      if (error.message?.includes('permission-denied')) {
-        toast.error("This date is no longer available.");
-      } else {
+      try {
+        handleFirestoreError(error, OperationType.WRITE, 'bookings');
+      } catch (e) {
         toast.error("Failed to submit booking. Please try again.");
       }
     } finally {
@@ -128,8 +146,12 @@ export default function Booking() {
   };
 
   const disabledDays = [
-    ...bookedDates.map(d => parseISO(d)),
+    ...Object.keys(bookedDates).filter(d => bookedDates[d] >= 5).map(d => parseISO(d)),
     { before: startOfToday() }
+  ];
+
+  const timeSlots = [
+    "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"
   ];
 
   if (loading) {
@@ -151,13 +173,13 @@ export default function Booking() {
           >
             Book Your Event
           </motion.h1>
-          <motion.p
+            <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground"
           >
-            Secure your date with Grefas Consult & Entertainment. We only take one booking per day to ensure maximum focus on your event.
+            Secure your date with Grefas Consult & Entertainment. We allow up to 5 bookings per day to ensure dedicated attention to each client.
           </motion.p>
         </div>
 
@@ -174,10 +196,10 @@ export default function Booking() {
                   <CalendarIcon className="h-5 w-5" /> Select a Date
                 </CardTitle>
                 <CardDescription className="text-orange-100">
-                  Choose an available date for your consultation or event.
+                  Choose an available date for your consultation or event. (Max 5 bookings per day)
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-6 flex justify-center bg-card">
+              <CardContent className="p-6 flex flex-col items-center bg-card">
                 <Calendar
                   mode="single"
                   selected={date}
@@ -185,6 +207,28 @@ export default function Booking() {
                   disabled={disabledDays}
                   className="rounded-md border border-border shadow-sm bg-card text-foreground"
                 />
+                
+                {date && (
+                  <div className="mt-8 w-full animate-in fade-in slide-in-from-top-2">
+                    <label className="mb-2 block text-sm font-medium text-foreground">Select Time Slot</label>
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {timeSlots.map(t => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, time: t })}
+                          className={`rounded-md border px-2 py-2 text-xs font-medium transition-colors ${
+                            formData.time === t
+                              ? 'bg-orange-600 border-orange-600 text-white'
+                              : 'bg-muted/50 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -195,7 +239,7 @@ export default function Booking() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded bg-muted" />
-                <span className="text-muted-foreground">Booked</span>
+                <span className="text-muted-foreground">Fully Booked (5/5)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded border border-border" />
@@ -214,7 +258,7 @@ export default function Booking() {
                 <CardTitle className="text-foreground">Booking Details</CardTitle>
                 <CardDescription className="text-muted-foreground">
                   {date 
-                    ? `Booking for ${format(date, 'PPPP')}`
+                    ? `Booking for ${format(date, 'PPPP')} at ${formData.time}`
                     : "Please select a date on the calendar first."}
                 </CardDescription>
               </CardHeader>
@@ -244,35 +288,37 @@ export default function Booking() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Phone Number</label>
-                    <Input
-                      value={formData.userPhone}
-                      onChange={(e) => setFormData({ ...formData, userPhone: e.target.value })}
-                      placeholder="+233 ..."
-                      className="bg-muted/50 border-border"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Service Interested In</label>
-                    <select
-                      className="w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600"
-                      value={formData.serviceId}
-                      onChange={(e) => {
-                        const s = services.find(s => s.id === e.target.value);
-                        setFormData({ 
-                          ...formData, 
-                          serviceId: e.target.value,
-                          serviceTitle: s?.title || ''
-                        });
-                      }}
-                    >
-                      <option value="" className="bg-card">Select a service</option>
-                      {services.map(s => (
-                        <option key={s.id} value={s.id} className="bg-card">{s.title}</option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Phone Number</label>
+                      <Input
+                        value={formData.userPhone}
+                        onChange={(e) => setFormData({ ...formData, userPhone: e.target.value })}
+                        placeholder="+233 ..."
+                        className="bg-muted/50 border-border"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Service Interested In</label>
+                      <select
+                        className="w-full h-10 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600"
+                        value={formData.serviceId}
+                        required
+                        onChange={(e) => {
+                          const s = services.find(s => s.id === e.target.value);
+                          setFormData({ 
+                            ...formData, 
+                            serviceId: e.target.value,
+                            serviceTitle: s?.title || ''
+                          });
+                        }}
+                      >
+                        <option value="" className="bg-card">Select a service</option>
+                        {services.map(s => (
+                          <option key={s.id} value={s.id} className="bg-card">{s.title}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="space-y-2">

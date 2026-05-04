@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, auth } from '@/firebase';
+import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import { Loader2, Play, X, Heart, MessageSquare, Share2, Send } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { onAuthStateChanged } from 'firebase/auth';
-import { handleFirestoreError, OperationType } from '@/lib/firebaseUtils';
 
 export default function Gallery() {
   const [items, setItems] = useState<any[]>([]);
@@ -134,57 +133,63 @@ export default function Gallery() {
 
           {categories.map((cat) => (
             <TabsContent key={cat} value={cat} className="mt-12">
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredItems.map((item, i) => (
                   <motion.div
                     key={item.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="group relative aspect-square cursor-pointer overflow-hidden rounded-2xl bg-muted border border-border/50"
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1, duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+                    className="group relative h-[350px] cursor-pointer overflow-hidden rounded-3xl bg-muted ring-1 ring-border/50 shadow-sm transition-all duration-500 hover:shadow-2xl hover:shadow-orange-500/10 hover:-translate-y-2"
                   >
                     <img
                       src={item.type === 'image' ? item.url : item.thumbnail}
                       alt={item.title}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                       referrerPolicy="no-referrer"
                       onClick={() => setSelectedItem(item)}
                     />
                     
                     {/* Watermark */}
-                    <div className="pointer-events-none absolute bottom-2 left-2 z-10 select-none opacity-30">
-                      <p className="text-[10px] font-bold tracking-widest text-white drop-shadow-md">
-                        GREFAS CONSULT AND ENTERTAINMENT
+                    <div className="pointer-events-none absolute bottom-4 left-4 z-10 select-none opacity-20">
+                      <p className="text-[8px] font-black tracking-widest text-white drop-shadow-md uppercase">
+                        GREFAS • CONSULT • ENTERTAINMENT
                       </p>
                     </div>
+
+                    {/* Gradient Overlay (Always visible but subtle at bottom) */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
                     
-                    {/* Overlay */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 flex flex-col justify-between p-4">
-                      <div className="flex justify-end space-x-2">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleLike(item); }}
-                          className={`rounded-full p-2 backdrop-blur-md transition-colors ${
-                            item.likes?.includes(user?.uid) ? 'bg-orange-600 text-white' : 'bg-white/20 text-white hover:bg-white/40'
-                          }`}
-                        >
-                          <Heart className={`h-4 w-4 ${item.likes?.includes(user?.uid) ? 'fill-current' : ''}`} />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleShare(item); }}
-                          className="rounded-full bg-white/20 p-2 text-white backdrop-blur-md transition-colors hover:bg-white/40"
-                        >
-                          <Share2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-white" onClick={() => setSelectedItem(item)}>
-                        <div>
-                          <h3 className="font-semibold">{item.title}</h3>
-                          <p className="text-xs text-zinc-200 capitalize">{item.category}</p>
+                    {/* Interaction Buttons (Slide in from top) */}
+                    <div className="absolute top-4 right-4 z-20 flex space-x-2 translate-y-[-10px] opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleLike(item); }}
+                        className={`rounded-full p-2.5 backdrop-blur-xl transition-all hover:scale-110 ${
+                          item.likes?.includes(user?.uid) ? 'bg-orange-600 text-white' : 'bg-white/20 text-white hover:bg-white/40'
+                        }`}
+                      >
+                        <Heart className={`h-4 w-4 ${item.likes?.includes(user?.uid) ? 'fill-current' : ''}`} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleShare(item); }}
+                        className="rounded-full bg-white/20 p-2.5 text-white backdrop-blur-xl transition-all hover:bg-white/40 hover:scale-110"
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    
+                    {/* Content (Bottom) */}
+                    <div className="absolute bottom-0 left-0 right-0 p-6 z-20 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300" onClick={() => setSelectedItem(item)}>
+                      <div className="flex items-end justify-between">
+                        <div className="space-y-1">
+                          <span className="inline-block px-2 py-0.5 rounded-full bg-orange-600/20 text-orange-400 text-[10px] font-black uppercase tracking-wider backdrop-blur-md">
+                            {item.category}
+                          </span>
+                          <h3 className="text-xl font-bold text-white leading-tight">{item.title}</h3>
                         </div>
                         {item.type === 'video' && (
-                          <div className="rounded-full bg-white/20 p-2 backdrop-blur-md">
-                            <Play className="h-5 w-5 fill-current" />
+                          <div className="rounded-full bg-orange-600 p-3 text-white shadow-lg shadow-orange-600/40 transform group-hover:scale-110 transition-transform">
+                            <Play className="h-4 w-4 fill-current" />
                           </div>
                         )}
                       </div>

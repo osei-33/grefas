@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { auth, db } from '@/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
@@ -26,9 +26,9 @@ import {
   serverTimestamp,
   getDocs,
   getDoc,
-  setDoc
+  setDoc,
+  where
 } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from '@/lib/firebaseUtils';
 
 export default function Admin() {
   const [user, setUser] = useState<User | null>(null);
@@ -40,7 +40,7 @@ export default function Admin() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
-        // Fetch role from Firestore
+        const userPath = `users/${user.uid}`;
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
@@ -51,11 +51,15 @@ export default function Admin() {
             setRole('guest');
           }
         } catch (error) {
-          console.error("Error fetching role:", error);
           if (user.email === "serwaahlinda1995@gmail.com") {
             setRole('admin');
           } else {
             setRole('guest');
+          }
+          try {
+            handleFirestoreError(error, OperationType.GET, userPath);
+          } catch (e) {
+            console.error("Error fetching role in admin:", error);
           }
         }
       } else {
@@ -155,6 +159,13 @@ export default function Admin() {
                     <span>Manage Users</span>
                   </Link>
                   <Link
+                    to="/admin/chat"
+                    className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    <span>Manage Chat</span>
+                  </Link>
+                  <Link
                     to="/admin/settings"
                     className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
@@ -193,6 +204,7 @@ export default function Admin() {
           {role === 'admin' && (
             <>
               <Route path="/users" element={<ManageUsers />} />
+              <Route path="/chat" element={<ManageChat />} />
               <Route path="/settings" element={<ManageSettings />} />
             </>
           )}
@@ -214,14 +226,38 @@ function Login() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      // Check if user exists in Firestore, if not create as guest
+      // Check if user exists in Firestore by UID
       const userDoc = await getDoc(doc(db, 'users', user.uid));
+      
       if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', user.uid), {
-          email: user.email,
-          role: user.email === "serwaahlinda1995@gmail.com" ? "admin" : "guest",
-          createdAt: serverTimestamp()
-        });
+        // Check if there is a pre-authorized user by email
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', user.email));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          // Found pre-authorized user by email. Link it to this UID.
+          const existingData = querySnapshot.docs[0].data();
+          const existingId = querySnapshot.docs[0].id;
+          
+          await setDoc(doc(db, 'users', user.uid), {
+            ...existingData,
+            uid: user.uid,
+            updatedAt: serverTimestamp()
+          });
+          
+          // Delete the temporary entry that only had email
+          if (existingId !== user.uid) {
+            await deleteDoc(doc(db, 'users', existingId));
+          }
+        } else {
+          // New user, create as guest
+          await setDoc(doc(db, 'users', user.uid), {
+            email: user.email,
+            role: user.email === "serwaahlinda1995@gmail.com" ? "admin" : "guest",
+            createdAt: serverTimestamp()
+          });
+        }
       }
       
       toast.success('Logged in successfully');
@@ -1114,8 +1150,9 @@ function ManageBookings() {
           <Card key={booking.id} className="overflow-hidden bg-card border-border">
             <div className="flex flex-col md:flex-row">
               <div className="bg-muted/50 p-6 md:w-48 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-border">
-                <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Date</span>
-                <span className="text-2xl font-black text-foreground">{booking.date}</span>
+                <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Date/Time</span>
+                <span className="text-xl font-black text-foreground">{booking.date}</span>
+                <span className="text-lg font-bold text-orange-600">{booking.time}</span>
                 <div className={`mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase ${
                   booking.status === 'confirmed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
                   booking.status === 'cancelled' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
@@ -1189,6 +1226,8 @@ function ManageBookings() {
 function ManageUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newUser, setNewUser] = useState({ email: '', role: 'editor' });
 
   useEffect(() => {
     const q = query(collection(db, 'users'));
@@ -1200,6 +1239,39 @@ function ManageUsers() {
     });
     return () => unsubscribe();
   }, []);
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUser.email.trim()) return;
+
+    try {
+      // Find if user already exists
+      const existingUser = users.find(u => u.email === newUser.email);
+      if (existingUser) {
+        toast.error('User with this email already exists');
+        return;
+      }
+
+      // We use addDoc because we don't have a UID yet. 
+      // The sign-in logic will look up by email or we can use email as ID (but email might have dots)
+      // Actually, my rule says match /users/{userId} where userId is UID.
+      // If we add by email, we should probably use a different approach or just wait for them to sign in.
+      // But user wants to ADD them. I'll use email as ID for pre-authorization or just a random ID.
+      // Let's use a random ID and update the sign-in logic to link it, OR just allow isAdmin to create.
+      
+      await addDoc(collection(db, 'users'), {
+        email: newUser.email,
+        role: newUser.role,
+        createdAt: serverTimestamp()
+      });
+
+      toast.success('User pre-authorized successfully');
+      setNewUser({ email: '', role: 'editor' });
+      setIsAdding(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'users');
+    }
+  };
 
   const handleUpdateRole = async (uid: string, role: string) => {
     try {
@@ -1224,7 +1296,43 @@ function ManageUsers() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-foreground">Manage Users</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold text-foreground">Manage Users</h1>
+        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white">
+          {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add User</>}
+        </Button>
+      </div>
+
+      {isAdding && (
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-foreground">Pre-authorize New User</CardTitle>
+            <CardDescription className="text-muted-foreground">Add a user's email to give them access before they sign in.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAddUser} className="flex flex-col md:flex-row gap-4">
+              <Input 
+                type="email"
+                placeholder="user@example.com"
+                value={newUser.email}
+                onChange={e => setNewUser({...newUser, email: e.target.value})}
+                required
+                className="flex-1 bg-muted/50 border-border"
+              />
+              <select
+                className="h-10 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600"
+                value={newUser.role}
+                onChange={e => setNewUser({...newUser, role: e.target.value})}
+              >
+                <option value="admin">Admin</option>
+                <option value="editor">Editor</option>
+                <option value="guest">Guest</option>
+              </select>
+              <Button type="submit" className="bg-orange-600 text-white">Authorize User</Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
       
       <Card className="bg-card border-border">
         <CardHeader>
@@ -1235,11 +1343,11 @@ function ManageUsers() {
           <div className="space-y-4">
             {users.map((u) => (
               <div key={u.id} className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/50">
-                <div>
-                  <p className="font-bold text-foreground">{u.email}</p>
-                  <p className="text-xs text-muted-foreground">UID: {u.id}</p>
+                <div className="overflow-hidden">
+                  <p className="font-bold text-foreground truncate">{u.email}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">ID: {u.id}</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 shrink-0 px-2">
                   <select
                     className="rounded-md border border-border bg-background text-foreground px-3 py-1 text-sm focus:ring-2 focus:ring-orange-500 outline-none"
                     value={u.role}
@@ -1272,6 +1380,162 @@ function ManageUsers() {
           3. Their account will then appear in this list.<br />
           4. You can then change their role from "Guest" to "Editor" or "Admin".
         </p>
+      </div>
+    </div>
+  );
+}
+
+function ManageChat() {
+  const [threads, setThreads] = useState<any[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [reply, setReply] = useState('');
+  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  const setStaffTypingStatus = async (isTyping: boolean) => {
+    if (!activeChatId) return;
+    try {
+      await setDoc(doc(db, 'chat_status', activeChatId), {
+        isStaffTyping: isTyping,
+        lastUpdated: serverTimestamp()
+      }, { merge: true });
+    } catch (e) {
+      console.error("Error setting typing status", e);
+    }
+  };
+
+  const handleReplyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setReply(e.target.value);
+    
+    // Set typing status
+    setStaffTypingStatus(true);
+    
+    // Clear status after 3 seconds of inactivity
+    if (typingTimeout) clearTimeout(typingTimeout);
+    const timeout = setTimeout(() => {
+      setStaffTypingStatus(false);
+    }, 3000);
+    setTypingTimeout(timeout);
+  };
+
+  useEffect(() => {
+    // Fetch all unique chat threads
+    const q = query(collection(db, 'chat'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const allMsgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      
+      // Group by chatId
+      const grouped: Record<string, any> = {};
+      allMsgs.forEach(m => {
+        if (!grouped[m.chatId]) {
+          grouped[m.chatId] = {
+            id: m.chatId,
+            userName: m.userName,
+            lastMessage: m.text,
+            timestamp: m.timestamp,
+          };
+        }
+      });
+      setThreads(Object.values(grouped));
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+
+    const q = query(
+      collection(db, 'chat'),
+      where('chatId', '==', activeChatId),
+      orderBy('timestamp', 'asc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsubscribe();
+  }, [activeChatId]);
+
+  const handleSendReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reply.trim() || !activeChatId) return;
+
+    try {
+      await addDoc(collection(db, 'chat'), {
+        text: reply,
+        userId: auth.currentUser?.uid || 'admin',
+        userName: 'Grefas Staff',
+        chatId: activeChatId,
+        timestamp: serverTimestamp(),
+        isFromStaff: true
+      });
+      setReply('');
+      setStaffTypingStatus(false);
+    } catch (error) {
+      toast.error('Failed to send reply');
+    }
+  };
+
+  return (
+    <div className="flex flex-col md:flex-row h-[70vh] gap-6">
+      <div className="w-full md:w-1/3 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
+        <div className="p-4 border-b border-border bg-muted/50">
+          <h2 className="font-bold flex items-center gap-2">
+            <MessageCircle className="h-4 w-4" /> Active Threads
+          </h2>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {threads.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setActiveChatId(t.id)}
+              className={`w-full text-left p-4 hover:bg-muted transition-colors border-b border-border ${activeChatId === t.id ? 'bg-orange-50 dark:bg-orange-900/10' : ''}`}
+            >
+              <p className="font-bold text-foreground text-sm truncate">{t.userName}</p>
+              <p className="text-xs text-muted-foreground truncate">{t.lastMessage}</p>
+            </button>
+          ))}
+          {threads.length === 0 && <p className="p-8 text-center text-muted-foreground">No chats yet.</p>}
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
+        {activeChatId ? (
+          <>
+            <div className="p-4 border-b border-border bg-muted/50 flex justify-between items-center">
+              <h2 className="font-bold text-sm">Conversation with {threads.find(t => t.id === activeChatId)?.userName}</h2>
+              <span className="text-[10px] text-muted-foreground">ID: {activeChatId}</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.map(m => (
+                <div key={m.id} className={`flex flex-col ${m.isFromStaff ? 'items-end' : 'items-start'}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                    m.isFromStaff 
+                      ? 'bg-orange-600 text-white rounded-tr-none' 
+                      : 'bg-muted text-foreground rounded-tl-none'
+                  }`}>
+                    {m.text}
+                  </div>
+                  <span className="text-[10px] mt-1 text-muted-foreground">{m.userName}</span>
+                </div>
+              ))}
+            </div>
+            <form onSubmit={handleSendReply} className="p-4 border-t border-border bg-muted/50">
+              <div className="flex gap-2">
+                <Input 
+                  placeholder="Type your reply..." 
+                  value={reply} 
+                  onChange={handleReplyChange} 
+                  className="bg-background border-border"
+                />
+                <Button type="submit" className="bg-orange-600 text-white">Send</Button>
+              </div>
+            </form>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground italic">
+            Select a thread to start chatting.
+          </div>
+        )}
       </div>
     </div>
   );

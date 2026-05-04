@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Chat from './Chat';
 import NotificationCenter from './NotificationCenter';
-import { auth, db } from '@/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
@@ -41,6 +41,7 @@ export default function Layout({ children }: LayoutProps) {
     const unsubscribeAuth = onAuthStateChanged(auth, async (authenticatedUser) => {
       setUser(authenticatedUser);
       if (authenticatedUser) {
+        const userPath = `users/${authenticatedUser.uid}`;
         try {
           const userDoc = await getDoc(doc(db, 'users', authenticatedUser.uid));
           if (userDoc.exists()) {
@@ -51,11 +52,15 @@ export default function Layout({ children }: LayoutProps) {
             setUserRole('guest');
           }
         } catch (error) {
-          console.error("Error fetching role in layout:", error);
           if (authenticatedUser.email === "serwaahlinda1995@gmail.com") {
             setUserRole('admin');
           } else {
             setUserRole('guest');
+          }
+          try {
+            handleFirestoreError(error, OperationType.GET, userPath);
+          } catch (e) {
+            console.error("Error fetching role in layout:", error);
           }
         }
       } else {
@@ -63,12 +68,17 @@ export default function Layout({ children }: LayoutProps) {
       }
     });
 
+    const settingsPath = 'settings/global';
     const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) {
         setSettings(doc.data());
       }
     }, (error) => {
-      console.error("Error fetching settings:", error);
+      try {
+        handleFirestoreError(error, OperationType.GET, settingsPath);
+      } catch (e) {
+        console.error("Error fetching settings:", error);
+      }
     });
 
     return () => {

@@ -5,7 +5,7 @@ import { MessageCircle, X, Send, User as UserIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { db, auth } from '@/firebase';
-import { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp, where, getDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 export default function Chat() {
@@ -13,6 +13,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [user, setUser] = useState<any>(null);
+  const [isStaffTyping, setIsStaffTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -20,18 +21,54 @@ export default function Chat() {
       setUser(user);
     });
 
-    const q = query(collection(db, 'chat'), orderBy('timestamp', 'asc'), limit(50));
+    // Determine chat ID: either user UID or a persistent guest ID
+    let chatId = user?.uid;
+    if (!chatId) {
+      chatId = localStorage.getItem('grefas_chat_id') || '';
+      if (!chatId) {
+        chatId = 'guest_' + Math.random().toString(36).substring(2, 10);
+        localStorage.setItem('grefas_chat_id', chatId);
+      }
+    }
+
+    // Role check (simplified for the chat UI)
+    const checkRole = async () => {
+      if (user) {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists() && (userDoc.data().role === 'admin' || userDoc.data().role === 'editor')) {
+          setMessages([]); // Admins should use the Admin Panel chat normally, but let's allow them here too for now
+          // Actually, if it's the main chat component, let's keep it user-facing
+        }
+      }
+    };
+    checkRole();
+
+    const q = query(
+      collection(db, 'chat'), 
+      where('chatId', '==', chatId),
+      orderBy('timestamp', 'asc'), 
+      limit(100)
+    );
+    
     const unsubscribeChat = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       console.error("Error fetching chat messages:", error);
     });
 
+    // Listen for typing status
+    const unsubscribeTyping = onSnapshot(doc(db, 'chat_status', chatId), (docSnap) => {
+      if (docSnap.exists()) {
+        setIsStaffTyping(docSnap.data().isStaffTyping || false);
+      }
+    });
+
     return () => {
       unsubscribeAuth();
       unsubscribeChat();
+      unsubscribeTyping();
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -43,12 +80,19 @@ export default function Chat() {
     e.preventDefault();
     if (!newMessage.trim()) return;
 
+    let chatId = user?.uid;
+    if (!chatId) {
+      chatId = localStorage.getItem('grefas_chat_id') || '';
+    }
+
     try {
       await addDoc(collection(db, 'chat'), {
         text: newMessage,
         userId: user?.uid || 'anonymous',
         userName: user?.displayName || user?.email?.split('@')[0] || 'Guest',
+        chatId: chatId,
         timestamp: serverTimestamp(),
+        isFromStaff: false
       });
       setNewMessage('');
     } catch (error) {
@@ -105,16 +149,33 @@ export default function Chat() {
                   </div>
                   <div
                     className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                      msg.userId === user?.uid
-                        ? 'bg-orange-600 text-white rounded-tr-none'
-                        : 'bg-muted text-foreground rounded-tl-none'
+                      msg.isFromStaff
+                        ? 'bg-muted text-foreground rounded-tl-none ring-1 ring-orange-100'
+                        : msg.userId === user?.uid || (msg.chatId === localStorage.getItem('grefas_chat_id'))
+                          ? 'bg-orange-600 text-white rounded-tr-none'
+                          : 'bg-muted text-foreground rounded-tl-none'
                     }`}
                   >
                     {msg.text}
                   </div>
                 </div>
               ))}
-              {messages.length === 0 && (
+              {isStaffTyping && (
+                <div className="flex flex-col items-start animate-in fade-in slide-in-from-left-1">
+                  <div className="flex items-center space-x-1 mb-1">
+                    <span className="text-[10px] font-medium text-orange-600">
+                      Grefas Staff
+                    </span>
+                  </div>
+                  <div className="bg-muted text-foreground rounded-2xl rounded-tl-none px-4 py-2 text-sm flex items-center gap-1">
+                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce [animation-delay:-0.3s]" />
+                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce [animation-delay:-0.15s]" />
+                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce" />
+                    <span className="ml-1 text-[10px] italic">is typing...</span>
+                  </div>
+                </div>
+              )}
+              {messages.length === 0 && !isStaffTyping && (
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   <div className="rounded-full bg-orange-50 dark:bg-orange-900/10 p-4 text-orange-600 dark:text-orange-500">
                     <MessageCircle className="h-8 w-8" />

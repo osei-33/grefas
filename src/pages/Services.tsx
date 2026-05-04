@@ -3,9 +3,8 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import * as LucideIcons from 'lucide-react';
-import { db } from '@/firebase';
+import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from '@/lib/firebaseUtils';
 
 export default function Services() {
   const [services, setServices] = useState<any[]>([]);
