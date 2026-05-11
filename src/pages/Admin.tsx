@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { 
@@ -29,6 +29,7 @@ import {
   setDoc,
   where
 } from 'firebase/firestore';
+import { GoogleGenAI } from "@google/genai";
 
 export default function Admin() {
   const [user, setUser] = useState<User | null>(null);
@@ -531,6 +532,9 @@ function ManageGallery() {
   const [isAdding, setIsAdding] = useState(false);
   const [newItem, setNewItem] = useState({ type: 'image', url: '', title: '', category: 'events', thumbnail: '' });
   const [isUploading, setIsUploading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationPrompt, setGenerationPrompt] = useState('');
+  const [uploadMode, setUploadMode] = useState<'upload' | 'ai'>('upload');
 
   useEffect(() => {
     const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
@@ -541,6 +545,53 @@ function ManageGallery() {
     });
     return () => unsubscribe();
   }, []);
+
+  const handleGenerateImage = async () => {
+    if (!generationPrompt.trim()) {
+      toast.error('Please enter a prompt');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: (process.env as any).GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            {
+              text: `Generate a high-quality, professional image for a consulting and entertainment business gallery. Topic: ${generationPrompt}. The image should be vibrant and modern.`,
+            },
+          ],
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: "1:1"
+          }
+        }
+      });
+
+      let imageUrl = '';
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+          break;
+        }
+      }
+
+      if (imageUrl) {
+        setNewItem({ ...newItem, url: imageUrl, title: generationPrompt });
+        toast.success('Image generated successfully!');
+      } else {
+        toast.error('Failed to generate image. Please try a different prompt.');
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Error generating image');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -604,12 +655,32 @@ function ManageGallery() {
             <CardTitle className="text-foreground">Add New Media</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-6 flex gap-2 border-b border-border pb-4">
+              <Button 
+                type="button"
+                variant={uploadMode === 'upload' ? 'default' : 'ghost'}
+                onClick={() => setUploadMode('upload')}
+                className={uploadMode === 'upload' ? "bg-orange-600" : ""}
+              >
+                Upload / URL
+              </Button>
+              <Button 
+                type="button"
+                variant={uploadMode === 'ai' ? 'default' : 'ghost'}
+                onClick={() => setUploadMode('ai')}
+                className={uploadMode === 'ai' ? "bg-orange-600" : ""}
+              >
+                AI Generation
+              </Button>
+            </div>
+
             <form onSubmit={handleAdd} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <select 
                   className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
                   value={newItem.type}
                   onChange={e => setNewItem({...newItem, type: e.target.value})}
+                  disabled={uploadMode === 'ai'}
                 >
                   <option value="image">Image</option>
                   <option value="video">Video</option>
@@ -624,44 +695,92 @@ function ManageGallery() {
                   <option value="consulting">Consulting</option>
                 </select>
               </div>
+
+              {uploadMode === 'ai' ? (
+                <div className="space-y-4 rounded-xl border border-dashed border-border p-6 bg-muted/20">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-semibold">Describe the image you want</label>
+                    <Textarea 
+                      placeholder="e.g., A professional corporate event with people networking, golden hour lighting, cinematic style" 
+                      value={generationPrompt} 
+                      onChange={e => setGenerationPrompt(e.target.value)}
+                      className="bg-muted/50 border-border min-h-[100px]"
+                    />
+                  </div>
+                  <Button 
+                    type="button" 
+                    onClick={handleGenerateImage} 
+                    disabled={isGenerating}
+                    className="w-full bg-orange-600 hover:bg-orange-700"
+                  >
+                    {isGenerating ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating Image...</>
+                    ) : (
+                      'Generate Image'
+                    )}
+                  </Button>
+                  
+                  {newItem.url && newItem.type === 'image' && newItem.url.startsWith('data:') && (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-sm font-medium text-green-600 flex items-center gap-1">
+                        <CheckCircle className="h-4 w-4" /> Preview generated image:
+                      </p>
+                      <div className="relative aspect-video overflow-hidden rounded-lg border border-border shadow-sm">
+                        <img src={newItem.url} className="h-full w-full object-cover" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Upload from Local Disk (Max 800KB)</label>
+                    <div className="flex items-center gap-4">
+                      <Input 
+                        type="file" 
+                        accept={newItem.type === 'image' ? "image/*" : "video/*"}
+                        onChange={handleFileUpload}
+                        className="cursor-pointer bg-muted/50 border-border"
+                      />
+                      {isUploading && <Loader2 className="h-4 w-4 animate-spin text-orange-600" />}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground italic">Note: Large videos should be hosted on YouTube/Vimeo and linked via URL below.</p>
+                  </div>
+
+                  <Input 
+                    placeholder="URL (Image URL or Video Embed URL)" 
+                    value={newItem.url} 
+                    onChange={e => setNewItem({...newItem, url: e.target.value})} 
+                    required 
+                    className="bg-muted/50 border-border"
+                  />
+                  {newItem.type === 'video' && (
+                    <Input 
+                      placeholder="Thumbnail URL" 
+                      value={newItem.thumbnail} 
+                      onChange={e => setNewItem({...newItem, thumbnail: e.target.value})} 
+                      required 
+                      className="bg-muted/50 border-border"
+                    />
+                  )}
+                </>
+              )}
+
               <Input 
-                placeholder="Title" 
+                placeholder="Item Title" 
                 value={newItem.title} 
                 onChange={e => setNewItem({...newItem, title: e.target.value})} 
                 required 
                 className="bg-muted/50 border-border"
               />
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Upload from Local Disk (Max 800KB)</label>
-                <div className="flex items-center gap-4">
-                  <Input 
-                    type="file" 
-                    accept={newItem.type === 'image' ? "image/*" : "video/*"}
-                    onChange={handleFileUpload}
-                    className="cursor-pointer bg-muted/50 border-border"
-                  />
-                  {isUploading && <Loader2 className="h-4 w-4 animate-spin text-orange-600" />}
-                </div>
-                <p className="text-[10px] text-muted-foreground italic">Note: Large videos should be hosted on YouTube/Vimeo and linked via URL below.</p>
-              </div>
-
-              <Input 
-                placeholder="URL (Image URL or Video Embed URL)" 
-                value={newItem.url} 
-                onChange={e => setNewItem({...newItem, url: e.target.value})} 
-                required 
-                className="bg-muted/50 border-border"
-              />
-              {newItem.type === 'video' && (
-                <Input 
-                  placeholder="Thumbnail URL" 
-                  value={newItem.thumbnail} 
-                  onChange={e => setNewItem({...newItem, thumbnail: e.target.value})} 
-                  required 
-                  className="bg-muted/50 border-border"
-                />
-              )}
-              <Button type="submit" className="w-full bg-orange-600 text-white">Save Media</Button>
+              
+              <Button 
+                type="submit" 
+                className="w-full bg-orange-600 text-white"
+                disabled={!newItem.url || isGenerating || isUploading}
+              >
+                Save to Gallery
+              </Button>
             </form>
           </CardContent>
         </Card>
