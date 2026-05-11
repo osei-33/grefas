@@ -101,6 +101,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Gallery', href: '/gallery' },
     { name: 'Booking', href: '/booking' },
     { name: 'Contact', href: '/contact' },
+    { name: 'Admin', href: '/admin' },
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -145,21 +146,13 @@ export default function Layout({ children }: LayoutProps) {
             >
               {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </Button>
-            {isAdmin ? (
-              <Link to="/admin" className="text-sm font-medium text-orange-600">
-                Dashboard
-              </Link>
-            ) : user ? (
+            {user && (
               <button 
                 onClick={() => auth.signOut()}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hover:text-orange-600"
               >
                 Sign Out
               </button>
-            ) : (
-              <Link to="/admin" className="text-sm font-medium text-muted-foreground hover:text-foreground">
-                Sign In
-              </Link>
             )}
           </div>
 
@@ -203,32 +196,16 @@ export default function Layout({ children }: LayoutProps) {
                   {link.name}
                 </Link>
               ))}
-              {isAdmin ? (
-                <Link
-                  to="/admin"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 text-base font-medium text-orange-600"
-                >
-                  Dashboard
-                </Link>
-              ) : user ? (
+              {user && (
                 <button
                   onClick={() => {
                     auth.signOut();
                     setIsMenuOpen(false);
                   }}
-                  className="block w-full text-left py-2 text-base font-medium text-muted-foreground"
+                  className="block w-full text-left py-2 text-base font-medium text-muted-foreground hover:text-orange-600"
                 >
                   Sign Out
                 </button>
-              ) : (
-                <Link
-                  to="/admin"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 text-base font-medium text-muted-foreground"
-                >
-                  Admin Login
-                </Link>
               )}
             </div>
           </motion.div>

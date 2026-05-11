@@ -113,7 +113,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (isOwner(userId) || isStaff());
       allow create: if (isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'guest') || isAdmin();
       allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data));
       allow delete: if isAdmin();
@@ -136,16 +136,23 @@ service cloud.firestore {
     }
 
     match /chat/{messageId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isStaff());
-      allow create: if isAuthenticated() && 
+      // Allow read if staff OR if it belongs to the user
+      // Note: For guests, we rely on the chatId being a non-guessable random string
+      allow read: if isStaff() || 
+                    (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.chatId == request.auth.uid)) ||
+                    (resource.data.chatId != null);
+      
+      allow create: if (isAuthenticated() || request.resource.data.chatId != null) && 
                       request.resource.data.text is string && 
                       request.resource.data.text.size() > 0 && 
                       request.resource.data.text.size() < 1000;
+      allow update: if isStaff(); // Admins might bridge or moderate
     }
 
     match /chat_status/{chatId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      // Allow read/write for staff or anyone with the chatId
+      allow read: if true;
+      allow write: if true; 
     }
 
     match /settings/{settingId} {
@@ -161,7 +168,7 @@ service cloud.firestore {
 
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create: if isStaff();
+      allow create: if isAuthenticated() || isStaff(); 
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }

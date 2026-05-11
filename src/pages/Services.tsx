@@ -1,7 +1,9 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import * as LucideIcons from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -60,19 +62,26 @@ export default function Services() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
               >
-                <Card className="h-full border border-border/50 bg-card shadow-sm transition-all hover:shadow-md">
+                <Card className="flex h-full flex-col border border-border/50 bg-card shadow-sm transition-all hover:shadow-md">
                   <CardHeader>
                     <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${service.color || 'bg-orange-100 text-orange-600'} dark:bg-orange-900/30 dark:text-orange-500`}>
                       {getIcon(service.iconName)}
                     </div>
                     <CardTitle className="mt-4 text-foreground">{service.title}</CardTitle>
-                    <CardDescription className="text-muted-foreground">{service.description}</CardDescription>
+                    <CardDescription className="line-clamp-2 text-muted-foreground">{service.description}</CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="flex-1">
                     <p className="text-sm text-muted-foreground/80">
                       Tailored approaches to meet your specific requirements and exceed expectations.
                     </p>
                   </CardContent>
+                  <CardFooter className="pt-0">
+                    <Link to={`/services/${service.id}`} className="w-full">
+                      <Button variant="outline" className="w-full border-orange-600/20 text-orange-600 hover:bg-orange-600 hover:text-white">
+                        Learn More
+                      </Button>
+                    </Link>
+                  </CardFooter>
                 </Card>
               </motion.div>
             ))}

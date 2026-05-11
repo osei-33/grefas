@@ -205,6 +205,12 @@ export default function Booking() {
                   selected={date}
                   onSelect={setDate}
                   disabled={disabledDays}
+                  modifiers={{ 
+                    booked: Object.keys(bookedDates).map(d => parseISO(d)) 
+                  }}
+                  modifiersClassNames={{ 
+                    booked: "ring-2 ring-orange-500 ring-offset-2" 
+                  }}
                   className="rounded-md border border-border shadow-sm bg-card text-foreground"
                 />
                 
@@ -232,18 +238,18 @@ export default function Booking() {
               </CardContent>
             </Card>
 
-            <div className="flex flex-wrap gap-4 text-sm">
+            <div className="flex flex-wrap gap-6 text-sm py-2">
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded bg-orange-600" />
                 <span className="text-muted-foreground">Selected</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-4 w-4 rounded bg-muted" />
-                <span className="text-muted-foreground">Fully Booked (5/5)</span>
+                <div className="h-4 w-4 rounded-full ring-2 ring-orange-500 ring-offset-2" />
+                <span className="text-muted-foreground">Has Existing Bookings</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-4 w-4 rounded border border-border" />
-                <span className="text-muted-foreground">Available</span>
+                <div className="h-4 w-4 rounded bg-muted" />
+                <span className="text-muted-foreground">Fully Booked (5/5)</span>
               </div>
             </div>
           </motion.div>
