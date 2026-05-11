@@ -113,7 +113,8 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isStaff());
+      allow get: if isAuthenticated() && (isOwner(userId) || isStaff());
+      allow list: if isAuthenticated() && (isStaff() || resource.data.email == request.auth.token.email);
       allow create: if (isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'guest') || isAdmin();
       allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data));
       allow delete: if isAdmin();

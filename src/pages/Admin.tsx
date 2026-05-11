@@ -47,37 +47,49 @@ export default function Admin() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubscribeSnapshot: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+
       setUser(user);
       if (user) {
-        const userPath = `users/${user.uid}`;
-        try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            setRole(userDoc.data().role);
-          } else if (user.email === "serwaahlinda1995@gmail.com") {
-            setRole('admin');
-          } else {
-            setRole('guest');
-          }
-        } catch (error) {
-          if (user.email === "serwaahlinda1995@gmail.com") {
-            setRole('admin');
-          } else {
-            setRole('guest');
-          }
-          try {
-            handleFirestoreError(error, OperationType.GET, userPath);
-          } catch (e) {
-            console.error("Error fetching role in admin:", error);
-          }
+        // First, set a default role based on email if it's the owner
+        if (user.email === "serwaahlinda1995@gmail.com") {
+          setRole('admin');
         }
+
+        // Listen for user document changes
+        unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+          if (doc.exists()) {
+            setRole(doc.data().role);
+          } else {
+            // Document might not exist yet if they just signed in
+            if (user.email !== "serwaahlinda1995@gmail.com") {
+              setRole('guest');
+            }
+          }
+          setLoading(false);
+        }, (error) => {
+          console.error("Error listening to user role:", error);
+          if (user.email !== "serwaahlinda1995@gmail.com") {
+            setRole('guest');
+          }
+          setLoading(false);
+        });
       } else {
         setRole(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -1331,13 +1343,18 @@ function ManageBookings() {
     }
   };
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this booking?')) return;
+    setDeletingId(id);
     try {
       await deleteDoc(doc(db, 'bookings', id));
       toast.success('Booking deleted');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `bookings/${id}`);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -1404,10 +1421,11 @@ function ManageBookings() {
                   <Button 
                     size="sm" 
                     variant="ghost" 
-                    className="text-muted-foreground hover:text-red-600 ml-auto"
+                    className="text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 ml-auto h-9 w-9 md:h-8 md:w-8"
                     onClick={() => handleDelete(booking.id)}
+                    disabled={deletingId === booking.id}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    {deletingId === booking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>

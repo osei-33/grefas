@@ -17,6 +17,7 @@ export default function Gallery() {
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [newComment, setNewComment] = useState('');
+  const [guestName, setGuestName] = useState(localStorage.getItem('grefas_guest_name') || '');
   const [activeTab, setActiveTab] = useState('all');
 
   useEffect(() => {
@@ -66,7 +67,11 @@ export default function Gallery() {
     if (!newComment.trim()) return;
 
     const anonymousId = user?.uid || getAnonymousId();
-    const displayName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous Viewer';
+    const displayName = user?.displayName || user?.email?.split('@')[0] || guestName.trim() || 'Anonymous Viewer';
+
+    if (!user && guestName.trim()) {
+      localStorage.setItem('grefas_guest_name', guestName.trim());
+    }
 
     const itemRef = doc(db, 'gallery', selectedItem.id);
     const comment = {
@@ -309,7 +314,19 @@ export default function Gallery() {
                 </div>
 
                 {/* Comment Input */}
-                <form onSubmit={handleAddComment} className="p-4 border-t border-border">
+                <form onSubmit={handleAddComment} className="p-4 border-t border-border space-y-3">
+                  {!user && (
+                    <div className="flex flex-col space-y-1">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Your Display Name</label>
+                      <Input
+                        placeholder="Enter your name to comment..."
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        className="bg-muted/30 border-border h-8 text-sm"
+                        required={!user}
+                      />
+                    </div>
+                  )}
                   <div className="flex space-x-2">
                     <Input
                       placeholder="Add a comment..."
@@ -317,7 +334,7 @@ export default function Gallery() {
                       onChange={(e) => setNewComment(e.target.value)}
                       className="flex-1 bg-muted/50 border-border"
                     />
-                    <Button type="submit" size="icon" disabled={!newComment.trim()} className="bg-orange-600 text-white">
+                    <Button type="submit" size="icon" disabled={!newComment.trim() || (!user && !guestName.trim())} className="bg-orange-600 text-white">
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
