@@ -1,11 +1,11 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { 
@@ -35,7 +35,16 @@ export default function Admin() {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isActive = (path: string) => {
+    if (path === '/admin') {
+      return location.pathname === '/admin' || location.pathname === '/admin/';
+    }
+    return location.pathname.startsWith(path);
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -108,70 +117,142 @@ export default function Admin() {
   }
 
   return (
-    <div className="flex min-h-[80vh] bg-background">
+    <div className="flex flex-col md:flex-row min-h-[80vh] bg-background relative overflow-hidden">
+      {/* Mobile Sidebar Toggle */}
+      <div className="md:hidden flex items-center p-4 border-b border-border bg-card justify-between sticky top-0 z-30">
+        <h2 className="text-sm font-bold text-orange-600">Admin Panel</h2>
+        <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+          {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </Button>
+      </div>
+
+      {/* Sidebar Backdrop */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden" 
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 border-r border-border bg-card p-6 hidden md:block">
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 border-r border-border bg-card p-6 transition-transform duration-300 md:relative md:translate-x-0 md:block
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
         <div className="flex flex-col h-full">
           <div className="space-y-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Admin Panel</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Main Navigation</h2>
+            </div>
             <nav className="space-y-1">
               <Link
                 to="/admin"
-                className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
               >
-                <LayoutDashboard className="h-4 w-4" />
+                <LayoutDashboard className={`h-4 w-4 ${isActive('/admin') ? 'text-orange-600' : ''}`} />
                 <span>Dashboard</span>
+                {isActive('/admin') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
                 to="/admin/services"
-                className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/services') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
               >
-                <Briefcase className="h-4 w-4" />
+                <Briefcase className={`h-4 w-4 ${isActive('/admin/services') ? 'text-orange-600' : ''}`} />
                 <span>Manage Services</span>
+                {isActive('/admin/services') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
                 to="/admin/gallery"
-                className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/gallery') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
               >
-                <ImageIcon className="h-4 w-4" />
+                <ImageIcon className={`h-4 w-4 ${isActive('/admin/gallery') ? 'text-orange-600' : ''}`} />
                 <span>Manage Gallery</span>
+                {isActive('/admin/gallery') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
                 to="/admin/portfolio"
-                className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/portfolio') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
               >
-                <FolderOpen className="h-4 w-4" />
+                <FolderOpen className={`h-4 w-4 ${isActive('/admin/portfolio') ? 'text-orange-600' : ''}`} />
                 <span>Manage Portfolio</span>
+                {isActive('/admin/portfolio') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
                 to="/admin/bookings"
-                className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/bookings') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
               >
-                <CalendarIcon className="h-4 w-4" />
+                <CalendarIcon className={`h-4 w-4 ${isActive('/admin/bookings') ? 'text-orange-600' : ''}`} />
                 <span>Manage Bookings</span>
+                {isActive('/admin/bookings') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               {role === 'admin' && (
                 <>
+                  <div className="pt-4 pb-2">
+                    <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3">System Control</h2>
+                  </div>
                   <Link
                     to="/admin/users"
-                    className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      isActive('/admin/users') 
+                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
                   >
-                    <Users className="h-4 w-4" />
+                    <Users className={`h-4 w-4 ${isActive('/admin/users') ? 'text-orange-600' : ''}`} />
                     <span>Manage Users</span>
+                    {isActive('/admin/users') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                   <Link
                     to="/admin/chat"
-                    className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      isActive('/admin/chat') 
+                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
                   >
-                    <MessageCircle className="h-4 w-4" />
+                    <MessageCircle className={`h-4 w-4 ${isActive('/admin/chat') ? 'text-orange-600' : ''}`} />
                     <span>Manage Chat</span>
+                    {isActive('/admin/chat') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                   <Link
                     to="/admin/settings"
-                    className="flex items-center space-x-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      isActive('/admin/settings') 
+                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
                   >
-                    <SettingsIcon className="h-4 w-4" />
+                    <SettingsIcon className={`h-4 w-4 ${isActive('/admin/settings') ? 'text-orange-600' : ''}`} />
                     <span>Settings</span>
+                    {isActive('/admin/settings') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                 </>
               )}
@@ -179,16 +260,17 @@ export default function Admin() {
           </div>
           
           <div className="mt-auto">
-            <div className="mb-4 px-3 py-2">
-              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            <div className="mb-4 px-3 py-3 rounded-xl bg-muted/30">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Logged in as</p>
+              <p className="text-xs font-medium text-foreground truncate">{user.email}</p>
             </div>
             <Button
               variant="ghost"
-              className="w-full justify-start text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10"
+              className="w-full justify-start text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 h-10"
               onClick={handleLogout}
             >
               <LogOut className="mr-2 h-4 w-4" />
-              Logout
+              <span>Sign Out</span>
             </Button>
           </div>
         </div>

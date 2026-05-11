@@ -126,13 +126,20 @@ service cloud.firestore {
 
     match /gallery/{itemId} {
       allow read: if true;
-      allow update: if isAuthenticated(); // For likes and comments
-      allow write: if isStaff() && isValidGalleryItem(request.resource.data);
+      allow create: if isStaff() && isValidGalleryItem(request.resource.data);
+      allow update: if isStaff() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likesCount', 'comments'])
+      );
+      allow delete: if isStaff();
     }
 
     match /portfolio/{itemId} {
       allow read: if true;
-      allow write: if isStaff();
+      allow create: if isStaff();
+      allow update: if isStaff() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likesCount', 'comments'])
+      );
+      allow delete: if isStaff();
     }
 
     match /chat/{messageId} {

@@ -37,18 +37,23 @@ export default function Gallery() {
     };
   }, []);
 
-  const handleLike = async (item: any) => {
-    if (!user) {
-      toast.error('Please sign in to like items');
-      return;
+  const getAnonymousId = () => {
+    let id = localStorage.getItem('grefas_gallery_id');
+    if (!id) {
+      id = 'anon_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('grefas_gallery_id', id);
     }
+    return id;
+  };
 
+  const handleLike = async (item: any) => {
+    const anonymousId = user?.uid || getAnonymousId();
     const itemRef = doc(db, 'gallery', item.id);
-    const isLiked = item.likes?.includes(user.uid);
+    const isLiked = item.likes?.includes(anonymousId);
 
     try {
       await updateDoc(itemRef, {
-        likes: isLiked ? arrayRemove(user.uid) : arrayUnion(user.uid),
+        likes: isLiked ? arrayRemove(anonymousId) : arrayUnion(anonymousId),
         likesCount: increment(isLiked ? -1 : 1)
       });
     } catch (error) {
@@ -58,16 +63,15 @@ export default function Gallery() {
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
-      toast.error('Please sign in to comment');
-      return;
-    }
     if (!newComment.trim()) return;
+
+    const anonymousId = user?.uid || getAnonymousId();
+    const displayName = user?.displayName || user?.email?.split('@')[0] || 'Anonymous Viewer';
 
     const itemRef = doc(db, 'gallery', selectedItem.id);
     const comment = {
-      userId: user.uid,
-      userName: user.displayName || user.email.split('@')[0],
+      userId: anonymousId,
+      userName: displayName,
       text: newComment,
       timestamp: new Date().toISOString()
     };
@@ -165,10 +169,10 @@ export default function Gallery() {
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleLike(item); }}
                         className={`rounded-full p-2.5 backdrop-blur-xl transition-all hover:scale-110 ${
-                          item.likes?.includes(user?.uid) ? 'bg-orange-600 text-white' : 'bg-white/20 text-white hover:bg-white/40'
+                          item.likes?.includes(user?.uid || localStorage.getItem('grefas_gallery_id')) ? 'bg-orange-600 text-white' : 'bg-white/20 text-white hover:bg-white/40'
                         }`}
                       >
-                        <Heart className={`h-4 w-4 ${item.likes?.includes(user?.uid) ? 'fill-current' : ''}`} />
+                        <Heart className={`h-4 w-4 ${item.likes?.includes(user?.uid || localStorage.getItem('grefas_gallery_id')) ? 'fill-current' : ''}`} />
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleShare(item); }}
@@ -264,10 +268,10 @@ export default function Gallery() {
                     <button 
                       onClick={() => handleLike(selectedItem)}
                       className={`flex items-center space-x-2 text-sm font-medium transition-colors ${
-                        selectedItem?.likes?.includes(user?.uid) ? 'text-orange-600' : 'text-muted-foreground hover:text-foreground'
+                        selectedItem?.likes?.includes(user?.uid || localStorage.getItem('grefas_gallery_id')) ? 'text-orange-600' : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <Heart className={`h-5 w-5 ${selectedItem?.likes?.includes(user?.uid) ? 'fill-current' : ''}`} />
+                      <Heart className={`h-5 w-5 ${selectedItem?.likes?.includes(user?.uid || localStorage.getItem('grefas_gallery_id')) ? 'fill-current' : ''}`} />
                       <span>{selectedItem?.likes?.length || 0}</span>
                     </button>
                     <div className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
@@ -308,13 +312,12 @@ export default function Gallery() {
                 <form onSubmit={handleAddComment} className="p-4 border-t border-border">
                   <div className="flex space-x-2">
                     <Input
-                      placeholder={user ? "Add a comment..." : "Sign in to comment"}
-                      disabled={!user}
+                      placeholder="Add a comment..."
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
                       className="flex-1 bg-muted/50 border-border"
                     />
-                    <Button type="submit" size="icon" disabled={!user || !newComment.trim()} className="bg-orange-600 text-white">
+                    <Button type="submit" size="icon" disabled={!newComment.trim()} className="bg-orange-600 text-white">
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
