@@ -12,6 +12,29 @@ import { toast } from 'sonner';
 import { onAuthStateChanged } from 'firebase/auth';
 import { AdSense } from '@/components/AdSense';
 
+const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: string; className?: string; onClick?: () => void }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  return (
+    <div className="relative h-full w-full bg-muted/30">
+      {!isLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-orange-200" />
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        className={`${className} ${isLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}
+        referrerPolicy="no-referrer"
+        loading="lazy"
+        onLoad={() => setIsLoaded(true)}
+        onClick={onClick}
+      />
+    </div>
+  );
+};
+
 export default function Gallery() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,13 +175,14 @@ export default function Gallery() {
                     transition={{ delay: i * 0.1, duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
                     className="group relative h-[350px] cursor-pointer overflow-hidden rounded-3xl bg-muted ring-1 ring-border/50 shadow-sm transition-all duration-500 hover:shadow-2xl hover:shadow-orange-500/10 hover:-translate-y-2"
                   >
-                    <img
-                      src={item.type === 'image' ? item.url : item.thumbnail}
-                      alt={item.title}
-                      className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                      onClick={() => setSelectedItem(item)}
-                    />
+                    <div className="h-full w-full relative overflow-hidden">
+                      <ImageWithLoading
+                        src={item.type === 'image' ? item.url : item.thumbnail}
+                        alt={item.title}
+                        className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                        onClick={() => setSelectedItem(item)}
+                      />
+                    </div>
                     
                     {/* Watermark */}
                     <div className="pointer-events-none absolute bottom-4 left-4 z-10 select-none opacity-20">
@@ -232,11 +256,10 @@ export default function Gallery() {
               {/* Media Section */}
               <div className="lg:col-span-2 bg-black flex items-center justify-center relative min-h-[300px]">
                 {selectedItem?.type === 'image' ? (
-                  <img
+                  <ImageWithLoading
                     src={selectedItem.url}
                     alt={selectedItem.title}
                     className="max-h-full max-w-full object-contain"
-                    referrerPolicy="no-referrer"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
