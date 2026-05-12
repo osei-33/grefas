@@ -58,7 +58,7 @@ export default function Admin() {
       setUser(user);
       if (user) {
         // First, set a default role based on email if it's the owner
-        if (user.email === "serwaahlinda1995@gmail.com" || user.email === "asantegrice@gmail.com") {
+        if (user.email === "serwaahlinda1995@gmail.com" || user.email === "asantegrice@gmail.com" || user.email === "asantegrifice@gmail.com") {
           setRole('admin');
         }
 
@@ -68,14 +68,14 @@ export default function Admin() {
             setRole(doc.data().role);
           } else {
             // Document might not exist yet if they just signed in
-            if (user.email !== "serwaahlinda1995@gmail.com" && user.email !== "asantegrice@gmail.com") {
+            if (user.email !== "serwaahlinda1995@gmail.com" && user.email !== "asantegrice@gmail.com" && user.email !== "asantegrifice@gmail.com") {
               setRole('guest');
             }
           }
           setLoading(false);
         }, (error) => {
           console.error("Error listening to user role:", error);
-          if (user.email !== "serwaahlinda1995@gmail.com" && user.email !== "asantegrice@gmail.com") {
+          if (user.email !== "serwaahlinda1995@gmail.com" && user.email !== "asantegrice@gmail.com" && user.email !== "asantegrifice@gmail.com") {
             setRole('guest');
           }
           setLoading(false);
@@ -349,7 +349,7 @@ function Login() {
           // New user, create as guest
           await setDoc(doc(db, 'users', user.uid), {
             email: user.email,
-            role: user.email === "serwaahlinda1995@gmail.com" ? "admin" : "guest",
+            role: (user.email === "serwaahlinda1995@gmail.com" || user.email === "asantegrice@gmail.com" || user.email === "asantegrifice@gmail.com") ? "admin" : "guest",
             createdAt: serverTimestamp()
           });
         }
