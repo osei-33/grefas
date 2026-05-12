@@ -7,6 +7,8 @@ import { Link } from 'react-router-dom';
 import { db } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
+import { AdSense } from '@/components/AdSense';
+
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [quote, setQuote] = useState<string>("");
@@ -180,6 +182,15 @@ export default function Home() {
           </motion.div>
         </div>
       </section>
+
+      {/* AdSense Unit */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <AdSense 
+          client="ca-pub-8193654467459416"
+          slot="home_top" 
+          className="rounded-xl overflow-hidden shadow-sm"
+        />
+      </div>
 
       {/* Stats Section */}
       <section className="bg-background py-24">

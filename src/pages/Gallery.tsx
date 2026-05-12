@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { onAuthStateChanged } from 'firebase/auth';
+import { AdSense } from '@/components/AdSense';
 
 export default function Gallery() {
   const [items, setItems] = useState<any[]>([]);
@@ -214,6 +215,15 @@ export default function Gallery() {
             </TabsContent>
           ))}
         </Tabs>
+
+        {/* AdSense Unit */}
+        <div className="mt-16">
+          <AdSense 
+            client="ca-pub-8193654467459416"
+            slot="gallery_bottom"
+            className="rounded-xl overflow-hidden shadow-sm"
+          />
+        </div>
 
         {/* Media Modal */}
         <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
