@@ -31,6 +31,13 @@ import {
 } from 'firebase/firestore';
 import { GoogleGenAI } from "@google/genai";
 
+const isAdminEmail = (email: string | null) => {
+  if (!email) return false;
+  const hardcodedAdmins = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com"];
+  const envAdmins = ((import.meta as any).env.VITE_ADMIN_EMAILS || "").split(",").map((e: string) => e.trim());
+  return hardcodedAdmins.includes(email) || envAdmins.includes(email);
+};
+
 export default function Admin() {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -58,7 +65,7 @@ export default function Admin() {
       setUser(user);
       if (user) {
         // First, set a default role based on email if it's the owner
-        if (user.email === "serwaahlinda1995@gmail.com" || user.email === "asantegrice@gmail.com" || user.email === "asantegrifice@gmail.com") {
+        if (isAdminEmail(user.email)) {
           setRole('admin');
         }
 
@@ -68,14 +75,14 @@ export default function Admin() {
             setRole(doc.data().role);
           } else {
             // Document might not exist yet if they just signed in
-            if (user.email !== "serwaahlinda1995@gmail.com" && user.email !== "asantegrice@gmail.com" && user.email !== "asantegrifice@gmail.com") {
+            if (!isAdminEmail(user.email)) {
               setRole('guest');
             }
           }
           setLoading(false);
         }, (error) => {
           console.error("Error listening to user role:", error);
-          if (user.email !== "serwaahlinda1995@gmail.com" && user.email !== "asantegrice@gmail.com" && user.email !== "asantegrifice@gmail.com") {
+          if (!isAdminEmail(user.email)) {
             setRole('guest');
           }
           setLoading(false);
@@ -349,7 +356,7 @@ function Login() {
           // New user, create as guest
           await setDoc(doc(db, 'users', user.uid), {
             email: user.email,
-            role: (user.email === "serwaahlinda1995@gmail.com" || user.email === "asantegrice@gmail.com" || user.email === "asantegrifice@gmail.com") ? "admin" : "guest",
+            role: isAdminEmail(user.email) ? "admin" : "guest",
             createdAt: serverTimestamp()
           });
         }

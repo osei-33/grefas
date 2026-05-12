@@ -25,12 +25,23 @@ export const AdSense: React.FC<AdSenseProps> = ({
   className = ''
 }) => {
   useEffect(() => {
-    try {
-      (window.adsbygoogle = window.adsbygoogle || []).push({});
-    } catch (e) {
-      console.error('AdSense error:', e);
-    }
-  }, []);
+    // Small delay to ensure DOM is ready and avoid race conditions in SPAs
+    const timer = setTimeout(() => {
+      try {
+        if (window.adsbygoogle) {
+          (window.adsbygoogle = window.adsbygoogle || []).push({});
+        }
+      } catch (e) {
+        // Silently handle "already filled" errors which are common in SPAs during rapid navigation
+        if (e instanceof Error && e.message.includes('already have ads')) {
+          return;
+        }
+        console.error('AdSense error:', e);
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [slot]); // Re-run if slot changes, but slot is usually stable per component instance
 
   return (
     <div className={`adsense-container my-8 overflow-hidden ${className}`}>

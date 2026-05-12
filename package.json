@@ -7,7 +7,6 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "preinstall": "node -e 'const v=process.versions.node.split(\".\")[0]; if(v<20) { console.error(\"ERROR: This project requires Node.js 20 or higher. You are using v\"+process.versions.node); process.exit(1); }'",
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
     "build": "vite build",
