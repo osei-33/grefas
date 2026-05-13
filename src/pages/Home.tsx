@@ -4,7 +4,7 @@ import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react';
 import { ArrowRight, Star, Users, Briefcase, Play, Quote, Loader2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { db } from '@/firebase';
+import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 import { AdSense } from '@/components/AdSense';
@@ -39,6 +39,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const errorPath = 'settings/global';
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) {
         setQuote(doc.data().dailyQuote || "Excellence is not an act, but a habit.");
@@ -46,6 +47,12 @@ export default function Home() {
         setQuote("Excellence is not an act, but a habit.");
       }
       setLoadingQuote(false);
+    }, (error) => {
+      console.debug("Home quote feed issue (handled):", error);
+      setQuote("Excellence is not an act, but a habit.");
+      setLoadingQuote(false);
+      // Pass to internal handler which handles offline suppressions
+      handleFirestoreError(error, OperationType.GET, errorPath);
     });
     return () => unsubscribe();
   }, []);

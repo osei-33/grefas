@@ -9,7 +9,6 @@ export const auth = getAuth(app);
 // Connect with improved settings for stability in the preview environment
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-  experimentalAutoDetectLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 
 /**

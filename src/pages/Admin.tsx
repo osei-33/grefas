@@ -1681,6 +1681,9 @@ function ManageChat() {
         }
       });
       setThreads(Object.values(grouped));
+    }, (error) => {
+      console.warn("ManageChat threads issue:", error);
+      handleFirestoreError(error, OperationType.LIST, 'chat');
     });
     return () => unsubscribe();
   }, []);
@@ -1695,6 +1698,9 @@ function ManageChat() {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.warn("ManageChat messages issue:", error);
+      handleFirestoreError(error, OperationType.LIST, `chat/${activeChatId}`);
     });
 
     // Listen for client typing status
@@ -1704,6 +1710,8 @@ function ManageChat() {
       } else {
         setIsUserTyping(false);
       }
+    }, (error) => {
+      console.debug("Typing status fetch error (handled):", error);
     });
 
     return () => {

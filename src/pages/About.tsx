@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { db } from '@/firebase';
+import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 
@@ -10,11 +10,16 @@ export default function About() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const errorPath = 'settings/global';
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) {
         setSettings(doc.data());
       }
       setLoading(false);
+    }, (error) => {
+      console.warn("About settings issue:", error);
+      setLoading(false);
+      handleFirestoreError(error, OperationType.GET, errorPath);
     });
     return () => unsubscribe();
   }, []);

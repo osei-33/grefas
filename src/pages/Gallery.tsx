@@ -16,16 +16,16 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
   const [isLoaded, setIsLoaded] = useState(false);
   
   return (
-    <div className="relative h-full w-full bg-muted/30">
+    <div className={`relative h-full w-full bg-muted/40 overflow-hidden ${!isLoaded ? 'animate-pulse' : ''}`}>
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-orange-200" />
+        <div className="absolute inset-0 flex items-center justify-center bg-linear-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-[shimmer_2s_infinite]">
+          <Loader2 className="h-6 w-6 animate-spin text-orange-200/50" />
         </div>
       )}
       <img
         src={src}
         alt={alt}
-        className={`${className} ${isLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-500`}
+        className={`${className} ${isLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-700`}
         referrerPolicy="no-referrer"
         loading="lazy"
         onLoad={() => setIsLoaded(true)}
@@ -134,16 +134,35 @@ export default function Gallery() {
     }
   };
 
+  const categories = ['all', 'events', 'entertainment', 'consulting'];
+  const filteredItems = activeTab === 'all' ? items : items.filter(item => item.category === activeTab);
+
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
+      <div className="bg-background py-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <div className="h-10 w-64 bg-muted animate-pulse mx-auto rounded-lg" />
+            <div className="h-6 w-80 bg-muted animate-pulse mx-auto mt-4 rounded-lg" />
+          </div>
+
+          <div className="mt-12 flex justify-center">
+            <div className="flex bg-muted p-1 rounded-md">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="h-9 w-24 bg-muted-foreground/10 animate-pulse mx-1 rounded" />
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="h-[350px] rounded-3xl bg-muted animate-pulse" />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
-
-  const categories = ['all', 'events', 'entertainment', 'consulting'];
-  const filteredItems = activeTab === 'all' ? items : items.filter(item => item.category === activeTab);
 
   return (
     <div className="bg-background py-20">
@@ -281,6 +300,7 @@ export default function Gallery() {
                         allow="autoplay; fullscreen; picture-in-picture"
                         allowFullScreen
                         title={selectedItem.title}
+                        loading="lazy"
                       />
                     ) : (
                       <video
@@ -288,6 +308,7 @@ export default function Gallery() {
                         controls
                         className="max-h-full max-w-full"
                         poster={selectedItem?.thumbnail}
+                        preload="metadata"
                       >
                         Your browser does not support the video tag.
                       </video>

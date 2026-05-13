@@ -6,17 +6,21 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Mail, Phone, MapPin, Send } from 'lucide-react';
 import { toast } from 'sonner';
-import { db } from '@/firebase';
+import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 export default function Contact() {
   const [settings, setSettings] = useState<any>(null);
 
   useEffect(() => {
+    const errorPath = 'settings/global';
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) {
         setSettings(doc.data());
       }
+    }, (error) => {
+      console.debug("Contact settings fetch issue (handled):", error);
+      handleFirestoreError(error, OperationType.GET, errorPath);
     });
     return () => unsubscribe();
   }, []);

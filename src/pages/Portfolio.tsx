@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { db } from '@/firebase';
+import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { Loader2, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,10 +11,15 @@ export default function Portfolio() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const errorPath = 'portfolio';
     const q = query(collection(db, 'portfolio'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
+    }, (error) => {
+      console.warn("Portfolio fetch error:", error);
+      setLoading(false);
+      handleFirestoreError(error, OperationType.LIST, errorPath);
     });
     return () => unsubscribe();
   }, []);
