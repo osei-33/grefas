@@ -46,14 +46,14 @@ export default function Layout({ children }: LayoutProps) {
           const userDoc = await getDoc(doc(db, 'users', authenticatedUser.uid));
           if (userDoc && userDoc.exists()) {
             setUserRole(userDoc.data().role);
-          } else if (authenticatedUser.email === "serwaahlinda1995@gmail.com") {
+          } else if (["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"].includes(authenticatedUser.email || "")) {
             setUserRole('admin');
           } else {
             setUserRole('guest');
           }
         } catch (error) {
           // Fallback to admin if it's the owner, even if offline
-          if (authenticatedUser.email === "serwaahlinda1995@gmail.com") {
+          if (["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"].includes(authenticatedUser.email || "")) {
             setUserRole('admin');
           } else {
             setUserRole('guest');
