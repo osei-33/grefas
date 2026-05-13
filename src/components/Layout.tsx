@@ -44,7 +44,7 @@ export default function Layout({ children }: LayoutProps) {
         const userPath = `users/${authenticatedUser.uid}`;
         try {
           const userDoc = await getDoc(doc(db, 'users', authenticatedUser.uid));
-          if (userDoc.exists()) {
+          if (userDoc && userDoc.exists()) {
             setUserRole(userDoc.data().role);
           } else if (authenticatedUser.email === "serwaahlinda1995@gmail.com") {
             setUserRole('admin');
@@ -52,16 +52,14 @@ export default function Layout({ children }: LayoutProps) {
             setUserRole('guest');
           }
         } catch (error) {
+          // Fallback to admin if it's the owner, even if offline
           if (authenticatedUser.email === "serwaahlinda1995@gmail.com") {
             setUserRole('admin');
           } else {
             setUserRole('guest');
           }
-          try {
-            handleFirestoreError(error, OperationType.GET, userPath);
-          } catch (e) {
-            console.error("Error fetching role in layout:", error);
-          }
+          
+          handleFirestoreError(error, OperationType.GET, userPath);
         }
       } else {
         setUserRole(null);

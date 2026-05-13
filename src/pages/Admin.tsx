@@ -33,7 +33,7 @@ import { GoogleGenAI } from "@google/genai";
 
 const isAdminEmail = (email: string | null) => {
   if (!email) return false;
-  const hardcodedAdmins = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com"];
+  const hardcodedAdmins = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"];
   const envAdmins = ((import.meta as any).env.VITE_ADMIN_EMAILS || "").split(",").map((e: string) => e.trim());
   return hardcodedAdmins.includes(email) || envAdmins.includes(email);
 };
@@ -71,7 +71,7 @@ export default function Admin() {
 
         // Listen for user document changes
         unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-          if (doc.exists()) {
+          if (doc && doc.exists()) {
             setRole(doc.data().role);
           } else {
             // Document might not exist yet if they just signed in
@@ -81,9 +81,16 @@ export default function Admin() {
           }
           setLoading(false);
         }, (error) => {
-          console.error("Error listening to user role:", error);
-          if (!isAdminEmail(user.email)) {
-            setRole('guest');
+          // Check if it's an offline error
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          if (errorMsg.includes('the client is offline') || errorMsg.includes('Could not reach')) {
+            console.debug("Firestore offline - sticking with default role for email");
+            // We already set role to admin above if isAdminEmail(user.email)
+          } else {
+            console.error("Error listening to user role:", error);
+            if (!isAdminEmail(user.email)) {
+              setRole('guest');
+            }
           }
           setLoading(false);
         });
@@ -425,7 +432,12 @@ function Dashboard() {
           bookings: bookingsSnap.size
         });
       } catch (error) {
-        console.error(error);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes('the client is offline') || errorMsg.includes('Could not reach')) {
+          console.debug("Firestore offline - dashboard counts not available");
+        } else {
+          console.error("Dashboard fetch error:", error);
+        }
       }
     };
     fetchCounts();

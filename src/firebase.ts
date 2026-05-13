@@ -6,9 +6,10 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Use initializeFirestore with settings for better connectivity in restricted environments
+// Connect with improved settings for stability in the preview environment
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
+  experimentalAutoDetectLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 
 /**
@@ -57,25 +58,38 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   }
+  
+  // Only log and throw if it's NOT a connectivity error during initialization
+  if (errInfo.error.includes('the client is offline') || errInfo.error.includes('Could not reach')) {
+    console.debug('Firestore is currently offline (handled):', path);
+    return; // Don't throw for offline errors to prevent UI crashes
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Test connection only when needed or with better handling
-async function testConnection() {
-  try {
-    // Only attempt if not obviously offline
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-    
-    await getDocFromServer(doc(db, 'settings', 'global'));
-    console.log("Firestore connection successful");
-  } catch (error) {
-    // Silently handle initial connectivity delays
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      // Don't log error here as it's often just a delay in initialization
-    } else {
-      console.warn("Firestore connection test encountered an issue:", error);
+// Improved connection check with backoff logic
+async function verifyConnection(retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+      
+      await getDocFromServer(doc(db, 'settings', 'global'));
+      console.log("Firestore connection verified");
+      return;
+    } catch (error) {
+      if (i === retries - 1) {
+        console.warn("Firestore connection attempt failed after retries. Operating in offline-first mode.");
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+      }
     }
   }
 }
-testConnection();
+
+// Start verification in background
+verifyConnection();
