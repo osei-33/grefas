@@ -268,30 +268,35 @@ export default function Gallery() {
                       isLarge ? 'md:row-span-2' : ''
                     } ${isWide ? 'md:col-span-2' : ''}`}
                   >
-                    <div className="h-full w-full relative">
+                    <div 
+                      className="h-full w-full relative cursor-pointer"
+                      onClick={() => setSelectedItem(item)}
+                    >
                       <ImageWithLoading
                         src={item.type === 'image' ? item.url : item.thumbnail}
                         alt={item.title}
                         className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
-                        onClick={() => setSelectedItem(item)}
                       />
                     </div>
                     
                     {/* Floating Info Badge */}
-                    <div className="absolute top-4 left-4 z-20 flex flex-col space-y-2">
+                    <div className="absolute top-4 left-4 z-20 flex flex-col space-y-2 pointer-events-none">
                       <span className="glass-overlay px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white self-start">
                         {item.category}
                       </span>
-                      {isAdmin && (
+                    </div>
+
+                    {isAdmin && (
+                      <div className="absolute top-12 left-4 z-30">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
-                          className="bg-red-600/20 hover:bg-red-600 text-white p-2 rounded-full backdrop-blur-md transition-all self-start"
+                          className="bg-red-600/20 hover:bg-red-600 text-white p-2 rounded-full backdrop-blur-md transition-all self-start pointer-events-auto"
                           title="Delete Item"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {/* Watermark Branding */}
                     <div className="pointer-events-none absolute bottom-6 right-6 z-10 opacity-10 select-none group-hover:opacity-30 transition-opacity">
@@ -301,11 +306,14 @@ export default function Gallery() {
                     </div>
 
                     {/* Refined Glass Overlay */}
-                    <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-end p-8">
+                    <div 
+                      className="absolute inset-0 bg-linear-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-end p-8 cursor-pointer"
+                      onClick={() => setSelectedItem(item)}
+                    >
                       <motion.div 
                         initial={{ y: 20, opacity: 0 }}
                         whileInView={{ y: 0, opacity: 1 }}
-                        className="space-y-3"
+                        className="space-y-3 pointer-events-none"
                       >
                         <div className="flex items-center justify-between">
                           <h3 className="text-2xl font-black text-white leading-none tracking-tight text-glow">
@@ -318,7 +326,7 @@ export default function Gallery() {
                           )}
                         </div>
                         
-                        <div className="flex items-center space-x-4 pt-2 border-t border-white/10">
+                        <div className="flex items-center space-x-4 pt-2 border-t border-white/10 pointer-events-auto">
                           <div className="flex items-center space-x-1.5 text-orange-400">
                             <Heart className={`h-4 w-4 ${item.likes?.includes(user?.uid || getAnonymousId()) ? 'fill-current' : ''}`} />
                             <span className="text-xs font-bold">{item.likes?.length || 0}</span>
@@ -388,36 +396,68 @@ export default function Gallery() {
                   </div>
                 ) : (
                   <div className="w-full h-full">
-                    {selectedItem?.url?.includes('youtube.com') || selectedItem?.url?.includes('youtu.be') || selectedItem?.url?.includes('vimeo.com') ? (
-                      <iframe
-                        src={(() => {
-                          const url = selectedItem.url;
-                          if (url.includes('youtube.com') || url.includes('youtu.be')) {
-                            const id = url.includes('v=') ? url.split('v=')[1].split('&')[0] : (url.includes('youtu.be/') ? url.split('youtu.be/')[1].split('?')[0] : url.split('/').pop()?.split('?')[0]);
-                            return `https://www.youtube.com/embed/${id}?autoplay=1`;
+                    {(() => {
+                      const url = selectedItem?.url || '';
+                      const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+                      const isVimeo = url.includes('vimeo.com');
+
+                      if (isYouTube) {
+                        let videoId = '';
+                        try {
+                          if (url.includes('v=')) {
+                            videoId = url.split('v=')[1].split('&')[0];
+                          } else if (url.includes('youtu.be/')) {
+                            videoId = url.split('youtu.be/')[1].split('?')[0];
+                          } else if (url.includes('embed/')) {
+                            videoId = url.split('embed/')[1].split('?')[0];
+                          } else if (url.includes('shorts/')) {
+                            videoId = url.split('shorts/')[1].split('?')[0];
+                          } else if (url.includes('watch/')) {
+                            videoId = url.split('watch/')[1].split('?')[0];
+                          } else {
+                            videoId = url.split('/').pop()?.split('?')[0] || '';
                           }
-                          if (url.includes('vimeo.com')) {
-                            const id = url.split('/').pop()?.split('?')[0];
-                            return `https://player.vimeo.com/video/${id}?autoplay=1`;
-                          }
-                          return url;
-                        })()}
-                        className="w-full h-full"
-                        allow="autoplay; fullscreen; picture-in-picture"
-                        allowFullScreen
-                        title={selectedItem.title}
-                      />
-                    ) : (
-                      <video
-                        src={selectedItem?.url}
-                        controls
-                        autoPlay
-                        className="w-full h-full"
-                        poster={selectedItem?.thumbnail}
-                      >
-                        Your browser does not support the video tag.
-                      </video>
-                    )}
+                        } catch (e) {
+                          console.error("Error parsing YouTube URL:", e);
+                        }
+
+                        return (
+                          <iframe
+                            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&rel=0&modestbranding=1`}
+                            className="w-full h-full border-0"
+                            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                            allowFullScreen
+                            title={selectedItem.title}
+                          />
+                        );
+                      }
+
+                      if (isVimeo) {
+                        const videoId = url.split('/').pop()?.split('?')[0];
+                        return (
+                          <iframe
+                            src={`https://player.vimeo.com/video/${videoId}?autoplay=1`}
+                            className="w-full h-full"
+                            allow="autoplay; fullscreen; picture-in-picture"
+                            allowFullScreen
+                            title={selectedItem.title}
+                          />
+                        );
+                      }
+
+                      return (
+                        <video
+                          src={url}
+                          controls
+                          autoPlay
+                          playsInline
+                          className="w-full h-full object-contain"
+                          poster={selectedItem?.thumbnail}
+                        >
+                          Your browser does not support the video tag.
+                        </video>
+                      );
+                    })()}
                   </div>
                 )}
                 
