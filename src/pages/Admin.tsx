@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
+import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
@@ -29,6 +29,7 @@ import {
   setDoc,
   where
 } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { GoogleGenAI } from "@google/genai";
 
 const isAdminEmail = (email: string | null) => {
@@ -645,6 +646,7 @@ function ManageGallery() {
   const [isAdding, setIsAdding] = useState(false);
   const [newItem, setNewItem] = useState({ type: 'image', url: '', title: '', category: 'events', thumbnail: '' });
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [uploadMode, setUploadMode] = useState<'upload' | 'ai'>('upload');
@@ -706,24 +708,95 @@ function ManageGallery() {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const generateVideoThumbnail = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      video.src = URL.createObjectURL(file);
+      
+      video.onloadedmetadata = () => {
+        video.currentTime = 1; // Seek to 1 second
+      };
+
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
+          URL.revokeObjectURL(video.src);
+          resolve(thumbnailUrl);
+        } else {
+          reject('Could not get canvas context');
+        }
+      };
+
+      video.onerror = (e) => reject(e);
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check file size (Firestore limit is 1MB for the whole document)
-    if (file.size > 800000) { // 800KB limit to be safe
-      toast.error('File is too large. Please use a URL for files over 800KB.');
+    // Check file size (35MB limit as requested)
+    const MAX_SIZE = 35 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      toast.error('File is too large. Maximum size allowed is 35MB.');
       return;
     }
 
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setNewItem({ ...newItem, url: reader.result as string });
+    setUploadProgress(0);
+
+    try {
+      // If it's a video, try to generate a thumbnail
+      if (file.type.startsWith('video/')) {
+        try {
+          const thumbnailDataUrl = await generateVideoThumbnail(file);
+          // Upload thumbnail first
+          const thumbRef = ref(storage, `gallery/thumbnails/${Date.now()}_thumb.jpg`);
+          // Convert dataURL to blob
+          const response = await fetch(thumbnailDataUrl);
+          const blob = await response.blob();
+          await uploadBytesResumable(thumbRef, blob);
+          const thumbUrl = await getDownloadURL(thumbRef);
+          setNewItem(prev => ({ ...prev, thumbnail: thumbUrl }));
+        } catch (error) {
+          console.warn('Failed to generate thumbnail, you may need to provide one manually:', error);
+        }
+      }
+
+      // Upload main file
+      const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(Math.round(progress));
+        }, 
+        (error) => {
+          console.error('Upload failed:', error);
+          toast.error('Upload failed');
+          setIsUploading(false);
+        }, 
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          setNewItem(prev => ({ ...prev, url: downloadURL }));
+          setIsUploading(false);
+          toast.success('File uploaded successfully');
+        }
+      );
+    } catch (error) {
+      console.error('Upload setup failed:', error);
+      toast.error('Could not start upload');
       setIsUploading(false);
-      toast.success('File ready for saving');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -743,10 +816,30 @@ function ManageGallery() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, url?: string, thumbnailUrl?: string) => {
     if (!confirm('Are you sure you want to delete this item?')) return;
     try {
       await deleteDoc(doc(db, 'gallery', id));
+      
+      // Also delete from storage if it's a storage URL
+      if (url && url.includes('firebasestorage.googleapis.com')) {
+        try {
+          const storageRef = ref(storage, url);
+          await deleteObject(storageRef);
+        } catch (e) {
+          console.warn("Could not delete main file from storage:", e);
+        }
+      }
+      
+      if (thumbnailUrl && thumbnailUrl.includes('firebasestorage.googleapis.com')) {
+        try {
+          const thumbRef = ref(storage, thumbnailUrl);
+          await deleteObject(thumbRef);
+        } catch (e) {
+          console.warn("Could not delete thumbnail from storage:", e);
+        }
+      }
+      
       toast.success('Item deleted');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `gallery/${id}`);
@@ -847,17 +940,33 @@ function ManageGallery() {
               ) : (
                 <>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Upload from Local Disk (Max 800KB)</label>
-                    <div className="flex items-center gap-4">
-                      <Input 
-                        type="file" 
-                        accept={newItem.type === 'image' ? "image/*" : "video/*"}
-                        onChange={handleFileUpload}
-                        className="cursor-pointer bg-muted/50 border-border"
-                      />
-                      {isUploading && <Loader2 className="h-4 w-4 animate-spin text-orange-600" />}
+                    <label className="text-sm font-medium text-foreground">Upload from Local Disk (Max 35MB)</label>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-4">
+                        <Input 
+                          type="file" 
+                          accept={newItem.type === 'image' ? "image/*" : "video/*"}
+                          onChange={handleFileUpload}
+                          disabled={isUploading}
+                          className="cursor-pointer bg-muted/50 border-border"
+                        />
+                        {isUploading && (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-orange-600" />
+                            <span className="text-xs font-bold text-orange-600">{uploadProgress}%</span>
+                          </div>
+                        )}
+                      </div>
+                      {isUploading && (
+                        <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-orange-600 transition-all duration-300" 
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
-                    <p className="text-[10px] text-muted-foreground italic">Note: Large videos should be hosted on YouTube/Vimeo and linked via URL below.</p>
+                    <p className="text-[10px] text-muted-foreground italic">Note: Large files are uploaded to secure cloud storage. Videos up to 35MB are supported.</p>
                   </div>
 
                   <Input 
@@ -909,7 +1018,7 @@ function ManageGallery() {
               referrerPolicy="no-referrer"
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-              <Button variant="destructive" size="sm" onClick={() => handleDelete(item.id)}>
+              <Button variant="destructive" size="sm" onClick={() => handleDelete(item.id, item.url, item.thumbnail)}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>

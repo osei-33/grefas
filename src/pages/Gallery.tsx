@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
+import { db, auth, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment, deleteDoc, getDoc } from 'firebase/firestore';
+import { ref, deleteObject } from 'firebase/storage';
 import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -34,6 +35,102 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
         onLoad={() => setIsLoaded(true)}
         onClick={onClick}
       />
+    </div>
+  );
+};
+
+const MediaViewer = ({ item }: { item: any }) => {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+  }, [item?.id]);
+
+  if (!item) return null;
+
+  if (item.type === 'image') {
+    return (
+      <div className="w-full h-full flex items-center justify-center p-4">
+        <img
+          src={item.url}
+          alt={item.title}
+          className="max-h-full max-w-full object-contain drop-shadow-2xl transition-transform duration-700 hover:scale-105"
+          referrerPolicy="no-referrer"
+          onLoad={() => setIsLoading(false)}
+        />
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+            <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const url = item.url || '';
+  const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+  const isVimeo = url.includes('vimeo.com');
+
+  if (isYouTube || isVimeo) {
+    let videoSrc = '';
+    if (isYouTube) {
+      let videoId = '';
+      try {
+        if (url.includes('v=')) videoId = url.split('v=')[1].split('&')[0];
+        else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1].split('?')[0];
+        else if (url.includes('embed/')) videoId = url.split('embed/')[1].split('?')[0];
+        else if (url.includes('shorts/')) videoId = url.split('shorts/')[1].split('?')[0];
+        else videoId = url.split('/').pop()?.split('?')[0] || '';
+      } catch (e) { console.error(e); }
+      // Optimized YouTube params: mute=1 for certain autoplay, rel=0 for fewer recommendations
+      videoSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&rel=0&modestbranding=1&loading=lazy`;
+    } else {
+      const videoId = url.split('/').pop()?.split('?')[0];
+      videoSrc = `https://player.vimeo.com/video/${videoId}?autoplay=1&muted=0&badge=0&autopause=0`;
+    }
+
+    return (
+      <div className="w-full h-full relative">
+        {isLoading && item.thumbnail && (
+          <div className="absolute inset-0 z-10 transition-opacity duration-500">
+            <img src={item.thumbnail} className="w-full h-full object-cover blur-sm opacity-50" alt="" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex flex-col items-center space-y-4">
+                <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
+                <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Loading Masterpiece...</span>
+              </div>
+            </div>
+          </div>
+        )}
+        <iframe
+          src={videoSrc}
+          className={`w-full h-full border-0 transition-opacity duration-700 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowFullScreen
+          title={item.title}
+          onLoad={() => setIsLoading(false)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full relative">
+      {isLoading && item.thumbnail && (
+        <img src={item.thumbnail} className="absolute inset-0 w-full h-full object-cover blur-sm opacity-50" alt="" />
+      )}
+      <video
+        src={url}
+        controls
+        autoPlay
+        playsInline
+        preload="auto"
+        className="w-full h-full object-contain"
+        poster={item.thumbnail}
+        onLoadedData={() => setIsLoading(false)}
+      >
+        Your browser does not support the video tag.
+      </video>
     </div>
   );
 };
@@ -162,7 +259,28 @@ export default function Gallery() {
     }
 
     try {
+      // Delete Firestore doc
       await deleteDoc(doc(db, 'gallery', item.id));
+
+      // Attempt storage cleanup if applicable
+      if (item.url && item.url.includes('firebasestorage.googleapis.com')) {
+        try {
+          const storageRef = ref(storage, item.url);
+          await deleteObject(storageRef);
+        } catch (e) {
+          console.warn("Could not delete main file from storage:", e);
+        }
+      }
+      
+      if (item.thumbnail && item.thumbnail.includes('firebasestorage.googleapis.com')) {
+        try {
+          const thumbRef = ref(storage, item.thumbnail);
+          await deleteObject(thumbRef);
+        } catch (e) {
+          console.warn("Could not delete thumbnail from storage:", e);
+        }
+      }
+
       toast.success('Gallery item deleted successfully');
       if (selectedItem?.id === item.id) {
         setSelectedItem(null);
@@ -385,81 +503,7 @@ export default function Gallery() {
             <div className="flex flex-col md:flex-row h-full">
               {/* Media Section (Dominant) */}
               <div className="flex-1 bg-neutral-950 flex items-center justify-center relative overflow-hidden group">
-                {selectedItem?.type === 'image' ? (
-                  <div className="w-full h-full flex items-center justify-center p-4">
-                    <img
-                      src={selectedItem.url}
-                      alt={selectedItem.title}
-                      className="max-h-full max-w-full object-contain drop-shadow-2xl transition-transform duration-700 hover:scale-105"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-full h-full">
-                    {(() => {
-                      const url = selectedItem?.url || '';
-                      const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
-                      const isVimeo = url.includes('vimeo.com');
-
-                      if (isYouTube) {
-                        let videoId = '';
-                        try {
-                          if (url.includes('v=')) {
-                            videoId = url.split('v=')[1].split('&')[0];
-                          } else if (url.includes('youtu.be/')) {
-                            videoId = url.split('youtu.be/')[1].split('?')[0];
-                          } else if (url.includes('embed/')) {
-                            videoId = url.split('embed/')[1].split('?')[0];
-                          } else if (url.includes('shorts/')) {
-                            videoId = url.split('shorts/')[1].split('?')[0];
-                          } else if (url.includes('watch/')) {
-                            videoId = url.split('watch/')[1].split('?')[0];
-                          } else {
-                            videoId = url.split('/').pop()?.split('?')[0] || '';
-                          }
-                        } catch (e) {
-                          console.error("Error parsing YouTube URL:", e);
-                        }
-
-                        return (
-                          <iframe
-                            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&rel=0&modestbranding=1`}
-                            className="w-full h-full border-0"
-                            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                            allowFullScreen
-                            title={selectedItem.title}
-                          />
-                        );
-                      }
-
-                      if (isVimeo) {
-                        const videoId = url.split('/').pop()?.split('?')[0];
-                        return (
-                          <iframe
-                            src={`https://player.vimeo.com/video/${videoId}?autoplay=1`}
-                            className="w-full h-full"
-                            allow="autoplay; fullscreen; picture-in-picture"
-                            allowFullScreen
-                            title={selectedItem.title}
-                          />
-                        );
-                      }
-
-                      return (
-                        <video
-                          src={url}
-                          controls
-                          autoPlay
-                          playsInline
-                          className="w-full h-full object-contain"
-                          poster={selectedItem?.thumbnail}
-                        >
-                          Your browser does not support the video tag.
-                        </video>
-                      );
-                    })()}
-                  </div>
-                )}
+                <MediaViewer item={selectedItem} />
                 
                 {/* Floating Close - Mobile */}
                 <button 
