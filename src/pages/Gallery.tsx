@@ -2,8 +2,8 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
-import { Loader2, Play, X, Heart, MessageSquare, Share2, Send } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment, deleteDoc, getDoc } from 'firebase/firestore';
+import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -16,16 +16,19 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
   const [isLoaded, setIsLoaded] = useState(false);
   
   return (
-    <div className={`relative h-full w-full bg-muted/40 overflow-hidden ${!isLoaded ? 'animate-pulse' : ''}`}>
+    <div 
+      className={`relative h-full w-full bg-muted/20 overflow-hidden ${!isLoaded ? 'animate-pulse' : ''}`}
+      style={{ minHeight: '200px' }}
+    >
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-linear-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-[shimmer_2s_infinite]">
-          <Loader2 className="h-6 w-6 animate-spin text-orange-200/50" />
+        <div className="absolute inset-0 flex items-center justify-center bg-linear-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[shimmer_3s_infinite]">
+          <Loader2 className="h-5 w-5 animate-spin text-orange-200/30" />
         </div>
       )}
       <img
         src={src}
         alt={alt}
-        className={`${className} ${isLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-700`}
+        className={`${className} ${isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'} transition-all duration-1000 ease-out`}
         referrerPolicy="no-referrer"
         loading="lazy"
         onLoad={() => setIsLoaded(true)}
@@ -40,13 +43,32 @@ export default function Gallery() {
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
   const [guestName, setGuestName] = useState(localStorage.getItem('grefas_guest_name') || '');
   const [activeTab, setActiveTab] = useState('all');
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribeAuth = onAuthStateChanged(auth, async (authenticatedUser) => {
+      setUser(authenticatedUser);
+      if (authenticatedUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', authenticatedUser.uid));
+          if (userDoc && userDoc.exists()) {
+            setUserRole(userDoc.data().role);
+          } else if (["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"].includes(authenticatedUser.email || "")) {
+            setUserRole('admin');
+          } else {
+            setUserRole('guest');
+          }
+        } catch (error) {
+          if (["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"].includes(authenticatedUser.email || "")) {
+            setUserRole('admin');
+          }
+        }
+      } else {
+        setUserRole(null);
+      }
     });
 
     const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
@@ -134,7 +156,25 @@ export default function Gallery() {
     }
   };
 
+  const handleDelete = async (item: any) => {
+    if (!window.confirm('Are you sure you want to delete this gallery item? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'gallery', item.id));
+      toast.success('Gallery item deleted successfully');
+      if (selectedItem?.id === item.id) {
+        setSelectedItem(null);
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `gallery/${item.id}`);
+      toast.error('Failed to delete item');
+    }
+  };
+
   const categories = ['all', 'events', 'entertainment', 'consulting'];
+  const isAdmin = userRole === 'admin' || userRole === 'editor';
   const filteredItems = activeTab === 'all' ? items : items.filter(item => item.category === activeTab);
 
   if (loading) {
@@ -165,234 +205,351 @@ export default function Gallery() {
   }
 
   return (
-    <div className="bg-background py-20">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">Our Gallery</h1>
-          <p className="mt-4 text-lg text-muted-foreground">Moments of excellence and entertainment.</p>
+    <div className="bg-background min-h-screen">
+      {/* Hero Section with Pattern */}
+      <div className="relative overflow-hidden pt-24 pb-16 bg-muted/10">
+        <div className="absolute inset-0 z-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)', backgroundSize: '32px 32px' }}></div>
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 relative z-10">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center"
+          >
+            <span className="inline-block px-4 py-1.5 rounded-full bg-orange-600/10 text-orange-600 text-xs font-bold uppercase tracking-[0.2em] mb-4">
+              Visual Journey
+            </span>
+            <h1 className="text-5xl font-black tracking-tighter text-foreground sm:text-6xl lg:text-7xl">
+              Our <span className="text-orange-600">Gallery</span>
+            </h1>
+            <p className="mt-6 text-xl text-muted-foreground max-w-2xl mx-auto font-medium">
+              Capturing moments of excellence and world-class entertainment across Africa and beyond.
+            </p>
+          </motion.div>
         </div>
+      </div>
 
-        <Tabs defaultValue="all" className="mt-12" onValueChange={setActiveTab}>
-          <div className="flex justify-center">
-            <TabsList className="bg-muted p-1">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-24">
+        <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
+          <div className="flex justify-center sticky top-20 z-30 py-4 bg-background/80 backdrop-blur-md mb-8">
+            <TabsList className="bg-muted/50 p-1 rounded-full border border-border/50">
               {categories.map((cat) => (
-                <TabsTrigger key={cat} value={cat} className="capitalize px-6">
+                <TabsTrigger 
+                  key={cat} 
+                  value={cat} 
+                  className="capitalize px-8 py-2.5 rounded-full data-[state=active]:bg-orange-600 data-[state=active]:text-white data-[state=active]:shadow-lg transition-all duration-300 font-bold text-sm"
+                >
                   {cat}
                 </TabsTrigger>
               ))}
             </TabsList>
           </div>
 
-          {categories.map((cat) => (
-            <TabsContent key={cat} value={cat} className="mt-12">
-              <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredItems.map((item, i) => (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-[300px]"
+            >
+              {filteredItems.map((item, i) => {
+                // Occasional large items for bento feel
+                const isLarge = i % 7 === 0;
+                const isWide = i % 10 === 3;
+                
+                return (
                   <motion.div
                     key={item.id}
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.1, duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
-                    className="group relative h-[350px] cursor-pointer overflow-hidden rounded-3xl bg-muted ring-1 ring-border/50 shadow-sm transition-all duration-500 hover:shadow-2xl hover:shadow-orange-500/10 hover:-translate-y-2"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.05, duration: 0.5 }}
+                    className={`group relative cursor-pointer overflow-hidden rounded-[2rem] bg-muted ring-1 ring-border/50 shadow-sm hover:shadow-2xl hover:shadow-orange-500/15 transition-all duration-700 ${
+                      isLarge ? 'md:row-span-2' : ''
+                    } ${isWide ? 'md:col-span-2' : ''}`}
                   >
-                    <div className="h-full w-full relative overflow-hidden">
+                    <div className="h-full w-full relative">
                       <ImageWithLoading
                         src={item.type === 'image' ? item.url : item.thumbnail}
                         alt={item.title}
-                        className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                        className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
                         onClick={() => setSelectedItem(item)}
                       />
                     </div>
                     
-                    {/* Watermark */}
-                    <div className="pointer-events-none absolute bottom-4 left-4 z-10 select-none opacity-20">
-                      <p className="text-[8px] font-black tracking-widest text-white drop-shadow-md uppercase">
-                        GREFAS • CONSULT • ENTERTAINMENT
+                    {/* Floating Info Badge */}
+                    <div className="absolute top-4 left-4 z-20 flex flex-col space-y-2">
+                      <span className="glass-overlay px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest text-white self-start">
+                        {item.category}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
+                          className="bg-red-600/20 hover:bg-red-600 text-white p-2 rounded-full backdrop-blur-md transition-all self-start"
+                          title="Delete Item"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Watermark Branding */}
+                    <div className="pointer-events-none absolute bottom-6 right-6 z-10 opacity-10 select-none group-hover:opacity-30 transition-opacity">
+                      <p className="text-[10px] font-black tracking-widest text-white uppercase origin-right -rotate-90 translate-x-1/2">
+                        GREFAS
                       </p>
                     </div>
 
-                    {/* Gradient Overlay (Always visible but subtle at bottom) */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
-                    
-                    {/* Interaction Buttons (Slide in from top) */}
-                    <div className="absolute top-4 right-4 z-20 flex space-x-2 translate-y-[-10px] opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleLike(item); }}
-                        className={`rounded-full p-2.5 backdrop-blur-xl transition-all hover:scale-110 ${
-                          item.likes?.includes(user?.uid || localStorage.getItem('grefas_gallery_id')) ? 'bg-orange-600 text-white' : 'bg-white/20 text-white hover:bg-white/40'
-                        }`}
+                    {/* Refined Glass Overlay */}
+                    <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-end p-8">
+                      <motion.div 
+                        initial={{ y: 20, opacity: 0 }}
+                        whileInView={{ y: 0, opacity: 1 }}
+                        className="space-y-3"
                       >
-                        <Heart className={`h-4 w-4 ${item.likes?.includes(user?.uid || localStorage.getItem('grefas_gallery_id')) ? 'fill-current' : ''}`} />
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleShare(item); }}
-                        className="rounded-full bg-white/20 p-2.5 text-white backdrop-blur-xl transition-all hover:bg-white/40 hover:scale-110"
-                      >
-                        <Share2 className="h-4 w-4" />
-                      </button>
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-2xl font-black text-white leading-none tracking-tight text-glow">
+                            {item.title}
+                          </h3>
+                          {item.type === 'video' && (
+                            <div className="rounded-full bg-orange-600 p-3 text-white shadow-xl shadow-orange-600/50 animate-pulse-soft">
+                              <Play className="h-5 w-5 fill-current" />
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center space-x-4 pt-2 border-t border-white/10">
+                          <div className="flex items-center space-x-1.5 text-orange-400">
+                            <Heart className={`h-4 w-4 ${item.likes?.includes(user?.uid || getAnonymousId()) ? 'fill-current' : ''}`} />
+                            <span className="text-xs font-bold">{item.likes?.length || 0}</span>
+                          </div>
+                          <div className="flex items-center space-x-1.5 text-white/70">
+                            <MessageSquare className="h-4 w-4" />
+                            <span className="text-xs font-bold">{item.comments?.length || 0}</span>
+                          </div>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleShare(item); }}
+                            className="ml-auto glass-overlay p-2 rounded-full hover:bg-orange-600 transition-colors"
+                          >
+                            <Share2 className="h-4 w-4 text-white" />
+                          </button>
+                        </div>
+                      </motion.div>
                     </div>
                     
-                    {/* Content (Bottom) */}
-                    <div className="absolute bottom-0 left-0 right-0 p-6 z-20 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300" onClick={() => setSelectedItem(item)}>
-                      <div className="flex items-end justify-between">
-                        <div className="space-y-1">
-                          <span className="inline-block px-2 py-0.5 rounded-full bg-orange-600/20 text-orange-400 text-[10px] font-black uppercase tracking-wider backdrop-blur-md">
-                            {item.category}
-                          </span>
-                          <h3 className="text-xl font-bold text-white leading-tight">{item.title}</h3>
-                        </div>
-                        {item.type === 'video' && (
-                          <div className="rounded-full bg-orange-600 p-3 text-white shadow-lg shadow-orange-600/40 transform group-hover:scale-110 transition-transform">
-                            <Play className="h-4 w-4 fill-current" />
-                          </div>
-                        )}
-                      </div>
+                    {/* Interaction Buttons (Small screen support) */}
+                    <div className="absolute top-4 right-4 z-20 md:hidden flex space-x-2">
+                       <button className="glass-overlay p-2 rounded-full text-white">
+                         <Heart className="h-4 w-4" />
+                       </button>
                     </div>
                   </motion.div>
-                ))}
+                );
+              })}
+            </motion.div>
+          </AnimatePresence>
+
+          {filteredItems.length === 0 && (
+            <div className="py-32 text-center">
+              <div className="inline-flex items-center justify-center h-20 w-20 rounded-full bg-muted mb-6">
+                <Loader2 className="h-10 w-10 text-muted-foreground/30" />
               </div>
-              {filteredItems.length === 0 && (
-                <div className="py-20 text-center text-muted-foreground">
-                  No items found in this category.
-                </div>
-              )}
-            </TabsContent>
-          ))}
+              <p className="text-xl font-medium text-muted-foreground">No masterpieces found in this category yet.</p>
+              <Button variant="link" onClick={() => setActiveTab('all')} className="mt-2 text-orange-600">
+                Show everything
+              </Button>
+            </div>
+          )}
         </Tabs>
 
         {/* AdSense Unit */}
-        <div className="mt-16">
+        <div className="mt-24 max-w-4xl mx-auto">
           <AdSense 
             client="ca-pub-8193654467459416"
             slot="gallery_bottom"
-            className="rounded-xl overflow-hidden shadow-sm"
+            className="rounded-3xl overflow-hidden shadow-2xl shadow-orange-500/5 ring-1 ring-border"
           />
         </div>
 
-        {/* Media Modal */}
+        {/* Cinematic Media Modal */}
         <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
-          <DialogContent className="max-w-5xl overflow-hidden p-0 bg-card border-border">
-            <div className="grid grid-cols-1 lg:grid-cols-3 h-full max-h-[90vh]">
-              {/* Media Section */}
-              <div className="lg:col-span-2 bg-black flex items-center justify-center relative min-h-[300px]">
+          <DialogContent className="max-w-7xl overflow-hidden p-0 bg-black border-none gap-0 sm:rounded-[2rem] h-[90vh] md:h-[85vh]">
+            <div className="flex flex-col md:flex-row h-full">
+              {/* Media Section (Dominant) */}
+              <div className="flex-1 bg-neutral-950 flex items-center justify-center relative overflow-hidden group">
                 {selectedItem?.type === 'image' ? (
-                  <ImageWithLoading
-                    src={selectedItem.url}
-                    alt={selectedItem.title}
-                    className="max-h-full max-w-full object-contain"
-                  />
+                  <div className="w-full h-full flex items-center justify-center p-4">
+                    <img
+                      src={selectedItem.url}
+                      alt={selectedItem.title}
+                      className="max-h-full max-w-full object-contain drop-shadow-2xl transition-transform duration-700 hover:scale-105"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
+                  <div className="w-full h-full">
                     {selectedItem?.url?.includes('youtube.com') || selectedItem?.url?.includes('youtu.be') || selectedItem?.url?.includes('vimeo.com') ? (
                       <iframe
                         src={(() => {
                           const url = selectedItem.url;
                           if (url.includes('youtube.com') || url.includes('youtu.be')) {
                             const id = url.includes('v=') ? url.split('v=')[1].split('&')[0] : (url.includes('youtu.be/') ? url.split('youtu.be/')[1].split('?')[0] : url.split('/').pop()?.split('?')[0]);
-                            return `https://www.youtube.com/embed/${id}`;
+                            return `https://www.youtube.com/embed/${id}?autoplay=1`;
                           }
                           if (url.includes('vimeo.com')) {
                             const id = url.split('/').pop()?.split('?')[0];
-                            return `https://player.vimeo.com/video/${id}`;
+                            return `https://player.vimeo.com/video/${id}?autoplay=1`;
                           }
                           return url;
                         })()}
-                        className="aspect-video w-full h-full"
+                        className="w-full h-full"
                         allow="autoplay; fullscreen; picture-in-picture"
                         allowFullScreen
                         title={selectedItem.title}
-                        loading="lazy"
                       />
                     ) : (
                       <video
                         src={selectedItem?.url}
                         controls
-                        className="max-h-full max-w-full"
+                        autoPlay
+                        className="w-full h-full"
                         poster={selectedItem?.thumbnail}
-                        preload="metadata"
                       >
                         Your browser does not support the video tag.
                       </video>
                     )}
                   </div>
                 )}
+                
+                {/* Floating Close - Mobile */}
+                <button 
+                  onClick={() => setSelectedItem(null)}
+                  className="absolute top-6 right-6 z-50 md:hidden glass-overlay p-2 rounded-full text-white"
+                >
+                  <X className="h-6 w-6" />
+                </button>
               </div>
 
-              {/* Interactions Section */}
-              <div className="flex flex-col border-l border-border bg-card">
-                <div className="p-6 border-b border-border">
-                  <DialogTitle className="text-xl font-bold text-foreground">{selectedItem?.title}</DialogTitle>
-                  <p className="mt-1 text-sm text-muted-foreground capitalize">{selectedItem?.category}</p>
+              {/* Sidebar Section (Interactions & Details) */}
+              <div className="w-full md:w-[400px] h-full flex flex-col bg-card border-l border-white/5">
+                <div className="p-8 border-b border-border/50 bg-muted/20">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="px-3 py-1 bg-orange-600/10 text-orange-600 rounded-full text-[10px] font-black uppercase tracking-widest">
+                        {selectedItem?.category}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDelete(selectedItem)}
+                          className="text-red-500 hover:text-red-600 transition-colors"
+                          title="Delete Item"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    <button onClick={() => setSelectedItem(null)} className="text-muted-foreground hover:text-foreground hidden md:block">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <DialogTitle className="text-2xl font-black text-foreground tracking-tight leading-none mb-4">
+                    {selectedItem?.title}
+                  </DialogTitle>
                   
-                  <div className="mt-4 flex items-center space-x-6">
+                  <div className="flex items-center space-x-6">
                     <button 
                       onClick={() => handleLike(selectedItem)}
-                      className={`flex items-center space-x-2 text-sm font-medium transition-colors ${
-                        selectedItem?.likes?.includes(user?.uid || localStorage.getItem('grefas_gallery_id')) ? 'text-orange-600' : 'text-muted-foreground hover:text-foreground'
+                      className={`flex items-center space-x-2.5 transition-all group/like ${
+                        selectedItem?.likes?.includes(user?.uid || getAnonymousId()) ? 'text-orange-600' : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <Heart className={`h-5 w-5 ${selectedItem?.likes?.includes(user?.uid || localStorage.getItem('grefas_gallery_id')) ? 'fill-current' : ''}`} />
-                      <span>{selectedItem?.likes?.length || 0}</span>
+                      <div className={`p-2.5 rounded-full transition-colors ${selectedItem?.likes?.includes(user?.uid || getAnonymousId()) ? 'bg-orange-600/10' : 'bg-muted group-hover/like:bg-muted-foreground/10'}`}>
+                        <Heart className={`h-5 w-5 ${selectedItem?.likes?.includes(user?.uid || getAnonymousId()) ? 'fill-current animate-float' : ''}`} />
+                      </div>
+                      <span className="font-bold text-lg">{selectedItem?.likes?.length || 0}</span>
                     </button>
-                    <div className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
-                      <MessageSquare className="h-5 w-5" />
-                      <span>{selectedItem?.comments?.length || 0}</span>
-                    </div>
+
                     <button 
                       onClick={() => handleShare(selectedItem)}
-                      className="flex items-center space-x-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                      className="flex items-center space-x-2.5 text-muted-foreground hover:text-foreground transition-all group/share"
                     >
-                      <Share2 className="h-5 w-5" />
-                      <span>Share</span>
+                      <div className="p-2.5 rounded-full bg-muted group-hover/share:bg-muted-foreground/10">
+                        <Share2 className="h-5 w-5" />
+                      </div>
+                      <span className="font-bold text-lg">Share</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Comments List */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {/* Styled Comments */}
+                <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide">
+                  <h4 className="flex items-center text-xs font-black uppercase tracking-[0.2em] text-muted-foreground mb-6">
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Community Comments ({selectedItem?.comments?.length || 0})
+                  </h4>
+                  
                   {selectedItem?.comments?.map((comment: any, i: number) => (
-                    <div key={i} className="flex flex-col space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-foreground">{comment.userName}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Date(comment.timestamp).toLocaleDateString()}
+                    <motion.div 
+                      key={i} 
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                      className="group/comment"
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-black text-foreground">{comment.userName}</span>
+                        <span className="text-[10px] font-medium text-muted-foreground/60">
+                          {new Date(comment.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                         </span>
                       </div>
-                      <p className="text-sm text-muted-foreground">{comment.text}</p>
-                    </div>
+                      <div className="p-4 rounded-2xl bg-muted/30 group-hover/comment:bg-muted/50 transition-colors">
+                        <p className="text-sm text-foreground/80 leading-relaxed font-medium">{comment.text}</p>
+                      </div>
+                    </motion.div>
                   ))}
+                  
                   {(!selectedItem?.comments || selectedItem.comments.length === 0) && (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      No comments yet. Be the first to comment!
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="p-4 rounded-full bg-muted/50 mb-4">
+                        <MessageSquare className="h-8 w-8 text-muted-foreground/20" />
+                      </div>
+                      <p className="text-sm font-bold text-muted-foreground tracking-tight">Silent so far.</p>
+                      <p className="text-xs text-muted-foreground/60">Be the first player to comment!</p>
                     </div>
                   )}
                 </div>
 
-                {/* Comment Input */}
-                <form onSubmit={handleAddComment} className="p-4 border-t border-border space-y-3">
-                  {!user && (
-                    <div className="flex flex-col space-y-1">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Your Display Name</label>
+                {/* Refined Form */}
+                <div className="p-6 border-t border-border/50 bg-muted/10">
+                  <form onSubmit={handleAddComment} className="space-y-4">
+                    {!user && (
+                      <div className="relative group/input">
+                        <Input
+                          placeholder="Your identity..."
+                          value={guestName}
+                          onChange={(e) => setGuestName(e.target.value)}
+                          className="bg-background border-border/50 focus:border-orange-600 rounded-xl h-10 text-xs font-bold transition-all"
+                          required={!user}
+                        />
+                      </div>
+                    )}
+                    <div className="flex space-x-2">
                       <Input
-                        placeholder="Enter your name to comment..."
-                        value={guestName}
-                        onChange={(e) => setGuestName(e.target.value)}
-                        className="bg-muted/30 border-border h-8 text-sm"
-                        required={!user}
+                        placeholder="Speak your mind..."
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        className="flex-1 bg-background border-border/50 focus:border-orange-600 rounded-xl h-12 transition-all"
                       />
+                      <Button 
+                        type="submit" 
+                        disabled={!newComment.trim() || (!user && !guestName.trim())} 
+                        className="h-12 w-12 rounded-xl bg-orange-600 text-white shadow-lg shadow-orange-600/30 hover:scale-105 active:scale-95 transition-all"
+                      >
+                        <Send className="h-5 w-5" />
+                      </Button>
                     </div>
-                  )}
-                  <div className="flex space-x-2">
-                    <Input
-                      placeholder="Add a comment..."
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      className="flex-1 bg-muted/50 border-border"
-                    />
-                    <Button type="submit" size="icon" disabled={!newComment.trim() || (!user && !guestName.trim())} className="bg-orange-600 text-white">
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </form>
+                  </form>
+                </div>
               </div>
             </div>
           </DialogContent>
