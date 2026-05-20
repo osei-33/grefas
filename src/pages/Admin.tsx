@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { 
@@ -1386,6 +1386,9 @@ function ManageSettings() {
 function ManageBookings() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'bookings'), orderBy('date', 'desc'));
@@ -1397,6 +1400,48 @@ function ManageBookings() {
     });
     return () => unsubscribe();
   }, []);
+
+  const handleSendConfirmationEmail = async (booking: any) => {
+    try {
+      const bookingRef = doc(db, 'bookings', booking.id);
+      
+      const response = await fetch('/api/notify-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: booking.userEmail,
+          phone: booking.userPhone,
+          userName: booking.userName,
+          serviceTitle: booking.serviceTitle || 'General Consultation',
+          date: booking.time ? `${booking.date} at ${booking.time}` : booking.date
+        })
+      });
+      
+      const result = await response.json();
+      const emailSent = result.results?.email === 'sent';
+      
+      await setDoc(bookingRef, { 
+        confirmationEmailStatus: emailSent ? 'sent' : 'failed' 
+      }, { merge: true });
+
+      if (emailSent) {
+        toast.success(`Confirmation email sent successfully to ${booking.userEmail}!`);
+      } else {
+        toast.error("Failed to send confirmation email. Please check if your RESEND_API_KEY is configured correctly.");
+      }
+
+      if (result.results?.sms && result.results.sms.startsWith("failed")) {
+        let errorMsg = "Booking confirmed, but SMS alert failed.";
+        if (result.results.sms.includes("Unverified Number")) {
+          errorMsg = "Booking confirmed, but SMS failed because the phone number is not verified in Twilio Console.";
+        }
+        toast.warning(errorMsg);
+      }
+    } catch (error) {
+      console.error("Failed to send confirmation email manual:", error);
+      toast.error("Failed to send confirmation email.");
+    }
+  };
 
   const handleStatusChange = async (id: string, newStatus: string) => {
     try {
@@ -1438,11 +1483,17 @@ function ManageBookings() {
                   phone: bookingData.userPhone,
                   userName: bookingData.userName,
                   serviceTitle: bookingData.serviceTitle || 'General Consultation',
-                  date: bookingData.date
+                  date: bookingData.time ? `${bookingData.date} at ${bookingData.time}` : bookingData.date
                 })
               });
               
               const result = await response.json();
+              const emailSent = result.results?.email === 'sent';
+              
+              await setDoc(bookingRef, { 
+                confirmationEmailStatus: emailSent ? 'sent' : 'failed' 
+              }, { merge: true });
+
               if (result.results?.sms && result.results.sms.startsWith("failed")) {
                 let errorMsg = "Booking confirmed, but SMS failed.";
                 if (result.results.sms.includes("Unverified Number")) {
@@ -1478,7 +1529,7 @@ function ManageBookings() {
           phone: booking.userPhone,
           userName: booking.userName,
           serviceTitle: booking.serviceTitle || 'General Consultation',
-          date: booking.date
+          date: booking.time ? `${booking.date} at ${booking.time}` : booking.date
         })
       });
 
@@ -1519,6 +1570,7 @@ function ManageBookings() {
     setDeletingId(id);
     try {
       await deleteDoc(doc(db, 'bookings', id));
+      setSelectedIds(prev => prev.filter(item => item !== id));
       toast.success('Booking deleted');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `bookings/${id}`);
@@ -1527,18 +1579,144 @@ function ManageBookings() {
     }
   };
 
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const filteredBookings = bookings.filter((booking) => {
+    const searchLower = searchTerm.trim().toLowerCase();
+    if (!searchLower) return true;
+    
+    const orderNumber = String(booking.orderNumber || '').toLowerCase();
+    const userName = String(booking.userName || '').toLowerCase();
+    const userEmail = String(booking.userEmail || '').toLowerCase();
+    const serviceTitle = String(booking.serviceTitle || '').toLowerCase();
+
+    return orderNumber.includes(searchLower) || 
+           userName.includes(searchLower) || 
+           userEmail.includes(searchLower) || 
+           serviceTitle.includes(searchLower);
+  });
+
+  const handleSelectAllFiltered = () => {
+    const allFilteredIds = filteredBookings.map(b => b.id);
+    if (allFilteredIds.length === 0) return;
+    
+    const areAllSelected = allFilteredIds.every(id => selectedIds.includes(id));
+
+    if (areAllSelected) {
+      setSelectedIds(prev => prev.filter(id => !allFilteredIds.includes(id)));
+    } else {
+      setSelectedIds(prev => {
+        const unique = new Set([...prev, ...allFilteredIds]);
+        return Array.from(unique);
+      });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Are you sure you want to delete the ${selectedIds.length} selected booking(s)?`)) return;
+
+    setIsBulkDeleting(true);
+    let successCount = 0;
+    try {
+      await Promise.all(selectedIds.map(async (id) => {
+        await deleteDoc(doc(db, 'bookings', id));
+        successCount++;
+      }));
+      toast.success(`Successfully deleted ${successCount} booking(s).`);
+      setSelectedIds([]);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `bookings (bulk)`);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   if (loading) return <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto" />;
+
+  const isAllFilteredSelected = filteredBookings.length > 0 && 
+    filteredBookings.map(b => b.id).every(id => selectedIds.includes(id));
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-foreground">Manage Bookings</h1>
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Manage Bookings</h1>
+          <p className="text-sm text-muted-foreground">Search and manage client appointments and orders.</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-card p-4 rounded-xl border border-border">
+        <div className="relative flex-grow max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by ID / Order number, Name, Email, or Service..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9 bg-muted/40 border-border text-sm text-foreground focus-visible:ring-orange-600 focus-visible:border-orange-600"
+          />
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSelectAllFiltered}
+            disabled={filteredBookings.length === 0}
+            className="text-xs font-semibold h-9"
+          >
+            {isAllFilteredSelected ? "Deselect All Filtered" : "Select All Filtered"}
+          </Button>
+
+          {selectedIds.length > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+              className="text-xs font-semibold h-9 flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isBulkDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Delete Selected ({selectedIds.length})
+            </Button>
+          )}
+
+          <div className="text-sm font-medium text-muted-foreground">
+            {filteredBookings.length === bookings.length 
+              ? `Total: ${bookings.length}` 
+              : `Found: ${filteredBookings.length} of ${bookings.length}`}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6">
-        {bookings.map((booking) => (
-          <Card key={booking.id} className="overflow-hidden bg-card border-border">
+        {filteredBookings.map((booking) => (
+          <Card key={booking.id} className="overflow-hidden bg-card border-border relative">
             <div className="flex flex-col md:flex-row">
-              <div className="bg-muted/50 p-6 md:w-48 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-border">
-                <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Date/Time</span>
-                <span className="text-xl font-black text-foreground">{booking.date}</span>
+              <div 
+                className="bg-muted/50 p-6 md:w-52 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-border relative cursor-pointer select-none hover:bg-muted/70 transition-colors"
+                onClick={() => handleToggleSelect(booking.id)}
+              >
+                <div className="absolute top-4 left-4" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    id={`booking-select-${booking.id}`}
+                    type="checkbox"
+                    checked={selectedIds.includes(booking.id)}
+                    onChange={() => handleToggleSelect(booking.id)}
+                    className="h-5 w-5 rounded border-border text-orange-600 bg-background cursor-pointer focus:ring-offset-0 focus:ring-transparent accent-orange-600"
+                  />
+                </div>
+                
+                <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider mt-2">Date/Time</span>
+                <span className="text-xl font-black text-foreground mt-1">{booking.date}</span>
                 <span className="text-lg font-bold text-orange-600">{booking.time}</span>
                 <div className={`mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase ${
                   booking.status === 'confirmed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
@@ -1553,6 +1731,23 @@ function ManageBookings() {
                   <div className="bg-orange-600/10 border border-orange-600/20 px-3 py-1 rounded-md">
                     <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">ID: {booking.orderNumber || 'NO-REF'}</span>
                   </div>
+                  {booking.status === 'confirmed' && (
+                    <div className="flex items-center gap-2">
+                      {booking.confirmationEmailStatus === 'sent' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 dark:bg-green-950/20 px-2 py-0.5 rounded-full border border-green-200">
+                          <CheckCircle className="h-3 w-3" /> Email Sent
+                        </span>
+                      ) : booking.confirmationEmailStatus === 'failed' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 dark:bg-red-950/20 px-2 py-0.5 rounded-full border border-red-200">
+                          <AlertCircle className="h-3 w-3" /> Email Failed
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border">
+                          <Mail className="h-3 w-3" /> Email Unsent
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -1583,14 +1778,24 @@ function ManageBookings() {
                     Cancel
                   </Button>
                   {booking.status === 'confirmed' && (
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="border-orange-600 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 flex items-center gap-2"
-                      onClick={() => handleSendReminder(booking)}
-                    >
-                      <Bell className="h-4 w-4" /> Send Reminder
-                    </Button>
+                    <>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 flex items-center gap-2"
+                        onClick={() => handleSendConfirmationEmail(booking)}
+                      >
+                        <Mail className="h-4 w-4" /> Send Confirmation
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-orange-600 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 flex items-center gap-2"
+                        onClick={() => handleSendReminder(booking)}
+                      >
+                        <Bell className="h-4 w-4" /> Send Reminder
+                      </Button>
+                    </>
                   )}
                   <Button 
                     size="sm" 
@@ -1606,9 +1811,9 @@ function ManageBookings() {
             </div>
           </Card>
         ))}
-        {bookings.length === 0 && (
-          <div className="py-20 text-center text-muted-foreground">
-            No bookings found.
+        {filteredBookings.length === 0 && (
+          <div className="py-20 text-center text-muted-foreground border border-dashed rounded-xl border-border bg-muted/10">
+            No bookings matching your criteria were found.
           </div>
         )}
       </div>
