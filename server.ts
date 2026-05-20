@@ -1,7 +1,6 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import { Resend } from "resend";
 import twilio from "twilio";
 import dotenv from "dotenv";
@@ -18,8 +17,9 @@ if (parseInt(nodeVersion) < 20) {
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Path resolution that works in both dev (tsx) and prod (bundled cjs)
+const distPath = path.resolve(process.cwd(), "dist");
+const publicPath = path.resolve(process.cwd(), "public");
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const twilioClient = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) 
@@ -103,11 +103,17 @@ async function startServer() {
         results.sms = "sent";
       } catch (error: any) {
         if (error.code === 21608) {
-          console.error("SMS error (Twilio Trial Account): The recipient number is unverified. Please verify the number in your Twilio console or upgrade your account.");
-          results.sms = "failed (unverified number)";
+          console.error("SMS error (Twilio Trial Account): The recipient number is unverified.");
+          results.sms = "failed (Twilio Trial: Unverified Number)";
+        } else if (error.code === 21211) {
+          console.error("SMS error (Invalid Number): The 'To' phone number is invalid.");
+          results.sms = "failed (Invalid Phone Number)";
+        } else if (error.code === 21408) {
+          console.error("SMS error (Region Not Supported): The destination region is not supported by this account.");
+          results.sms = "failed (Region Not Supported)";
         } else {
-          console.error("SMS error:", error);
-          results.sms = "failed";
+          console.error(`SMS error (Code ${error.code}):`, error.message);
+          results.sms = `failed (${error.message || 'Unknown Error'})`;
         }
       }
     } else {
@@ -165,7 +171,7 @@ async function startServer() {
         let formattedPhone = phone.replace(/[^\d+]/g, ''); // Remove everything except digits and +
         if (formattedPhone.startsWith('0') && formattedPhone.length === 10) {
           formattedPhone = '+233' + formattedPhone.substring(1);
-        } else if (!formattedPhone.startsWith('+')) {
+        } else if (!formattedPhone.startsWith('+') && formattedPhone.length > 5) {
           formattedPhone = '+' + formattedPhone;
         }
 
@@ -178,10 +184,16 @@ async function startServer() {
       } catch (error: any) {
         if (error.code === 21608) {
           console.error("SMS error (Twilio Trial Account): The recipient number is unverified.");
-          results.sms = "failed (unverified number)";
+          results.sms = "failed (Twilio Trial: Unverified Number)";
+        } else if (error.code === 21211) {
+          console.error("SMS error (Invalid Number): The 'To' phone number is invalid.");
+          results.sms = "failed (Invalid Phone Number)";
+        } else if (error.code === 21408) {
+          console.error("SMS error (Region Not Supported): The destination region is not supported by this account.");
+          results.sms = "failed (Region Not Supported)";
         } else {
-          console.error("SMS error:", error);
-          results.sms = "failed";
+          console.error(`SMS error (Code ${error.code}):`, error.message);
+          results.sms = `failed (${error.message || 'Unknown Error'})`;
         }
       }
     }
@@ -198,8 +210,6 @@ async function startServer() {
     app.use(vite.middlewares);
     console.log("Running in development mode (Vite middleware enabled)");
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath, {
         maxAge: '1d',

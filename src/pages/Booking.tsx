@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -29,6 +30,17 @@ export default function Booking() {
     time: '09:00'
   });
   const [services, setServices] = useState<any[]>([]);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [orderNumber, setOrderNumber] = useState('');
+
+  const generateOrderNumber = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < 6; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -97,9 +109,13 @@ export default function Booking() {
 
     setSubmitting(true);
     try {
+      const newOrderNumber = generateOrderNumber();
+      setOrderNumber(newOrderNumber);
+
       // Use addDoc to create a new booking with random ID
       await addDoc(collection(db, 'bookings'), {
         ...formData,
+        orderNumber: newOrderNumber,
         date: dateStr,
         userId: user?.uid || 'anonymous',
         status: 'pending',
@@ -112,7 +128,8 @@ export default function Booking() {
           await addDoc(collection(db, 'notifications'), {
             userId: user.uid,
             title: 'Booking Received',
-            message: `Your booking request for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time} has been received and is currently pending review.`,
+            orderNumber: newOrderNumber,
+            message: `Your booking request (${newOrderNumber}) for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time} has been received.`,
             read: false,
             createdAt: serverTimestamp()
           });
@@ -123,7 +140,7 @@ export default function Booking() {
         }
       }
 
-      toast.success(`Booking request for ${formData.serviceTitle || 'General Consultation'} submitted successfully!`);
+      setShowSuccessDialog(true);
       setDate(undefined);
       setFormData({
         userName: user?.displayName || '',
@@ -373,6 +390,39 @@ export default function Booking() {
           </motion.div>
         </div>
       </div>
+
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader className="flex flex-col items-center">
+            <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-4">
+              <CheckCircle2 className="h-6 w-6 text-green-600" />
+            </div>
+            <DialogTitle className="text-2xl font-bold text-foreground">Booking Confirmed!</DialogTitle>
+            <DialogDescription className="text-center text-muted-foreground pt-2">
+              We've received your request and will get back to you shortly.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center space-y-4 py-4">
+            <div className="bg-orange-600/10 border border-orange-600/20 rounded-lg p-6 w-full text-center">
+              <span className="text-xs uppercase tracking-widest text-muted-foreground font-black">Your Order Number</span>
+              <div className="text-4xl font-black text-orange-600 tracking-widest mt-1">
+                {orderNumber}
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground text-center uppercase tracking-widest font-bold">
+              Please save this number for reference
+            </p>
+          </div>
+          <div className="flex justify-center">
+            <Button 
+              onClick={() => setShowSuccessDialog(false)}
+              className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

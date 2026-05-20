@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactPlayer from 'react-player';
 import { db, auth, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
@@ -67,70 +68,52 @@ const MediaViewer = ({ item }: { item: any }) => {
     );
   }
 
-  const url = item.url || '';
-  const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
-  const isVimeo = url.includes('vimeo.com');
-
-  if (isYouTube || isVimeo) {
-    let videoSrc = '';
-    if (isYouTube) {
-      let videoId = '';
-      try {
-        if (url.includes('v=')) videoId = url.split('v=')[1].split('&')[0];
-        else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1].split('?')[0];
-        else if (url.includes('embed/')) videoId = url.split('embed/')[1].split('?')[0];
-        else if (url.includes('shorts/')) videoId = url.split('shorts/')[1].split('?')[0];
-        else videoId = url.split('/').pop()?.split('?')[0] || '';
-      } catch (e) { console.error(e); }
-      // Optimized YouTube params: mute=1 for certain autoplay, rel=0 for fewer recommendations
-      videoSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&rel=0&modestbranding=1&loading=lazy`;
-    } else {
-      const videoId = url.split('/').pop()?.split('?')[0];
-      videoSrc = `https://player.vimeo.com/video/${videoId}?autoplay=1&muted=0&badge=0&autopause=0`;
-    }
-
-    return (
-      <div className="w-full h-full relative">
-        {isLoading && item.thumbnail && (
-          <div className="absolute inset-0 z-10 transition-opacity duration-500">
-            <img src={item.thumbnail} className="w-full h-full object-cover blur-sm opacity-50" alt="" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex flex-col items-center space-y-4">
-                <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
-                <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Loading Masterpiece...</span>
-              </div>
-            </div>
-          </div>
-        )}
-        <iframe
-          src={videoSrc}
-          className={`w-full h-full border-0 transition-opacity duration-700 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-          allowFullScreen
-          title={item.title}
-          onLoad={() => setIsLoading(false)}
-        />
-      </div>
-    );
-  }
+  // Use ReactPlayer for all video types (Local, YouTube, Vimeo)
+  const Player = ReactPlayer as any;
 
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative bg-black flex items-center justify-center">
       {isLoading && item.thumbnail && (
-        <img src={item.thumbnail} className="absolute inset-0 w-full h-full object-cover blur-sm opacity-50" alt="" />
+        <div className="absolute inset-0 z-10 transition-opacity duration-500">
+          <img src={item.thumbnail} className="w-full h-full object-cover blur-sm opacity-50" alt="" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center space-y-4">
+              <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
+              <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Warming up...</span>
+            </div>
+          </div>
+        </div>
       )}
-      <video
-        src={url}
-        controls
-        autoPlay
-        playsInline
-        preload="auto"
-        className="w-full h-full object-contain"
-        poster={item.thumbnail}
-        onLoadedData={() => setIsLoading(false)}
-      >
-        Your browser does not support the video tag.
-      </video>
+      <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center">
+        <Player
+          url={item.url}
+          controls
+          playing={!isLoading}
+          width="100%"
+          height="100%"
+          onReady={() => setIsLoading(false)}
+          onStart={() => setIsLoading(false)}
+          config={{
+            youtube: {
+              playerVars: { 
+                modestbranding: 1, 
+                rel: 0,
+                color: 'white'
+              }
+            },
+            vimeo: {
+              playerOptions: { 
+                badge: 0, 
+                byline: 0, 
+                portrait: 0, 
+                title: 0 
+              }
+            }
+          }}
+          className="react-player"
+          playsInline
+        />
+      </div>
     </div>
   );
 };

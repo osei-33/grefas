@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { 
@@ -237,6 +237,19 @@ export default function Admin() {
                 <span>Manage Bookings</span>
                 {isActive('/admin/bookings') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+              <Link
+                to="/admin/tasks"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/tasks') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <ListTodo className={`h-4 w-4 ${isActive('/admin/tasks') ? 'text-orange-600' : ''}`} />
+                <span>Internal Tasks</span>
+                {isActive('/admin/tasks') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
               {role === 'admin' && (
                 <>
                   <div className="pt-4 pb-2">
@@ -311,6 +324,7 @@ export default function Admin() {
           <Route path="/gallery" element={<ManageGallery />} />
           <Route path="/portfolio" element={<ManagePortfolio />} />
           <Route path="/bookings" element={<ManageBookings />} />
+          <Route path="/tasks" element={<ManageTasks />} />
           {role === 'admin' && (
             <>
               <Route path="/users" element={<ManageUsers />} />
@@ -417,7 +431,7 @@ function Login() {
 }
 
 function Dashboard() {
-  const [counts, setCounts] = useState({ services: 0, gallery: 0, portfolio: 0, bookings: 0 });
+  const [counts, setCounts] = useState({ services: 0, gallery: 0, portfolio: 0, bookings: 0, tasks: 0 });
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -426,11 +440,13 @@ function Dashboard() {
         const gallerySnap = await getDocs(collection(db, 'gallery'));
         const portfolioSnap = await getDocs(collection(db, 'portfolio'));
         const bookingsSnap = await getDocs(collection(db, 'bookings'));
+        const tasksSnap = await getDocs(collection(db, 'tasks'));
         setCounts({
           services: servicesSnap.size,
           gallery: gallerySnap.size,
           portfolio: portfolioSnap.size,
-          bookings: bookingsSnap.size
+          bookings: bookingsSnap.size,
+          tasks: tasksSnap.size
         });
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -447,7 +463,7 @@ function Dashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Services</CardTitle>
@@ -478,6 +494,14 @@ function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">{counts.bookings}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Internal Tasks</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">{counts.tasks}</div>
           </CardContent>
         </Card>
       </div>
@@ -542,10 +566,14 @@ function ManageServices() {
         });
       }
 
-      if (result.results?.sms === "failed (unverified number)") {
-        toast.warning("Reminder sent via email, but SMS failed. (Twilio Trial Restriction: Recipient number must be verified in your Twilio Console).", {
-          duration: 6000,
-        });
+      if (result.results?.sms && result.results.sms.startsWith("failed")) {
+        let errorMsg = "Reminder sent via email, but SMS failed.";
+        if (result.results.sms.includes("Unverified Number")) {
+          errorMsg = "Reminder sent via email, but SMS failed because the recipient number is NOT verified in your Twilio Trial console.";
+        } else {
+          errorMsg = `Reminder sent via email, but SMS failed: ${result.results.sms}`;
+        }
+        toast.warning(errorMsg, { duration: 8000 });
       } else {
         toast.success("Reminder sent successfully!");
       }
@@ -1384,14 +1412,16 @@ function ManageBookings() {
           // 1. In-app notification
           if (bookingData.userId && bookingData.userId !== 'anonymous') {
             const title = newStatus === 'confirmed' ? 'Booking Confirmed!' : 'Booking Cancelled';
+            const orderRef = bookingData.orderNumber ? ` (${bookingData.orderNumber})` : '';
             const message = newStatus === 'confirmed' 
-              ? `Your booking for ${bookingData.serviceTitle || 'General Consultation'} on ${bookingData.date} has been confirmed.`
-              : `Your booking for ${bookingData.serviceTitle || 'General Consultation'} on ${bookingData.date} has been cancelled. Please contact us for more information.`;
+              ? `Your booking${orderRef} for ${bookingData.serviceTitle || 'General Consultation'} on ${bookingData.date} has been confirmed.`
+              : `Your booking${orderRef} for ${bookingData.serviceTitle || 'General Consultation'} on ${bookingData.date} has been cancelled. Please contact us for more information.`;
 
             await addDoc(collection(db, 'notifications'), {
               userId: bookingData.userId,
               title,
               message,
+              orderNumber: bookingData.orderNumber || null,
               read: false,
               createdAt: serverTimestamp()
             });
@@ -1413,10 +1443,17 @@ function ManageBookings() {
               });
               
               const result = await response.json();
-              if (result.results?.sms === "failed (unverified number)") {
-                toast.warning("Booking confirmed, but SMS failed. (Twilio Trial Restriction: Recipient number must be verified in your Twilio Console).", {
-                  duration: 6000,
-                });
+              if (result.results?.sms && result.results.sms.startsWith("failed")) {
+                let errorMsg = "Booking confirmed, but SMS failed.";
+                if (result.results.sms.includes("Unverified Number")) {
+                  errorMsg = "Booking confirmed, but SMS failed because the recipient number is NOT verified in your Twilio Trial console.";
+                } else if (result.results.sms.includes("Invalid Phone Number")) {
+                  errorMsg = "Booking confirmed, but SMS failed due to an invalid phone number format.";
+                } else {
+                  errorMsg = `Booking confirmed, but SMS failed: ${result.results.sms}`;
+                }
+                
+                toast.warning(errorMsg, { duration: 8000 });
               }
             } catch (error) {
               console.error("Failed to send external notifications:", error);
@@ -1458,10 +1495,14 @@ function ManageBookings() {
         });
       }
 
-      if (result.results?.sms === "failed (unverified number)") {
-        toast.warning("Reminder sent via email, but SMS failed. (Twilio Trial Restriction: Recipient number must be verified in your Twilio Console).", {
-          duration: 6000,
-        });
+      if (result.results?.sms && result.results.sms.startsWith("failed")) {
+        let errorMsg = "Reminder sent via email, but SMS failed.";
+        if (result.results.sms.includes("Unverified Number")) {
+          errorMsg = "Reminder sent via email, but SMS failed because the recipient number is NOT verified in your Twilio Trial console.";
+        } else {
+          errorMsg = `Reminder sent via email, but SMS failed: ${result.results.sms}`;
+        }
+        toast.warning(errorMsg, { duration: 8000 });
       } else {
         toast.success("Reminder sent successfully!");
       }
@@ -1508,6 +1549,11 @@ function ManageBookings() {
                 </div>
               </div>
               <div className="flex-1 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="bg-orange-600/10 border border-orange-600/20 px-3 py-1 rounded-md">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">ID: {booking.orderNumber || 'NO-REF'}</span>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <h3 className="text-lg font-bold text-foreground">{booking.userName}</h3>
@@ -1922,5 +1968,273 @@ function ManageChat() {
         )}
       </div>
     </div>
+  );
+}
+
+function ManageTasks() {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newTask, setNewTask] = useState({ 
+    title: '', 
+    description: '', 
+    priority: 'medium', 
+    status: 'todo',
+    dueDate: ''
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'tasks');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTask.title.trim()) return;
+
+    try {
+      await addDoc(collection(db, 'tasks'), {
+        ...newTask,
+        createdAt: serverTimestamp(),
+        createdBy: auth.currentUser?.email || 'admin@grefas.com'
+      });
+      toast.success('Task added successfully');
+      setNewTask({ title: '', description: '', priority: 'medium', status: 'todo', dueDate: '' });
+      setIsAdding(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'tasks');
+    }
+  };
+
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    try {
+      await setDoc(doc(db, 'tasks', id), { status: newStatus }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `tasks/${id}`);
+    }
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this task?')) return;
+    try {
+      await deleteDoc(doc(db, 'tasks', id));
+      toast.success('Task deleted');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `tasks/${id}`);
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return 'text-red-600 bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/20';
+      case 'medium': return 'text-orange-600 bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/20';
+      case 'low': return 'text-blue-600 bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-900/20';
+      default: return 'text-muted-foreground bg-muted border-border';
+    }
+  };
+
+  if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-orange-600" /></div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Internal Tasks</h1>
+          <p className="text-sm text-muted-foreground">Track and manage staff to-dos for Grefas operations.</p>
+        </div>
+        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white">
+          {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> New Task</>}
+        </Button>
+      </div>
+
+      {isAdding && (
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-foreground">Create New Task</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAddTask} className="space-y-4">
+              <Input 
+                placeholder="Task Title" 
+                value={newTask.title} 
+                onChange={e => setNewTask({...newTask, title: e.target.value})} 
+                required 
+                className="bg-muted/50 border-border"
+              />
+              <Textarea 
+                placeholder="Description / Details" 
+                value={newTask.description} 
+                onChange={e => setNewTask({...newTask, description: e.target.value})} 
+                className="bg-muted/50 border-border"
+              />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Priority</label>
+                  <select 
+                    className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
+                    value={newTask.priority}
+                    onChange={e => setNewTask({...newTask, priority: e.target.value})}
+                  >
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Initial Status</label>
+                  <select 
+                    className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
+                    value={newTask.status}
+                    onChange={e => setNewTask({...newTask, status: e.target.value})}
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="done">Done</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Due Date</label>
+                  <Input 
+                    type="date"
+                    value={newTask.dueDate}
+                    onChange={e => setNewTask({...newTask, dueDate: e.target.value})}
+                    className="bg-muted/50 border-border"
+                  />
+                </div>
+              </div>
+              <Button type="submit" className="w-full bg-orange-600 text-white hover:bg-orange-700">Save Task</Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Todo Column */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 px-2">
+            <div className="h-2 w-2 rounded-full bg-red-500" />
+            <h3 className="text-sm font-black uppercase tracking-widest text-foreground">To Do</h3>
+            <span className="ml-auto text-[10px] font-bold bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              {tasks.filter(t => t.status === 'todo').length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {tasks.filter(t => t.status === 'todo').map(task => (
+              <TaskCard key={task.id} task={task} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteTask} priorityColor={getPriorityColor} />
+            ))}
+          </div>
+        </div>
+
+        {/* In Progress Column */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 px-2">
+            <div className="h-2 w-2 rounded-full bg-blue-500" />
+            <h3 className="text-sm font-black uppercase tracking-widest text-foreground">In Progress</h3>
+            <span className="ml-auto text-[10px] font-bold bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              {tasks.filter(t => t.status === 'in-progress').length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {tasks.filter(t => t.status === 'in-progress').map(task => (
+              <TaskCard key={task.id} task={task} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteTask} priorityColor={getPriorityColor} />
+            ))}
+          </div>
+        </div>
+
+        {/* Done Column */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 px-2">
+            <div className="h-2 w-2 rounded-full bg-green-500" />
+            <h3 className="text-sm font-black uppercase tracking-widest text-foreground">Done</h3>
+            <span className="ml-auto text-[10px] font-bold bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+              {tasks.filter(t => t.status === 'done').length}
+            </span>
+          </div>
+          <div className="space-y-3">
+            {tasks.filter(t => t.status === 'done').map(task => (
+              <TaskCard key={task.id} task={task} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteTask} priorityColor={getPriorityColor} />
+            ))}
+          </div>
+        </div>
+      </div>
+      
+      {tasks.length === 0 && !isAdding && (
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 border rounded-xl border-dashed border-border bg-muted/20">
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+            <CheckCircle className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold">All clear!</h3>
+            <p className="text-sm text-muted-foreground">No tasks at the moment. Add one to get started.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskCard({ task, onUpdateStatus, onDelete, priorityColor }: { task: any, onUpdateStatus: any, onDelete: any, priorityColor: any }) {
+  const isOverdue = task.dueDate && task.status !== 'done' && new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0));
+  const isDueToday = task.dueDate && new Date(task.dueDate).toDateString() === new Date().toDateString();
+
+  return (
+    <Card className="bg-card border-border shadow-sm hover:shadow-md transition-shadow group">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${priorityColor(task.priority)}`}>
+              {task.priority}
+            </div>
+            {task.dueDate && (
+              <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
+                isOverdue ? 'text-red-600 bg-red-50 border-red-200 animate-pulse' : 
+                isDueToday ? 'text-orange-600 bg-orange-50 border-orange-200' : 
+                'text-muted-foreground bg-muted border-border'
+              }`}>
+                <CalendarIcon className="h-3 w-3" />
+                Due: {new Date(task.dueDate).toLocaleDateString()}
+              </div>
+            )}
+          </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => onDelete(task.id)}
+            className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+        
+        <div>
+          <h4 className="font-bold text-foreground leading-tight">{task.title}</h4>
+          {task.description && (
+            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-border mt-2">
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            {task.createdAt?.toDate().toLocaleDateString() || 'Today'}
+          </div>
+          <select 
+            className="text-[10px] font-bold bg-muted border-none rounded px-2 py-1 outline-none cursor-pointer focus:ring-1 focus:ring-orange-600"
+            value={task.status}
+            onChange={(e) => onUpdateStatus(task.id, e.target.value)}
+          >
+            <option value="todo">TO DO</option>
+            <option value="in-progress">IN PROGRESS</option>
+            <option value="done">DONE</option>
+          </select>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

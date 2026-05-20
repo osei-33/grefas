@@ -181,6 +181,10 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
+    match /tasks/{taskId} {
+      allow read, write: if isStaff();
+    }
+    
     match /test/connection {
       allow read: if true;
     }
