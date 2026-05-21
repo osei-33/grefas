@@ -9,26 +9,67 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 
+const isAdminEmail = (email: string | null) => {
+  if (!email) return false;
+  const hardcodedAdmins = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"];
+  const envAdmins = ((import.meta as any).env.VITE_ADMIN_EMAILS || "").split(",").map((e: string) => e.trim());
+  return hardcodedAdmins.includes(email) || envAdmins.includes(email);
+};
+
 export default function NotificationCenter() {
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [userNotifications, setUserNotifications] = useState<any[]>([]);
+  const [adminNotifications, setAdminNotifications] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    let unsubscribeRole: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (authUser) => {
+      setUser(authUser);
+      if (unsubscribeRole) {
+        unsubscribeRole();
+        unsubscribeRole = null;
+      }
+
+      if (authUser) {
+        // Fast synchronous fallback
+        if (isAdminEmail(authUser.email)) {
+          setRole('admin');
+        } else {
+          setRole('guest');
+        }
+
+        // Fetch/Listen to actual database role
+        unsubscribeRole = onSnapshot(doc(db, 'users', authUser.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            setRole(docSnap.data().role);
+          }
+        }, (error) => {
+          console.error("Error fetching user role for notification center:", error);
+        });
+      } else {
+        setRole(null);
+      }
     });
-    return () => unsubscribeAuth();
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeRole) unsubscribeRole();
+    };
   }, []);
 
   useEffect(() => {
     if (!user) {
-      setNotifications([]);
+      setUserNotifications([]);
+      setAdminNotifications([]);
       setUnreadCount(0);
       return;
     }
 
+    // Subscribe to personal notifications
     const q = query(
       collection(db, 'notifications'),
       where('userId', '==', user.uid),
@@ -37,14 +78,56 @@ export default function NotificationCenter() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setNotifications(docs);
-      setUnreadCount(docs.filter((n: any) => !n.read).length);
+      setUserNotifications(docs);
     }, (error) => {
       console.error("Error fetching notifications:", error);
     });
 
-    return () => unsubscribe();
-  }, [user]);
+    // Subscribe to admin notifications if user is admin/editor
+    let unsubscribeAdmin: (() => void) | null = null;
+    const isStaff = role === 'admin' || role === 'editor';
+    if (isStaff) {
+      const qAdmin = query(
+        collection(db, 'notifications'),
+        where('userId', '==', 'admin'),
+        orderBy('createdAt', 'desc')
+      );
+      unsubscribeAdmin = onSnapshot(qAdmin, (snapshot) => {
+        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAdminNotifications(docs);
+      }, (error) => {
+        console.error("Error fetching admin notifications:", error);
+      });
+    } else {
+      setAdminNotifications([]);
+    }
+
+    return () => {
+      unsubscribe();
+      if (unsubscribeAdmin) unsubscribeAdmin();
+    };
+  }, [user, role]);
+
+  const notifications = React.useMemo(() => {
+    const combined = [...userNotifications, ...adminNotifications];
+    return combined.sort((a, b) => {
+      const getTimestamp = (item: any) => {
+        if (!item || !item.createdAt) return 0;
+        if (typeof item.createdAt.toDate === 'function') {
+          return item.createdAt.toDate().getTime();
+        }
+        if (item.createdAt.seconds) {
+          return item.createdAt.seconds * 1000;
+        }
+        return new Date(item.createdAt).getTime() || 0;
+      };
+      return getTimestamp(b) - getTimestamp(a);
+    });
+  }, [userNotifications, adminNotifications]);
+
+  useEffect(() => {
+    setUnreadCount(notifications.filter((n: any) => !n.read).length);
+  }, [notifications]);
 
   const markAsRead = async (id: string) => {
     try {
@@ -156,7 +239,20 @@ export default function NotificationCenter() {
                             {n.message}
                           </p>
                           <p className="mt-2 text-[10px] text-muted-foreground/60">
-                            {n.createdAt?.toDate ? format(n.createdAt.toDate(), 'MMM d, h:mm a') : 'Just now'}
+                            {(() => {
+                              if (!n.createdAt) return 'Just now';
+                              try {
+                                if (typeof n.createdAt.toDate === 'function') {
+                                  return format(n.createdAt.toDate(), 'MMM d, h:mm a');
+                                }
+                                if (n.createdAt.seconds) {
+                                  return format(new Date(n.createdAt.seconds * 1000), 'MMM d, h:mm a');
+                                }
+                                return format(new Date(n.createdAt), 'MMM d, h:mm a');
+                              } catch (e) {
+                                return 'Just now';
+                              }
+                            })()}
                           </p>
                         </div>
                       ))}

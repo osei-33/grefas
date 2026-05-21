@@ -140,6 +140,24 @@ export default function Booking() {
         }
       }
 
+      // Create a notification for the admins
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          userId: 'admin',
+          title: 'New Booking Request',
+          orderNumber: newOrderNumber,
+          message: `A new booking request (${newOrderNumber}) for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time} has been submitted by ${formData.userName}.`,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      } catch (adminNotifErr) {
+        try {
+          handleFirestoreError(adminNotifErr, OperationType.CREATE, 'notifications');
+        } catch (e) {
+          console.error("Failed to notify admin in Firestore:", adminNotifErr);
+        }
+      }
+
       setShowSuccessDialog(true);
       setDate(undefined);
       setFormData({

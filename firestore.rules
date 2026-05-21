@@ -175,10 +175,13 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow create: if isAuthenticated() || isStaff(); 
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || (isStaff() && resource.data.userId == 'admin'));
+      allow create: if isAuthenticated() || isStaff() || request.resource.data.userId == 'admin'; 
+      allow update: if isAuthenticated() && (
+        (resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])) ||
+        (isStaff() && resource.data.userId == 'admin' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']))
+      );
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || (isStaff() && resource.data.userId == 'admin'));
     }
     
     match /tasks/{taskId} {

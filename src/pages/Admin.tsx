@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer } from 'lucide-react';
 import { toast } from 'sonner';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { 
   signInWithPopup, 
@@ -1389,6 +1390,307 @@ function ManageBookings() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+  const handleExportCSV = () => {
+    if (filteredBookings.length === 0) {
+      toast.error('No bookings found matching current filters to export.');
+      return;
+    }
+
+    const headers = [
+      'Order Number',
+      'Customer Name',
+      'Customer Email',
+      'Customer Phone',
+      'Service Requested',
+      'Appointment Date',
+      'Appointment Time',
+      'Status',
+      'Notes',
+      'Confirmation Status'
+    ];
+
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+
+    const csvRows = [
+      headers.join(','),
+      ...filteredBookings.map(b => [
+        escapeCSV(b.orderNumber || 'N/A'),
+        escapeCSV(b.userName || 'N/A'),
+        escapeCSV(b.userEmail || 'N/A'),
+        escapeCSV(b.userPhone || 'N/A'),
+        escapeCSV(b.serviceTitle || 'General Consultation'),
+        escapeCSV(b.date || 'N/A'),
+        escapeCSV(b.time || 'N/A'),
+        escapeCSV(b.status || 'N/A'),
+        escapeCSV(b.notes || 'No notes'),
+        escapeCSV(b.confirmationEmailStatus || 'unsent')
+      ].join(','))
+    ];
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `grefas_bookings_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filteredBookings.length} bookings to CSV!`);
+  };
+
+  const handleExportPDF = () => {
+    if (filteredBookings.length === 0) {
+      toast.error('No bookings found matching current filters to export.');
+      return;
+    }
+
+    const reportDate = format(new Date(), 'eeee, MMMM d, yyyy h:mm a');
+    const confirmedCount = filteredBookings.filter(b => b.status === 'confirmed').length;
+    const pendingCount = filteredBookings.filter(b => b.status !== 'confirmed' && b.status !== 'cancelled').length;
+    const cancelledCount = filteredBookings.filter(b => b.status === 'cancelled').length;
+
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    document.body.appendChild(printFrame);
+
+    const doc = printFrame.contentWindow?.document || printFrame.contentDocument;
+    if (!doc) {
+      toast.error('Could not initiate PDF generation.');
+      return;
+    }
+
+    const bookingsHTML = filteredBookings.map(b => `
+      <tr>
+        <td style="font-weight: 700; font-family: sans-serif;">${b.orderNumber || 'N/A'}</td>
+        <td style="font-family: sans-serif;">
+          <div style="font-weight: 700; color: #111827;">${b.date}</div>
+          <div style="font-weight: 600; color: #ea580c; font-size: 11px; margin-top: 2px;">${b.time || ''}</div>
+        </td>
+        <td style="font-family: sans-serif;">
+          <div style="font-weight: 700;">${b.userName || 'N/A'}</div>
+          <div style="font-size: 11px; color: #4b5563; margin-top: 1px;">
+            ${b.userEmail || ''} <br/> ${b.userPhone || ''}
+          </div>
+        </td>
+        <td style="font-family: sans-serif;">
+          <div style="font-weight: 600; color: #111827;">${b.serviceTitle || 'General Consultation'}</div>
+          ${b.notes ? `<div style="font-size: 11px; color: #6b7280; font-style: italic; margin-top: 4px;">"${b.notes}"</div>` : ''}
+        </td>
+        <td style="font-family: sans-serif;">
+          <span class="status-badge status-${b.status || 'pending'}">
+            ${b.status || 'pending'}
+          </span>
+        </td>
+      </tr>
+    `).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Grefas Consult - Booking Records</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+          body {
+            font-family: 'Inter', system-ui, sans-serif;
+            color: #111827;
+            margin: 0;
+            padding: 40px;
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #ea580c;
+            padding-bottom: 20px;
+            margin-bottom: 24px;
+          }
+          .logo-text {
+            font-size: 20px;
+            font-weight: 800;
+            color: #ea580c;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          .title {
+            font-size: 24px;
+            font-weight: 800;
+            color: #111827;
+            margin: 4px 0 0 0;
+          }
+          .subtitle {
+            font-size: 12px;
+            color: #4b5563;
+            margin: 4px 0 0 0;
+          }
+          .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+            background: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+          }
+          .meta-item {
+            display: flex;
+            flex-direction: column;
+          }
+          .meta-label {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #6b7280;
+            letter-spacing: 0.05em;
+          }
+          .meta-value {
+            font-size: 14px;
+            font-weight: 800;
+            color: #111827;
+            margin-top: 2px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+          }
+          th {
+            background-color: #f3f4f6;
+            border-bottom: 2px solid #e5e7eb;
+            text-align: left;
+            padding: 10px 12px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            color: #374151;
+            letter-spacing: 0.05em;
+          }
+          td {
+            padding: 12px 12px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 11.5px;
+            vertical-align: top;
+            line-height: 1.4;
+          }
+          tr:nth-child(even) {
+            background-color: #f9fafb;
+          }
+          .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            font-size: 9px;
+            font-weight: 800;
+            text-transform: uppercase;
+            border-radius: 9999px;
+            text-align: center;
+          }
+          .status-confirmed {
+            background-color: #d1fae5;
+            color: #065f46;
+          }
+          .status-cancelled {
+            background-color: #fee2e2;
+            color: #991b1b;
+          }
+          .status-pending {
+            background-color: #ffedd5;
+            color: #9a3412;
+          }
+          @page {
+            size: auto;
+            margin: 15mm;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="logo-text">Grefas Consult & Entertainment</div>
+            <div class="title">Booking Summary Report</div>
+            <div class="subtitle">Export of clients, dates, schedules, and active bookings matching search criteria.</div>
+          </div>
+          <div style="text-align: right; font-size: 11px; color: #6b7280; font-family: sans-serif;">
+            <div><strong>Report Generated:</strong></div>
+            <div>${reportDate}</div>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-item">
+            <span class="meta-label">Total Bookings</span>
+            <span class="meta-value">${filteredBookings.length}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Confirmed</span>
+            <span class="meta-value" style="color: #059669;">${confirmedCount}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Pending</span>
+            <span class="meta-value" style="color: #ea580c;">${pendingCount}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Cancelled</span>
+            <span class="meta-value" style="color: #dc2626;">${cancelledCount}</span>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 12%;">Order ID</th>
+              <th style="width: 18%;">Schedule</th>
+              <th style="width: 25%;">Client</th>
+              <th style="width: 33%;">Service Details</th>
+              <th style="width: 12%;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bookingsHTML}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        printFrame.contentWindow?.focus();
+        printFrame.contentWindow?.print();
+      } catch (e) {
+        console.error("Failed to print directly:", e);
+        toast.error("Failed to open print PDF preview. Check pop-up blockers.");
+      } finally {
+        setTimeout(() => {
+          document.body.removeChild(printFrame);
+        }, 1000);
+      }
+    }, 1000);
+
+    toast.success("Preparing PDF document report for printing...");
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'bookings'), orderBy('date', 'desc'));
@@ -1643,180 +1945,548 @@ function ManageBookings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Manage Bookings</h1>
-          <p className="text-sm text-muted-foreground">Search and manage client appointments and orders.</p>
+          <p className="text-sm text-muted-foreground">Search, schedule, and oversee client appointments and orders.</p>
         </div>
-      </div>
-
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-card p-4 rounded-xl border border-border">
-        <div className="relative flex-grow max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by ID / Order number, Name, Email, or Service..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 bg-muted/40 border-border text-sm text-foreground focus-visible:ring-orange-600 focus-visible:border-orange-600"
-          />
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSelectAllFiltered}
-            disabled={filteredBookings.length === 0}
-            className="text-xs font-semibold h-9"
-          >
-            {isAllFilteredSelected ? "Deselect All Filtered" : "Select All Filtered"}
-          </Button>
-
-          {selectedIds.length > 0 && (
+        
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Export actions */}
+          <div className="flex items-center gap-1.5 bg-card px-2 py-1 rounded-lg border border-border shrink-0">
+            <span className="text-xs font-bold text-muted-foreground px-1.5 uppercase tracking-wider">Export:</span>
             <Button
-              variant="destructive"
+              variant="outline"
               size="sm"
-              onClick={handleBulkDelete}
-              disabled={isBulkDeleting}
-              className="text-xs font-semibold h-9 flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleExportCSV}
+              disabled={filteredBookings.length === 0}
+              className="text-xs gap-1.5 h-8 font-bold border-border hover:bg-muted text-foreground"
             >
-              {isBulkDeleting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-              Delete Selected ({selectedIds.length})
+              <FileSpreadsheet className="h-4 w-4 text-green-600" />
+              CSV
             </Button>
-          )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPDF}
+              disabled={filteredBookings.length === 0}
+              className="text-xs gap-1.5 h-8 font-bold border-border hover:bg-muted text-foreground"
+            >
+              <FileText className="h-4 w-4 text-red-500" />
+              PDF Report
+            </Button>
+          </div>
 
-          <div className="text-sm font-medium text-muted-foreground">
-            {filteredBookings.length === bookings.length 
-              ? `Total: ${bookings.length}` 
-              : `Found: ${filteredBookings.length} of ${bookings.length}`}
+          {/* Toggle View Mode */}
+          <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border border-border shrink-0">
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('list')}
+              className={`text-xs gap-1.5 h-8 font-semibold ${viewMode === 'list' ? 'bg-orange-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <List className="h-4 w-4" />
+              List View
+            </Button>
+            <Button
+              variant={viewMode === 'calendar' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('calendar')}
+              className={`text-xs gap-1.5 h-8 font-semibold ${viewMode === 'calendar' ? 'bg-orange-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <Grid className="h-4 w-4" />
+              Calendar View
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {filteredBookings.map((booking) => (
-          <Card key={booking.id} className="overflow-hidden bg-card border-border relative">
-            <div className="flex flex-col md:flex-row">
-              <div 
-                className="bg-muted/50 p-6 md:w-52 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-border relative cursor-pointer select-none hover:bg-muted/70 transition-colors"
-                onClick={() => handleToggleSelect(booking.id)}
+      {viewMode === 'list' ? (
+        <>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-card p-4 rounded-xl border border-border">
+            <div className="relative flex-grow max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search by ID / Order number, Name, Email, or Service..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 bg-muted/40 border-border text-sm text-foreground focus-visible:ring-orange-600 focus-visible:border-orange-600"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSelectAllFiltered}
+                disabled={filteredBookings.length === 0}
+                className="text-xs font-semibold h-9"
               >
-                <div className="absolute top-4 left-4" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    id={`booking-select-${booking.id}`}
-                    type="checkbox"
-                    checked={selectedIds.includes(booking.id)}
-                    onChange={() => handleToggleSelect(booking.id)}
-                    className="h-5 w-5 rounded border-border text-orange-600 bg-background cursor-pointer focus:ring-offset-0 focus:ring-transparent accent-orange-600"
-                  />
-                </div>
-                
-                <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider mt-2">Date/Time</span>
-                <span className="text-xl font-black text-foreground mt-1">{booking.date}</span>
-                <span className="text-lg font-bold text-orange-600">{booking.time}</span>
-                <div className={`mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase ${
-                  booking.status === 'confirmed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                  booking.status === 'cancelled' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
-                  'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
-                }`}>
-                  {booking.status}
-                </div>
-              </div>
-              <div className="flex-1 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="bg-orange-600/10 border border-orange-600/20 px-3 py-1 rounded-md">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">ID: {booking.orderNumber || 'NO-REF'}</span>
-                  </div>
-                  {booking.status === 'confirmed' && (
-                    <div className="flex items-center gap-2">
-                      {booking.confirmationEmailStatus === 'sent' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 dark:bg-green-950/20 px-2 py-0.5 rounded-full border border-green-200">
-                          <CheckCircle className="h-3 w-3" /> Email Sent
-                        </span>
-                      ) : booking.confirmationEmailStatus === 'failed' ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 dark:bg-red-950/20 px-2 py-0.5 rounded-full border border-red-200">
-                          <AlertCircle className="h-3 w-3" /> Email Failed
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border">
-                          <Mail className="h-3 w-3" /> Email Unsent
-                        </span>
-                      )}
-                    </div>
+                {isAllFilteredSelected ? "Deselect All Filtered" : "Select All Filtered"}
+              </Button>
+
+              {selectedIds.length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={isBulkDeleting}
+                  className="text-xs font-semibold h-9 flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isBulkDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
                   )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-foreground">{booking.userName}</h3>
-                    <p className="text-sm text-muted-foreground">{booking.userEmail}</p>
-                    <p className="text-sm text-muted-foreground">{booking.userPhone}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground">Service: {booking.serviceTitle || 'General Consultation'}</p>
-                    <p className="mt-2 text-sm text-muted-foreground italic">"{booking.notes || 'No notes provided.'}"</p>
-                  </div>
-                </div>
-                <div className="mt-6 flex flex-wrap gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="border-green-600 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/10"
-                    onClick={() => handleStatusChange(booking.id, 'confirmed')}
-                  >
-                    Confirm
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10"
-                    onClick={() => handleStatusChange(booking.id, 'cancelled')}
-                  >
-                    Cancel
-                  </Button>
-                  {booking.status === 'confirmed' && (
-                    <>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 flex items-center gap-2"
-                        onClick={() => handleSendConfirmationEmail(booking)}
-                      >
-                        <Mail className="h-4 w-4" /> Send Confirmation
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="border-orange-600 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 flex items-center gap-2"
-                        onClick={() => handleSendReminder(booking)}
-                      >
-                        <Bell className="h-4 w-4" /> Send Reminder
-                      </Button>
-                    </>
-                  )}
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    className="text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 ml-auto h-9 w-9 md:h-8 md:w-8"
-                    onClick={() => handleDelete(booking.id)}
-                    disabled={deletingId === booking.id}
-                  >
-                    {deletingId === booking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </Button>
-                </div>
+                  Delete Selected ({selectedIds.length})
+                </Button>
+              )}
+
+              <div className="text-sm font-medium text-muted-foreground">
+                {filteredBookings.length === bookings.length 
+                  ? `Total: ${bookings.length}` 
+                  : `Found: ${filteredBookings.length} of ${bookings.length}`}
               </div>
             </div>
-          </Card>
-        ))}
-        {filteredBookings.length === 0 && (
-          <div className="py-20 text-center text-muted-foreground border border-dashed rounded-xl border-border bg-muted/10">
-            No bookings matching your criteria were found.
           </div>
-        )}
-      </div>
+
+          <div className="grid grid-cols-1 gap-6">
+            {filteredBookings.map((booking) => (
+              <Card key={booking.id} className="overflow-hidden bg-card border-border relative">
+                <div className="flex flex-col md:flex-row">
+                  <div 
+                    className="bg-muted/50 p-6 md:w-52 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-border relative cursor-pointer select-none hover:bg-muted/70 transition-colors"
+                    onClick={() => handleToggleSelect(booking.id)}
+                  >
+                    <div className="absolute top-4 left-4" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        id={`booking-select-${booking.id}`}
+                        type="checkbox"
+                        checked={selectedIds.includes(booking.id)}
+                        onChange={() => handleToggleSelect(booking.id)}
+                        className="h-5 w-5 rounded border-border text-orange-600 bg-background cursor-pointer focus:ring-offset-0 focus:ring-transparent accent-orange-600"
+                      />
+                    </div>
+                    
+                    <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider mt-2">Date/Time</span>
+                    <span className="text-xl font-black text-foreground mt-1">{booking.date}</span>
+                    <span className="text-lg font-bold text-orange-600">{booking.time}</span>
+                    <div className={`mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase ${
+                      booking.status === 'confirmed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                      booking.status === 'cancelled' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                      'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
+                    }`}>
+                      {booking.status}
+                    </div>
+                  </div>
+                  <div className="flex-1 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="bg-orange-600/10 border border-orange-600/20 px-3 py-1 rounded-md">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">ID: {booking.orderNumber || 'NO-REF'}</span>
+                      </div>
+                      {booking.status === 'confirmed' && (
+                        <div className="flex items-center gap-2">
+                          {booking.confirmationEmailStatus === 'sent' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 dark:bg-green-950/20 px-2 py-0.5 rounded-full border border-green-200">
+                              <CheckCircle className="h-3 w-3" /> Email Sent
+                            </span>
+                          ) : booking.confirmationEmailStatus === 'failed' ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 dark:bg-red-950/20 px-2 py-0.5 rounded-full border border-red-200">
+                              <AlertCircle className="h-3 w-3" /> Email Failed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border">
+                              <Mail className="h-3 w-3" /> Email Unsent
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-foreground">{booking.userName}</h3>
+                        <p className="text-sm text-muted-foreground">{booking.userEmail}</p>
+                        <p className="text-sm text-muted-foreground">{booking.userPhone}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-foreground">Service: {booking.serviceTitle || 'General Consultation'}</p>
+                        <p className="mt-2 text-sm text-muted-foreground italic">"{booking.notes || 'No notes provided.'}"</p>
+                      </div>
+                    </div>
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-green-600 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/10"
+                        onClick={() => handleStatusChange(booking.id, 'confirmed')}
+                      >
+                        Confirm
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10"
+                        onClick={() => handleStatusChange(booking.id, 'cancelled')}
+                      >
+                        Cancel
+                      </Button>
+                      {booking.status === 'confirmed' && (
+                        <>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 flex items-center gap-2"
+                            onClick={() => handleSendConfirmationEmail(booking)}
+                          >
+                            <Mail className="h-4 w-4" /> Send Confirmation
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-orange-600 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 flex items-center gap-2"
+                            onClick={() => handleSendReminder(booking)}
+                          >
+                            <Bell className="h-4 w-4" /> Send Reminder
+                          </Button>
+                        </>
+                      )}
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 ml-auto h-9 w-9 md:h-8 md:w-8"
+                        onClick={() => handleDelete(booking.id)}
+                        disabled={deletingId === booking.id}
+                      >
+                        {deletingId === booking.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+            {filteredBookings.length === 0 && (
+              <div className="py-20 text-center text-muted-foreground border border-dashed rounded-xl border-border bg-muted/10">
+                No bookings matching your criteria were found.
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="space-y-6">
+          {/* Calendar Header with navigation */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-card p-4 rounded-xl border border-border">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                className="h-10 w-10 border-border hover:bg-muted text-foreground"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentMonth(new Date())}
+                className="h-10 px-4 border-border hover:bg-muted text-sm font-semibold text-foreground"
+              >
+                Today
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                className="h-10 w-10 border-border hover:bg-muted text-foreground"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
+            
+            <h2 className="text-2xl font-black text-foreground uppercase tracking-tight">
+              {format(currentMonth, 'MMMM yyyy')}
+            </h2>
+
+            <div className="flex gap-2 text-xs font-semibold text-muted-foreground bg-muted p-1.5 rounded-lg border border-border">
+              <div className="flex items-center gap-1.5 px-2">
+                <span className="h-2 w-2 rounded-full bg-green-500 inline-block" /> Confirmed
+              </div>
+              <div className="flex items-center gap-1.5 px-2">
+                <span className="h-2 w-2 rounded-full bg-orange-500 inline-block" /> Pending
+              </div>
+              <div className="flex items-center gap-1.5 px-2">
+                <span className="h-2 w-2 rounded-full bg-red-500 inline-block" /> Cancelled
+              </div>
+            </div>
+          </div>
+
+          {/* Calendar Weekday Names Header */}
+          <div className="grid grid-cols-7 gap-2 text-center font-bold text-xs uppercase tracking-wider text-muted-foreground bg-muted/30 p-3 rounded-lg border border-border">
+            <div>Sun</div>
+            <div>Mon</div>
+            <div>Tue</div>
+            <div>Wed</div>
+            <div>Thu</div>
+            <div>Fri</div>
+            <div>Sat</div>
+          </div>
+
+          {/* Monthly Day Grid */}
+          <div className="grid grid-cols-7 gap-2">
+            {(() => {
+              const monthStart = startOfMonth(currentMonth);
+              const monthEnd = endOfMonth(monthStart);
+              const startDate = startOfWeek(monthStart);
+              const endDate = endOfWeek(monthEnd);
+              const days = eachDayOfInterval({ start: startDate, end: endDate });
+
+              return days.map((day) => {
+                const dateStr = format(day, 'yyyy-MM-dd');
+                // Support filtering calendar bookings using search term too!
+                const dayBookings = filteredBookings.filter(b => b.date === dateStr);
+                const isCurrentMonth = isSameMonth(day, currentMonth);
+                const isDayToday = isToday(day);
+
+                // Sort day bookings by time ascending so scheduling order is natural
+                const sortedDayBookings = [...dayBookings].sort((a, b) => {
+                  return (a.time || '').localeCompare(b.time || '');
+                });
+
+                return (
+                  <div
+                    key={dateStr}
+                    onClick={() => setSelectedDate(day)}
+                    className={`min-h-[140px] bg-card border border-border rounded-xl p-3 flex flex-col justify-between hover:bg-muted/30 transition-shadow transition-colors group cursor-pointer relative ${
+                      !isCurrentMonth ? 'bg-muted/10 opacity-40 select-none' : 'shadow-sm'
+                    } ${isDayToday ? 'border-orange-500/40 bg-orange-500/5' : ''}`}
+                  >
+                    <div>
+                      {/* Day Number and count */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-sm font-black h-7 w-7 flex items-center justify-center rounded-full transition-colors ${
+                          isDayToday 
+                            ? 'bg-orange-600 text-white' 
+                            : 'text-foreground group-hover:text-orange-600'
+                        }`}>
+                          {format(day, 'd')}
+                        </span>
+                        {dayBookings.length > 0 && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-orange-600/10 text-orange-600 border border-orange-600/20">
+                            {dayBookings.length}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Micro Pill Bookings */}
+                      <div className="space-y-1 overflow-hidden">
+                        {sortedDayBookings.slice(0, 3).map((b) => (
+                          <div
+                            key={b.id}
+                            className={`text-[10px] px-1.5 py-1 rounded-md border truncate font-bold flex items-center justify-between ${
+                              b.status === 'confirmed' ? 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20' :
+                              b.status === 'cancelled' ? 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20' :
+                              'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20'
+                            }`}
+                          >
+                            <span className="truncate flex items-center gap-1">
+                              <span className={`h-1.5 w-1.5 rounded-full inline-block shrink-0 ${
+                                b.status === 'confirmed' ? 'bg-green-500' :
+                                b.status === 'cancelled' ? 'bg-red-500' : 'bg-orange-500'
+                              }`} />
+                              <span className="text-[9px] text-muted-foreground font-semibold shrink-0">{b.time}</span>
+                              <span className="truncate">{b.userName}</span>
+                            </span>
+                          </div>
+                        ))}
+                        {dayBookings.length > 3 && (
+                          <div className="text-[9px] text-muted-foreground font-black tracking-wider uppercase pl-1.5 pt-0.5">
+                            + {dayBookings.length - 3} More
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Selected Date Detail Modal */}
+      {selectedDate && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl shadow-xl max-w-2xl w-full flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <div>
+                <h3 className="text-xl font-black text-foreground flex items-center gap-2">
+                  <CalendarIcon className="h-5 w-5 text-orange-600" />
+                  {format(selectedDate, 'eeee, MMMM d, yyyy')}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Manage scheduling and details for appointments on this date.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSelectedDate(null)}
+                className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              {(() => {
+                const targetDateStr = format(selectedDate, 'yyyy-MM-dd');
+                const dayBookings = bookings.filter(b => b.date === targetDateStr);
+
+                if (dayBookings.length === 0) {
+                  return (
+                    <div className="py-12 text-center text-muted-foreground border border-dashed rounded-xl border-border bg-muted/5">
+                      <CalendarIcon className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                      <p className="text-sm font-semibold text-foreground">No bookings scheduled</p>
+                      <p className="text-xs text-muted-foreground mt-1">There are no appointments requested or confirmed for this date.</p>
+                    </div>
+                  );
+                }
+
+                // Sort by time
+                const sortedBookings = [...dayBookings].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+                return (
+                  <div className="space-y-4">
+                    {sortedBookings.map((booking) => (
+                      <div 
+                        key={booking.id} 
+                        className={`p-4 rounded-xl border border-border bg-muted/20 relative flex flex-col gap-4 ${
+                          booking.status === 'confirmed' ? 'border-l-4 border-l-green-500' :
+                          booking.status === 'cancelled' ? 'border-l-4 border-l-red-500' :
+                          'border-l-4 border-l-orange-500'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-orange-600 bg-orange-600/10 px-2 py-0.5 rounded-md border border-orange-600/20">
+                                {booking.orderNumber || 'NO-REF'}
+                              </span>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
+                                {booking.time}
+                              </span>
+                              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                booking.status === 'confirmed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                                booking.status === 'cancelled' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                                'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
+                              }`}>
+                                {booking.status}
+                              </span>
+                            </div>
+
+                            <h4 className="text-base font-bold text-foreground">{booking.userName}</h4>
+                            <p className="text-xs text-muted-foreground">{booking.userEmail} | {booking.userPhone}</p>
+                            <p className="mt-2 text-sm font-semibold text-foreground">Service: {booking.serviceTitle || 'General Consultation'}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 italic">"{booking.notes || 'No notes provided.'}"</p>
+                          </div>
+                          
+                          {/* Right header: Select Checkbox */}
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(booking.id)}
+                            onChange={() => handleToggleSelect(booking.id)}
+                            className="h-5 w-5 rounded border-border text-orange-600 bg-background cursor-pointer accent-orange-600 mt-1"
+                          />
+                        </div>
+
+                        {/* Confirmation email indicator */}
+                        {booking.status === 'confirmed' && (
+                          <div className="text-xs font-semibold">
+                            {booking.confirmationEmailStatus === 'sent' ? (
+                              <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 dark:bg-green-950/20 px-2.5 py-0.5 rounded-full border border-green-200">
+                                <CheckCircle className="h-3 w-3" /> Confirmation Email Sent
+                              </span>
+                            ) : booking.confirmationEmailStatus === 'failed' ? (
+                              <span className="inline-flex items-center gap-1 text-red-600 bg-red-50 dark:bg-red-950/20 px-2.5 py-0.5 rounded-full border border-red-200">
+                                <AlertCircle className="h-3 w-3" /> Confirmation Email Failed
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full border border-border">
+                                <Mail className="h-3 w-3" /> Confirmation Email Unsent
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Card controls */}
+                        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-green-600 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/10 text-xs py-1 h-8"
+                            onClick={() => handleStatusChange(booking.id, 'confirmed')}
+                          >
+                            Confirm
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 text-xs py-1 h-8"
+                            onClick={() => handleStatusChange(booking.id, 'cancelled')}
+                          >
+                            Cancel
+                          </Button>
+                          
+                          {booking.status === 'confirmed' && (
+                            <>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 flex items-center gap-1.5 text-xs py-1 h-8"
+                                onClick={() => handleSendConfirmationEmail(booking)}
+                              >
+                                <Mail className="h-3.5 w-3.5" /> Confirm Email
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="border-orange-600 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 flex items-center gap-1.5 text-xs py-1 h-8"
+                                onClick={() => handleSendReminder(booking)}
+                              >
+                                <Bell className="h-3.5 w-3.5" /> Reminder
+                              </Button>
+                            </>
+                          )}
+
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 ml-auto h-8 w-8 p-0"
+                            onClick={() => handleDelete(booking.id)}
+                            disabled={deletingId === booking.id}
+                          >
+                            {deletingId === booking.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="p-6 border-t border-border bg-muted/10 flex justify-end gap-3 rounded-b-xl">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedDate(null)}
+                className="font-semibold text-xs h-9 text-foreground border-border hover:bg-muted"
+              >
+                Close Window
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
