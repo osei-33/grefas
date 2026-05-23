@@ -1,11 +1,11 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -108,6 +108,129 @@ export default function Admin() {
     };
   }, []);
 
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
+  const [showMobileNotifications, setShowMobileNotifications] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const mobileDropdownRef = useRef<HTMLDivElement>(null);
+
+  const formatNotificationTime = (timestamp: any) => {
+    if (!timestamp) return 'Just now';
+    try {
+      let date: Date;
+      if (typeof timestamp.toDate === 'function') {
+        date = timestamp.toDate();
+      } else if (timestamp instanceof Date) {
+        date = timestamp;
+      } else if (timestamp.seconds) {
+        date = new Date(timestamp.seconds * 1000);
+      } else {
+        date = new Date(timestamp);
+      }
+      if (isNaN(date.getTime())) return 'Just now';
+      return format(date, 'MMM d, h:mm a');
+    } catch (e) {
+      return 'Just now';
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowNotificationsDropdown(false);
+      }
+      if (mobileDropdownRef.current && !mobileDropdownRef.current.contains(event.target as Node)) {
+        setShowMobileNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user || role === 'guest') return;
+
+    const notifQuery = query(
+      collection(db, 'notifications'),
+      where('userId', '==', 'admin'),
+      orderBy('createdAt', 'desc')
+    );
+
+    let isInitialLoad = true;
+
+    const unsubscribe = onSnapshot(notifQuery, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as any[];
+
+      setNotifications(docs);
+
+      if (!isInitialLoad) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            toast.success(data.title || 'New Notification', {
+              description: data.message || 'A new appointment booking was submitted.',
+              duration: 8000,
+              icon: <Bell className="h-5 w-5 text-orange-600 animate-bounce" />,
+            });
+            try {
+              const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+              const osc = audioCtx.createOscillator();
+              const gain = audioCtx.createGain();
+              osc.connect(gain);
+              gain.connect(audioCtx.destination);
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); 
+              osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); 
+              gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+              gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+              osc.start(audioCtx.currentTime);
+              osc.stop(audioCtx.currentTime + 0.35);
+            } catch (soundErr) {
+              console.debug("Sound blocked or API not supported", soundErr);
+            }
+          }
+        });
+      }
+      isInitialLoad = false;
+    }, (error) => {
+      console.warn("Error listening to admin notifications:", error);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user, role]);
+
+  const handleMarkAllNotificationsAsRead = async () => {
+    try {
+      const unreadNotifs = notifications.filter(n => !n.read);
+      const promises = unreadNotifs.map(n => 
+        setDoc(doc(db, 'notifications', n.id), { read: true }, { merge: true })
+      );
+      await Promise.all(promises);
+      toast.success('All notifications marked as read.');
+    } catch (err) {
+      console.error("Error marking notifications as read:", err);
+      toast.error('Failed to mark notifications as read.');
+    }
+  };
+
+  const handleDeleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteDoc(doc(db, 'notifications', id));
+      toast.success('Notification cleared.');
+    } catch (err) {
+      console.error("Error deleting notification:", err);
+      toast.error('Failed to clear notification.');
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -144,14 +267,105 @@ export default function Admin() {
     );
   }
 
+  const renderNotificationsPanel = (isOpen: boolean, onClose: () => void, isMobile: boolean) => {
+    if (!isOpen) return null;
+
+    return (
+      <div className={`absolute ${isMobile ? 'right-0 top-12' : 'right-0 top-10'} w-80 md:w-96 rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl z-50 p-4 animate-in fade-in slide-in-from-top-2 text-left`}>
+        <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
+          <h3 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+            <Bell className="h-4 w-4 text-orange-600 animate-pulse" /> Recent Bookings
+          </h3>
+          {notifications.some(n => !n.read) && (
+            <button
+              onClick={handleMarkAllNotificationsAsRead}
+              className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 hover:underline transition"
+            >
+              Mark all read
+            </button>
+          )}
+        </div>
+
+        <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+          {notifications.length === 0 ? (
+            <div className="text-center py-8 text-xs text-muted-foreground italic">
+              No recent bookings matching.
+            </div>
+          ) : (
+            notifications.map(n => (
+              <div
+                key={n.id}
+                onClick={async () => {
+                  if (!n.read) {
+                    try {
+                      await setDoc(doc(db, 'notifications', n.id), { read: true }, { merge: true });
+                    } catch (err) {
+                      console.error("Failed to mark as read:", err);
+                    }
+                  }
+                }}
+                className={`p-3 rounded-lg border text-xs relative cursor-pointer hover:bg-muted transition-all ${
+                  n.read 
+                    ? 'bg-card/40 border-border text-muted-foreground' 
+                    : 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-100 dark:border-orange-900/30 text-foreground font-medium shadow-sm'
+                }`}
+              >
+                <div className="flex justify-between items-start gap-2 mb-1">
+                  <span className="font-bold text-foreground">
+                    {n.title || 'Notification'}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground font-mono whitespace-nowrap">
+                    {formatNotificationTime(n.createdAt)}
+                  </span>
+                </div>
+                <p className="line-clamp-3 leading-relaxed mb-1.5 text-xs text-foreground/80">{n.message}</p>
+                {n.orderNumber && (
+                  <div className="inline-flex items-center gap-1 bg-muted px-2 py-0.5 rounded text-[9px] font-mono select-all">
+                    Order: {n.orderNumber}
+                  </div>
+                )}
+                <button
+                  onClick={(e) => handleDeleteNotification(n.id, e)}
+                  className="absolute right-2 bottom-2 text-muted-foreground hover:text-red-600 transition p-1"
+                  title="Clear notification"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col md:flex-row min-h-[80vh] bg-background relative overflow-hidden">
       {/* Mobile Sidebar Toggle */}
       <div className="md:hidden flex items-center p-4 border-b border-border bg-card justify-between sticky top-0 z-30">
         <h2 className="text-sm font-bold text-orange-600">Admin Panel</h2>
-        <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-          {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
+        
+        <div className="flex items-center gap-2">
+          {/* Mobile Notifications Bell */}
+          <div className="relative" ref={mobileDropdownRef}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowMobileNotifications(!showMobileNotifications)}
+              className="relative h-9 w-9 text-muted-foreground hover:text-orange-600 hover:bg-muted"
+            >
+              <Bell className={`h-5 w-5 ${notifications.some(n => !n.read) ? 'text-orange-600 animate-bounce' : ''}`} />
+              {notifications.some(n => !n.read) && (
+                <span className="absolute top-1.5 right-1.5 flex h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+              )}
+            </Button>
+            {renderNotificationsPanel(showMobileNotifications, () => setShowMobileNotifications(false), true)}
+          </div>
+
+          <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+            {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
+        </div>
       </div>
 
       {/* Sidebar Backdrop */}
@@ -164,13 +378,29 @@ export default function Admin() {
 
       {/* Sidebar */}
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-64 border-r border-border bg-card p-6 transition-transform duration-300 md:relative md:translate-x-0 md:block
+        fixed inset-y-0 left-0 z-40 w-64 border-r border-border bg-card p-6 transition-transform duration-300 md:relative md:translate-x-0 md:block
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="flex flex-col h-full">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Main Navigation</h2>
+              
+              {/* Desktop Notifications Bell */}
+              <div className="relative" ref={dropdownRef}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
+                  className="relative h-8 w-8 text-muted-foreground hover:text-orange-600 hover:bg-muted"
+                >
+                  <Bell className={`h-[18px] w-[18px] ${notifications.some(n => !n.read) ? 'text-orange-600 animate-bounce' : ''}`} />
+                  {notifications.some(n => !n.read) && (
+                    <span className="absolute top-1 right-1 flex h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+                  )}
+                </Button>
+                {renderNotificationsPanel(showNotificationsDropdown, () => setShowNotificationsDropdown(false), false)}
+              </div>
             </div>
             <nav className="space-y-1">
               <Link
@@ -2653,6 +2883,22 @@ function ManageUsers() {
   );
 }
 
+const formatAdminMessageTime = (timestamp: any) => {
+  if (!timestamp) return 'Just now';
+  let date: Date;
+  if (typeof timestamp.toDate === 'function') {
+    date = timestamp.toDate();
+  } else if (timestamp instanceof Date) {
+    date = timestamp;
+  } else if (timestamp.seconds) {
+    date = new Date(timestamp.seconds * 1000);
+  } else {
+    date = new Date(timestamp);
+  }
+  if (isNaN(date.getTime())) return 'Just now';
+  return format(date, 'MMM d, h:mm a');
+};
+
 function ManageChat() {
   const [threads, setThreads] = useState<any[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -2660,6 +2906,47 @@ function ManageChat() {
   const [reply, setReply] = useState('');
   const [isUserTyping, setIsUserTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Only image uploads are welcomed.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5MB.');
+      return;
+    }
+
+    setSelectedImage(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const resetSelectedImage = () => {
+    setSelectedImage(null);
+    setImagePreviewUrl(null);
+    setUploadProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  useEffect(() => {
+    resetSelectedImage();
+  }, [activeChatId]);
 
   const setStaffTypingStatus = async (isTyping: boolean) => {
     if (!activeChatId) return;
@@ -2752,21 +3039,52 @@ function ManageChat() {
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reply.trim() || !activeChatId) return;
+    if (!reply.trim() && !selectedImage) return;
+    if (!activeChatId) return;
 
     try {
+      let imageUrl = '';
+      if (selectedImage) {
+        setIsUploading(true);
+        const fileName = `${Date.now()}_${selectedImage.name}`;
+        const storageRef = ref(storage, `chat/${activeChatId}/${fileName}`);
+        const uploadTask = uploadBytesResumable(storageRef, selectedImage);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(Math.round(progress));
+            },
+            (error) => {
+              console.error('Upload failed:', error);
+              reject(error);
+            },
+            async () => {
+              imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve();
+            }
+          );
+        });
+      }
+
       await addDoc(collection(db, 'chat'), {
-        text: reply,
+        text: reply.trim() || 'Sent an image',
         userId: auth.currentUser?.uid || 'admin',
         userName: 'Grefas Staff',
         chatId: activeChatId,
         timestamp: serverTimestamp(),
-        isFromStaff: true
+        isFromStaff: true,
+        ...(imageUrl ? { imageUrl } : {})
       });
       setReply('');
+      resetSelectedImage();
       setStaffTypingStatus(false);
     } catch (error) {
       toast.error('Failed to send reply');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -2785,7 +3103,14 @@ function ManageChat() {
               onClick={() => setActiveChatId(t.id)}
               className={`w-full text-left p-4 hover:bg-muted transition-colors border-b border-border ${activeChatId === t.id ? 'bg-orange-50 dark:bg-orange-900/10' : ''}`}
             >
-              <p className="font-bold text-foreground text-sm truncate">{t.userName}</p>
+              <div className="flex justify-between items-baseline gap-2 mb-0.5">
+                <p className="font-bold text-foreground text-sm truncate">{t.userName}</p>
+                {t.timestamp && (
+                  <span className="text-[10px] text-muted-foreground/70 shrink-0 font-mono">
+                    {formatAdminMessageTime(t.timestamp)}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground truncate">{t.lastMessage}</p>
             </button>
           ))}
@@ -2808,9 +3133,27 @@ function ManageChat() {
                       ? 'bg-orange-600 text-white rounded-tr-none' 
                       : 'bg-muted text-foreground rounded-tl-none'
                   }`}>
-                    {m.text}
+                    {m.imageUrl && (
+                      <div className="mb-2 overflow-hidden rounded-lg border border-border bg-black/5 animate-thumbnail max-w-full">
+                        <img
+                          src={m.imageUrl}
+                          alt="Attachment"
+                          referrerPolicy="no-referrer"
+                          className="max-h-52 w-auto object-contain cursor-zoom-in rounded hover:opacity-95 transition-opacity"
+                          onClick={() => window.open(m.imageUrl, '_blank')}
+                        />
+                      </div>
+                    )}
+                    {(m.text !== 'Sent an image' || !m.imageUrl) && (
+                      <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                    )}
                   </div>
-                  <span className="text-[10px] mt-1 text-muted-foreground">{m.userName}</span>
+                  <span className="text-[10px] mt-1 text-muted-foreground flex items-center gap-1.5 font-sans">
+                    <strong>{m.userName}</strong>
+                    <span className="text-[9px] text-muted-foreground/70 font-mono">
+                      • {formatAdminMessageTime(m.timestamp)}
+                    </span>
+                  </span>
                 </div>
               ))}
               {isUserTyping && (
@@ -2824,15 +3167,73 @@ function ManageChat() {
                 </div>
               )}
             </div>
+            {/* Image Upload Thumbnail Preview Panel */}
+            {imagePreviewUrl && (
+              <div className="px-4 py-2 bg-muted/40 border-t border-border flex items-center justify-between gap-3 animate-thumbnail">
+                <div className="relative h-14 w-14 rounded-md overflow-hidden border border-border bg-background flex-shrink-0">
+                  <img src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
+                  {isUploading && (
+                    <div className="absolute inset-0 bg-black/55 flex items-center justify-center text-[10px] text-white font-bold">
+                      {uploadProgress}%
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-foreground truncate">{selectedImage?.name || 'capture.jpg'}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {isUploading ? 'Uploading to secure storage...' : 'Ready to send'}
+                  </p>
+                </div>
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted animate-in fade-in"
+                  onClick={resetSelectedImage}
+                  disabled={isUploading}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
             <form onSubmit={handleSendReply} className="p-4 border-t border-border bg-muted/50">
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                  id="admin-chat-file-upload"
+                  disabled={isUploading}
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-9 w-9 text-muted-foreground hover:text-orange-600 hover:bg-muted shrink-0"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  title="Upload or capture image"
+                >
+                  <Camera className="h-5 w-5" />
+                </Button>
+
                 <Input 
-                  placeholder="Type your reply..." 
+                  placeholder={isUploading ? "Uploading attachment..." : "Type your reply..."} 
                   value={reply} 
                   onChange={handleReplyChange} 
-                  className="bg-background border-border"
+                  className="bg-background border-border flex-1"
+                  disabled={isUploading}
                 />
-                <Button type="submit" className="bg-orange-600 text-white">Send</Button>
+                <Button 
+                  type="submit" 
+                  className="bg-orange-600 text-white shrink-0"
+                  disabled={isUploading || (!reply.trim() && !selectedImage)}
+                >
+                  Send
+                </Button>
               </div>
             </form>
           </>
