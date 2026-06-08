@@ -3,14 +3,14 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, doc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Loader2, Briefcase, Award, Star, Mail, ArrowRight, Filter, Sparkles, Check, CheckCircle, Flame, Calendar, MessageSquare, Send, ArrowLeft } from 'lucide-react';
+import { Loader2, Briefcase, Award, Star, Mail, ArrowRight, Filter, Sparkles, Check, CheckCircle, Flame, Calendar, MessageSquare, Send, ArrowLeft, MessageCircle } from 'lucide-react';
 
 interface TeamMember {
   id: string;
@@ -85,6 +85,7 @@ export default function Team() {
   const [activeModalMember, setActiveModalMember] = useState<TeamMember | null>(null);
   const navigate = useNavigate();
 
+  const [settings, setSettings] = useState<any>(null);
   const [isMessaging, setIsMessaging] = useState(false);
   const [messageForm, setMessageForm] = useState({
     firstName: '',
@@ -93,6 +94,18 @@ export default function Team() {
     subject: '',
     message: ''
   });
+
+  useEffect(() => {
+    const errorPath = 'settings/global';
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
+      if (doc.exists()) {
+        setSettings(doc.data());
+      }
+    }, (error) => {
+      console.debug("Team page settings fetch issue:", error);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (activeModalMember) {
@@ -617,7 +630,7 @@ export default function Team() {
                     <span className="text-xs text-muted-foreground">
                       Ready to secure this specialist for your goals?
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => setActiveModalMember(null)} className="rounded-xl font-bold h-9">
                         Close Profile
                       </Button>
@@ -631,6 +644,16 @@ export default function Team() {
                       >
                         <MessageSquare className="h-3.5 w-3.5" /> Message
                       </Button>
+
+                      {/* WhatsApp Direct Chat Button */}
+                      <a
+                        href={`https://wa.me/${(settings?.phone || '+233123456789').replace(/\D/g, '')}?text=${encodeURIComponent(`Hello! I'm interested in booking ${activeModalMember.name} (${activeModalMember.role}) through Grefas Consult & Entertainment.`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-[#25D366] hover:bg-[#1ebd55] text-white px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm h-9 transition-colors border border-[#128C7E]/20"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5 fill-current text-white" /> WhatsApp
+                      </a>
 
                       <Button
                         onClick={() => {

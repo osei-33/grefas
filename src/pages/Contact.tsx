@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Mail, Phone, MapPin, Send } from 'lucide-react';
+import { Mail, Phone, MapPin, Send, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -84,6 +84,25 @@ export default function Contact() {
                 <div>
                   <p className="font-semibold text-foreground">Phone</p>
                   <p className="text-muted-foreground">{settings?.phone || '+233 123 456 789'}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30 text-[#25D366] dark:text-[#25D366]">
+                  <MessageCircle className="h-5 w-5 fill-current" />
+                </div>
+                <div>
+                  <p className="font-semibold text-foreground">WhatsApp Chat</p>
+                  <p className="text-muted-foreground">
+                    <a
+                      href={`https://wa.me/${(settings?.phone || '+233123456789').replace(/\D/g, '')}?text=${encodeURIComponent("Hello Grefas! I'm reaching out to make an inquiry.")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-green-600 dark:text-green-400 font-bold hover:underline flex items-center gap-1"
+                    >
+                      Chat with us live on WhatsApp
+                    </a>
+                  </p>
                 </div>
               </div>
 

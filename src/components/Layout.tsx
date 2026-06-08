@@ -1,7 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon } from 'lucide-react';
+import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Chat from './Chat';
@@ -263,6 +263,17 @@ export default function Layout({ children }: LayoutProps) {
                 <li className="flex items-center space-x-2 text-sm text-muted-foreground">
                   <Phone className="h-4 w-4" />
                   <span>{settings?.phone || '+233 123 456 789'}</span>
+                </li>
+                <li className="flex items-center space-x-2 text-sm text-muted-foreground">
+                  <MessageCircle className="h-4 w-4 text-[#25D366] fill-[#25D366]/20" />
+                  <a
+                    href={`https://wa.me/${(settings?.phone || '+233123456789').replace(/\D/g, '')}?text=${encodeURIComponent("Hello! I would like to inquire about Grefas Consult & Entertainment.")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-orange-600 transition-colors animate-pulse"
+                  >
+                    Chat on WhatsApp
+                  </a>
                 </li>
                 <li className="flex items-center space-x-2 text-sm text-muted-foreground">
                   <MapPin className="h-4 w-4" />
