@@ -105,12 +105,30 @@
         "userPhone": { "type": "string" },
         "serviceId": { "type": "string" },
         "serviceTitle": { "type": "string" },
+        "teamMemberId": { "type": "string", "description": "The specific team member chosen" },
+        "teamMemberName": { "type": "string", "description": "The name of the chosen team member" },
         "date": { "type": "string", "description": "ISO date string (YYYY-MM-DD)" },
         "notes": { "type": "string" },
         "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userName", "userEmail", "date", "status", "createdAt"]
+    },
+    "TeamMember": {
+      "title": "Team Member",
+      "description": "A consultant or team member of Grefas.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The full name of the team member" },
+        "role": { "type": "string", "description": "Title, e.g., Senior Business Consultant" },
+        "experience": { "type": "string", "description": "Description of professional experience" },
+        "bio": { "type": "string", "description": "Biography or detailed description" },
+        "imageUrl": { "type": "string", "description": "URL of the profile image" },
+        "rating": { "type": "number", "description": "Rating out of 5 stars (optional)" },
+        "skills": { "type": "array", "items": { "type": "string" }, "description": "Key skills or expertise areas" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "role", "experience", "bio"]
     },
     "Notification": {
       "title": "Notification",
@@ -124,6 +142,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "title", "message", "read", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Inquiry or booking message sent to a professional.",
+      "type": "object",
+      "properties": {
+        "senderName": { "type": "string" },
+        "senderEmail": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderName", "senderEmail", "message"]
     }
   },
   "firestore": {
@@ -158,6 +191,14 @@
     "/notifications/{notificationId}": {
       "schema": "Notification",
       "description": "Collection of user notifications"
+    },
+    "/team_members/{memberId}": {
+      "schema": "TeamMember",
+      "description": "Collection of team members (consultants, entertainment hosts, etc.)"
+    },
+    "/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Collection of inquiry and booking messages sent directly to specific specialists."
     }
   }
 }

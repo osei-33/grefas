@@ -108,6 +108,13 @@ service cloud.firestore {
              data.status in ['pending', 'confirmed', 'cancelled'];
     }
 
+    function isValidTeamMember(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.role is string && data.role.size() > 0 && data.role.size() < 100 &&
+             data.experience is string && data.experience.size() > 0 &&
+             data.bio is string && data.bio.size() > 0;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -186,6 +193,19 @@ service cloud.firestore {
     
     match /tasks/{taskId} {
       allow read, write: if isStaff();
+    }
+    
+    match /team_members/{memberId} {
+      allow read: if true;
+      allow write: if isStaff() && isValidTeamMember(request.resource.data);
+    }
+
+    match /messages/{messageId} {
+      allow read: if isStaff();
+      allow create: if request.resource.data.senderName is string && request.resource.data.senderName.size() > 0 &&
+                    request.resource.data.senderEmail is string && request.resource.data.senderEmail.size() > 0 &&
+                    request.resource.data.message is string && request.resource.data.message.size() > 0;
+      allow update, delete: if isStaff();
     }
     
     match /test/connection {

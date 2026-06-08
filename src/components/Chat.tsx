@@ -48,6 +48,7 @@ export default function Chat() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [imageCaption, setImageCaption] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,6 +77,7 @@ export default function Chat() {
     setSelectedImage(null);
     setImagePreviewUrl(null);
     setUploadProgress(0);
+    setImageCaption('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -228,7 +230,8 @@ export default function Chat() {
         chatId: chatId,
         timestamp: serverTimestamp(),
         isFromStaff: false,
-        ...(imageUrl ? { imageUrl } : {})
+        ...(imageUrl ? { imageUrl } : {}),
+        ...(imageUrl && imageCaption.trim() ? { caption: imageCaption.trim() } : {})
       });
       setNewMessage('');
       resetSelectedImage();
@@ -373,6 +376,15 @@ export default function Chat() {
                           className="max-h-52 w-auto object-contain cursor-zoom-in rounded hover:opacity-95 transition-opacity"
                           onClick={() => window.open(msg.imageUrl, '_blank')}
                         />
+                        {msg.caption && (
+                          <div className={`p-2 text-xs border-t border-border/10 italic break-words ${
+                            msg.isFromStaff || !(msg.userId === user?.uid || (msg.chatId === localStorage.getItem('grefas_chat_id')))
+                              ? 'bg-black/5 text-muted-foreground'
+                              : 'bg-white/10 text-orange-50'
+                          }`}>
+                            {msg.caption}
+                          </div>
+                        )}
                       </div>
                     )}
                     {(msg.text !== 'Sent an image' || !msg.imageUrl) && (
@@ -413,31 +425,42 @@ export default function Chat() {
 
             {/* Image Upload Thumbnail Preview Panel */}
             {imagePreviewUrl && (
-              <div className="px-4 py-2 bg-muted/40 border-t border-border flex items-center justify-between gap-3 animate-thumbnail">
-                <div className="relative h-14 w-14 rounded-md overflow-hidden border border-border bg-background flex-shrink-0">
-                  <img src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
-                  {isUploading && (
-                    <div className="absolute inset-0 bg-black/55 flex items-center justify-center text-[10px] text-white font-bold">
-                      {uploadProgress}%
-                    </div>
-                  )}
+              <div className="bg-muted/40 border-t border-border flex flex-col animate-thumbnail">
+                <div className="px-4 py-2 flex items-center justify-between gap-3">
+                  <div className="relative h-14 w-14 rounded-md overflow-hidden border border-border bg-background flex-shrink-0">
+                    <img src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
+                    {isUploading && (
+                      <div className="absolute inset-0 bg-black/55 flex items-center justify-center text-[10px] text-white font-bold">
+                        {uploadProgress}%
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">{selectedImage?.name || 'capture.jpg'}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {isUploading ? 'Uploading to secure storage...' : 'Ready to send'}
+                    </p>
+                  </div>
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
+                    onClick={resetSelectedImage}
+                    disabled={isUploading}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-foreground truncate">{selectedImage?.name || 'capture.jpg'}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {isUploading ? 'Uploading to secure storage...' : 'Ready to send'}
-                  </p>
+                <div className="px-4 pb-2 pt-0.5">
+                  <Input
+                    placeholder="Add an optional text caption..."
+                    value={imageCaption}
+                    onChange={(e) => setImageCaption(e.target.value)}
+                    className="h-8 text-xs bg-background border-border w-full"
+                    disabled={isUploading}
+                  />
                 </div>
-                <Button 
-                  type="button" 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
-                  onClick={resetSelectedImage}
-                  disabled={isUploading}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
               </div>
             )}
 

@@ -13,6 +13,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 export default function Booking() {
   const [date, setDate] = useState<Date | undefined>(undefined);
@@ -27,11 +28,15 @@ export default function Booking() {
     notes: '',
     serviceId: '',
     serviceTitle: '',
+    teamMemberId: '',
+    teamMemberName: '',
     time: '09:00'
   });
   const [services, setServices] = useState<any[]>([]);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
+  const location = useLocation();
 
   const generateOrderNumber = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -85,12 +90,38 @@ export default function Booking() {
       }
     });
 
+    // Fetch team members/specialists for selection
+    const unsubscribeTeam = onSnapshot(collection(db, 'team_members'), (snapshot) => {
+      setTeamMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'team_members');
+      } catch (e) {
+        console.error("Error fetching team members:", error);
+      }
+    });
+
     return () => {
       unsubscribeAuth();
       unsubscribeServices();
       unsubscribeBookings();
+      unsubscribeTeam();
     };
   }, []);
+
+  // Parse query string for preferred staff selected on the Team page
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const staffId = params.get('staffId');
+    const staffName = params.get('staffName');
+    if (staffId && staffName) {
+      setFormData(prev => ({
+        ...prev,
+        teamMemberId: staffId,
+        teamMemberName: decodeURIComponent(staffName)
+      }));
+    }
+  }, [location.search]);
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,6 +198,8 @@ export default function Booking() {
         notes: '',
         serviceId: '',
         serviceTitle: '',
+        teamMemberId: '',
+        teamMemberName: '',
         time: '09:00'
       });
     } catch (error: any) {
@@ -360,6 +393,32 @@ export default function Booking() {
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Requested Specialist (Optional)</label>
+                    <select
+                      className="w-full h-10 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600"
+                      value={formData.teamMemberId}
+                      onChange={(e) => {
+                        const m = teamMembers.find(m => m.id === e.target.value);
+                        setFormData({ 
+                          ...formData, 
+                          teamMemberId: e.target.value,
+                          teamMemberName: m?.name || ''
+                        });
+                      }}
+                    >
+                      <option value="" className="bg-card">No preference (Any available specialist)</option>
+                      {teamMembers.map(m => (
+                        <option key={m.id} value={m.id} className="bg-card">{m.name} — {m.role}</option>
+                      ))}
+                    </select>
+                    {formData.teamMemberName && (
+                      <p className="text-xs text-orange-600 font-semibold animate-in fade-in">
+                        ★ Requested: {formData.teamMemberName}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">

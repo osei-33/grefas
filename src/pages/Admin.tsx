@@ -28,7 +28,8 @@ import {
   getDocs,
   getDoc,
   setDoc,
-  where
+  where,
+  updateDoc
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { GoogleGenAI } from "@google/genai";
@@ -469,6 +470,19 @@ export default function Admin() {
                 {isActive('/admin/bookings') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
+                to="/admin/team"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/team') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Users className={`h-4 w-4 ${isActive('/admin/team') ? 'text-orange-600' : ''}`} />
+                <span>Manage Team</span>
+                {isActive('/admin/team') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+              <Link
                 to="/admin/tasks"
                 onClick={() => setIsSidebarOpen(false)}
                 className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -555,6 +569,7 @@ export default function Admin() {
           <Route path="/gallery" element={<ManageGallery />} />
           <Route path="/portfolio" element={<ManagePortfolio />} />
           <Route path="/bookings" element={<ManageBookings />} />
+          <Route path="/team" element={<ManageTeam />} />
           <Route path="/tasks" element={<ManageTasks />} />
           {role === 'admin' && (
             <>
@@ -893,6 +908,308 @@ function ManageServices() {
               </div>
             ))}
             {services.length === 0 && <p className="p-8 text-center text-muted-foreground">No services found.</p>}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ManageTeam() {
+  const [members, setMembers] = useState<any[]>([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newMember, setNewMember] = useState({
+    name: '',
+    role: '',
+    experience: '',
+    bio: '',
+    imageUrl: '',
+    rating: 4.9,
+    category: 'consulting',
+    skillsInput: '',
+    available: true,
+    highlightsInput: ''
+  });
+
+  useEffect(() => {
+    const q = query(collection(db, 'team_members'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'team_members');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      // Split skills by commas and trim them
+      const skills = newMember.skillsInput
+        ? newMember.skillsInput.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+
+      // Split project highlights by newline
+      const projectHighlights = newMember.highlightsInput
+        ? newMember.highlightsInput.split('\n').map(h => h.trim()).filter(Boolean)
+        : [];
+
+      // Default high quality standard stock images as fallback representation
+      const defaultImages = [
+        "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400&h=400",
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=400&h=400",
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400&h=400"
+      ];
+      const imageUrl = newMember.imageUrl.trim() || defaultImages[Math.floor(Math.random() * defaultImages.length)];
+
+      await addDoc(collection(db, 'team_members'), {
+        name: newMember.name,
+        role: newMember.role,
+        experience: newMember.experience,
+        bio: newMember.bio,
+        imageUrl,
+        rating: Number(newMember.rating) || 4.9,
+        category: newMember.category,
+        skills,
+        available: newMember.available,
+        projectHighlights,
+        createdAt: serverTimestamp()
+      });
+
+      toast.success('Specialist profile added successfully!');
+      setIsAdding(false);
+      setNewMember({
+        name: '',
+        role: '',
+        experience: '',
+        bio: '',
+        imageUrl: '',
+        rating: 4.9,
+        category: 'consulting',
+        skillsInput: '',
+        available: true,
+        highlightsInput: ''
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'team_members');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this specialist profile?')) return;
+    try {
+      await deleteDoc(doc(db, 'team_members', id));
+      toast.success('Specialist profile deleted');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `team_members/${id}`);
+    }
+  };
+
+  const toggleAvailability = async (id: string, currentStatus: boolean) => {
+    try {
+      const nextStatus = currentStatus === false ? false : true;
+      await updateDoc(doc(db, 'team_members', id), {
+        available: !nextStatus
+      });
+      toast.success('Specialist availability status updated!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `team_members/${id}`);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Manage Team</h1>
+          <p className="text-sm text-muted-foreground mt-1">Add or update team specialists, consultants, and event show hosts.</p>
+        </div>
+        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white">
+          <Plus className="mr-2 h-4 w-4" />
+          {isAdding ? 'Cancel' : 'Add Specialist'}
+        </Button>
+      </div>
+
+      {isAdding && (
+        <Card className="border border-border">
+          <CardHeader>
+            <CardTitle>Add New Specialist</CardTitle>
+            <CardDescription>Fill out the profile details of the new consultant or host.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAdd} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Full Name *</label>
+                  <Input
+                    required
+                    value={newMember.name}
+                    onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+                    placeholder="E.g., Dr. Linda Serwaah"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Role / Title *</label>
+                  <Input
+                    required
+                    value={newMember.role}
+                    onChange={(e) => setNewMember({ ...newMember, role: e.target.value })}
+                    placeholder="E.g., Head of Business consulting"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Experience Description *</label>
+                  <Input
+                    required
+                    value={newMember.experience}
+                    onChange={(e) => setNewMember({ ...newMember, experience: e.target.value })}
+                    placeholder="E.g., 12+ Years in Corporate Consulting"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Expertise Category *</label>
+                  <select
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600"
+                    value={newMember.category}
+                    onChange={(e) => setNewMember({ ...newMember, category: e.target.value })}
+                  >
+                    <option value="consulting">Business Consulting</option>
+                    <option value="entertainment">Entertainment Production</option>
+                    <option value="both">Both (Consult & Event)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Profile Image URL (Optional)</label>
+                  <Input
+                    value={newMember.imageUrl}
+                    onChange={(e) => setNewMember({ ...newMember, imageUrl: e.target.value })}
+                    placeholder="Leave blank for a premium fallback image"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Skills / Expertise (Comma Separated)</label>
+                  <Input
+                    value={newMember.skillsInput}
+                    onChange={(e) => setNewMember({ ...newMember, skillsInput: e.target.value })}
+                    placeholder="E.g., Brand Audits, Sound Design, MC"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Initial Booking Availability *</label>
+                  <select
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600"
+                    value={newMember.available ? 'yes' : 'no'}
+                    onChange={(e) => setNewMember({ ...newMember, available: e.target.value === 'yes' })}
+                  >
+                    <option value="yes">Yes (Accepting Bookings)</option>
+                    <option value="no">No (Fully Booked)</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Rating (Optional, Default: 4.9)</label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    max="5"
+                    value={newMember.rating}
+                    onChange={(e) => setNewMember({ ...newMember, rating: parseFloat(e.target.value) || 4.9 })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground text-orange-600 font-semibold mb-0">Project Highlights (one highlight per line) *</label>
+                <Textarea
+                  value={newMember.highlightsInput}
+                  onChange={(e) => setNewMember({ ...newMember, highlightsInput: e.target.value })}
+                  placeholder="Enter historical client successes or operational feats, one line at a time..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Detailed Bio *</label>
+                <Textarea
+                  required
+                  value={newMember.bio}
+                  onChange={(e) => setNewMember({ ...newMember, bio: e.target.value })}
+                  placeholder="Tell us about their background, achievements and passion..."
+                  rows={4}
+                />
+              </div>
+
+              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white">
+                Save Specialist Profile
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="border border-border">
+        <CardHeader>
+          <CardTitle>Specialists List</CardTitle>
+          <CardDescription>View, manage and delete registered team specialists.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="divide-y divide-border">
+            {members.map((member) => {
+              const userAvailable = member.available !== false;
+              return (
+                <div key={member.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4">
+                  <div className="flex items-center space-x-4">
+                    <img
+                      src={member.imageUrl}
+                      alt={member.name}
+                      referrerPolicy="no-referrer"
+                      className="h-12 w-12 rounded-full object-cover border border-border"
+                    />
+                    <div>
+                      <p className="font-bold text-foreground flex items-center gap-2">
+                        {member.name}
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950/40 text-orange-800 dark:text-orange-300 uppercase font-black tracking-wider">
+                          {member.category}
+                        </span>
+                      </p>
+                      <p className="text-xs text-orange-600 font-semibold">{member.role}</p>
+                      <p className="text-xs text-muted-foreground truncate max-w-sm mt-0.5">{member.bio}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 self-end sm:self-center">
+                    {/* Quick Availability Switch Badge */}
+                    <Button 
+                      onClick={() => toggleAvailability(member.id, userAvailable)}
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      className={`text-xs h-8 px-3 rounded-lg font-bold flex items-center gap-1.5 border ${
+                        userAvailable 
+                          ? 'border-green-200 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-300 dark:border-green-900/40' 
+                          : 'border-zinc-200 bg-zinc-50 text-zinc-650 dark:bg-zinc-900/20 dark:text-zinc-400 dark:border-zinc-800/45'
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${userAvailable ? 'bg-green-500 animate-pulse' : 'bg-zinc-400'}`} />
+                      {userAvailable ? 'Accepting bookings' : 'Fully booked'}
+                    </Button>
+
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(member.id)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-700">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+            {members.length === 0 && <p className="p-8 text-center text-muted-foreground">No specialists found.</p>}
           </div>
         </CardContent>
       </Card>
@@ -2168,6 +2485,29 @@ function ManageBookings() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (bookings.length === 0) {
+      toast.error('No bookings to delete.');
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete ALL ${bookings.length} booking request(s)? This action is completely irreversible!`)) return;
+
+    setIsBulkDeleting(true);
+    let successCount = 0;
+    try {
+      await Promise.all(bookings.map(async (b) => {
+        await deleteDoc(doc(db, 'bookings', b.id));
+        successCount++;
+      }));
+      toast.success(`Successfully deleted all ${successCount} booking(s).`);
+      setSelectedIds([]);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `bookings (all)`);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   if (loading) return <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto" />;
 
   const isAllFilteredSelected = filteredBookings.length > 0 && 
@@ -2269,6 +2609,23 @@ function ManageBookings() {
                     <Trash2 className="h-4 w-4" />
                   )}
                   Delete Selected ({selectedIds.length})
+                </Button>
+              )}
+
+              {bookings.length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteAll}
+                  disabled={isBulkDeleting}
+                  className="text-xs font-semibold h-9 flex items-center gap-1.5 bg-red-500/10 hover:bg-red-600 border border-red-200/50 text-red-600 hover:text-white transition-all duration-200"
+                >
+                  {isBulkDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Delete All Bookings
                 </Button>
               )}
 
@@ -2911,6 +3268,7 @@ function ManageChat() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [imageCaption, setImageCaption] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2939,6 +3297,7 @@ function ManageChat() {
     setSelectedImage(null);
     setImagePreviewUrl(null);
     setUploadProgress(0);
+    setImageCaption('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -2983,6 +3342,7 @@ function ManageChat() {
       // Group by chatId
       const grouped: Record<string, any> = {};
       allMsgs.forEach(m => {
+        if (!m.chatId) return; // Skip messages without a valid chatId
         if (!grouped[m.chatId]) {
           grouped[m.chatId] = {
             id: m.chatId,
@@ -3076,7 +3436,8 @@ function ManageChat() {
         chatId: activeChatId,
         timestamp: serverTimestamp(),
         isFromStaff: true,
-        ...(imageUrl ? { imageUrl } : {})
+        ...(imageUrl ? { imageUrl } : {}),
+        ...(imageUrl && imageCaption.trim() ? { caption: imageCaption.trim() } : {})
       });
       setReply('');
       resetSelectedImage();
@@ -3097,9 +3458,9 @@ function ManageChat() {
           </h2>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {threads.map(t => (
+          {threads.map((t, index) => (
             <button
-              key={t.id}
+              key={t.id || `thread-${index}`}
               onClick={() => setActiveChatId(t.id)}
               className={`w-full text-left p-4 hover:bg-muted transition-colors border-b border-border ${activeChatId === t.id ? 'bg-orange-50 dark:bg-orange-900/10' : ''}`}
             >
@@ -3126,8 +3487,8 @@ function ManageChat() {
               <span className="text-[10px] text-muted-foreground">ID: {activeChatId}</span>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map(m => (
-                <div key={m.id} className={`flex flex-col ${m.isFromStaff ? 'items-end' : 'items-start'}`}>
+              {messages.map((m, index) => (
+                <div key={m.id || `msg-${index}`} className={`flex flex-col ${m.isFromStaff ? 'items-end' : 'items-start'}`}>
                   <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
                     m.isFromStaff 
                       ? 'bg-orange-600 text-white rounded-tr-none' 
@@ -3142,6 +3503,15 @@ function ManageChat() {
                           className="max-h-52 w-auto object-contain cursor-zoom-in rounded hover:opacity-95 transition-opacity"
                           onClick={() => window.open(m.imageUrl, '_blank')}
                         />
+                        {m.caption && (
+                          <div className={`p-2 text-xs border-t border-border/10 italic break-words ${
+                            !m.isFromStaff
+                              ? 'bg-black/5 text-muted-foreground'
+                              : 'bg-white/10 text-orange-50'
+                          }`}>
+                            {m.caption}
+                          </div>
+                        )}
                       </div>
                     )}
                     {(m.text !== 'Sent an image' || !m.imageUrl) && (
@@ -3169,31 +3539,42 @@ function ManageChat() {
             </div>
             {/* Image Upload Thumbnail Preview Panel */}
             {imagePreviewUrl && (
-              <div className="px-4 py-2 bg-muted/40 border-t border-border flex items-center justify-between gap-3 animate-thumbnail">
-                <div className="relative h-14 w-14 rounded-md overflow-hidden border border-border bg-background flex-shrink-0">
-                  <img src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
-                  {isUploading && (
-                    <div className="absolute inset-0 bg-black/55 flex items-center justify-center text-[10px] text-white font-bold">
-                      {uploadProgress}%
-                    </div>
-                  )}
+              <div className="bg-muted/40 border-t border-border flex flex-col animate-thumbnail">
+                <div className="px-4 py-2 flex items-center justify-between gap-3">
+                  <div className="relative h-14 w-14 rounded-md overflow-hidden border border-border bg-background flex-shrink-0">
+                    <img src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
+                    {isUploading && (
+                      <div className="absolute inset-0 bg-black/55 flex items-center justify-center text-[10px] text-white font-bold">
+                        {uploadProgress}%
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">{selectedImage?.name || 'capture.jpg'}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {isUploading ? 'Uploading to secure storage...' : 'Ready to send'}
+                    </p>
+                  </div>
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted animate-in fade-in"
+                    onClick={resetSelectedImage}
+                    disabled={isUploading}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-foreground truncate">{selectedImage?.name || 'capture.jpg'}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {isUploading ? 'Uploading to secure storage...' : 'Ready to send'}
-                  </p>
+                <div className="px-4 pb-2 pt-0.5">
+                  <Input
+                    placeholder="Add an optional text caption..."
+                    value={imageCaption}
+                    onChange={(e) => setImageCaption(e.target.value)}
+                    className="h-8 text-xs bg-background border-border w-full animate-in fade-in"
+                    disabled={isUploading}
+                  />
                 </div>
-                <Button 
-                  type="button" 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted animate-in fade-in"
-                  onClick={resetSelectedImage}
-                  disabled={isUploading}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
               </div>
             )}
 

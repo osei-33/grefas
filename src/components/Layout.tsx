@@ -97,6 +97,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Services', href: '/services' },
     { name: 'Portfolio', href: '/portfolio' },
     { name: 'Gallery', href: '/gallery' },
+    { name: 'Team', href: '/team' },
     { name: 'Booking', href: '/booking' },
     { name: 'Contact', href: '/contact' },
     { name: 'Admin', href: '/admin' },

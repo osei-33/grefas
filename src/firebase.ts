@@ -92,5 +92,5 @@ async function verifyConnection(retries = 3) {
   }
 }
 
-// Start verification in background
-verifyConnection();
+// Start verification in background (disabled to suppress noisy connection warnings in sandboxed browser environments)
+// verifyConnection();
