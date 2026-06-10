@@ -23,6 +23,35 @@ export default function NotificationCenter() {
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [permission, setPermission] = useState<string>('default');
+
+  const hasMountedRef = React.useRef(false);
+  const existingDocIdsRef = React.useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPermission(Notification.permission);
+    }
+  }, []);
+
+  const requestNotificationPermission = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      alert("This browser does not support desktop notifications.");
+      return;
+    }
+    try {
+      const res = await Notification.requestPermission();
+      setPermission(res);
+      if (res === 'granted') {
+        new Notification("Notifications Enabled!", {
+          body: "You will now receive desktop push alerts for booking alterations & details.",
+          icon: "/favicon.ico"
+        });
+      }
+    } catch (err) {
+      console.error("Error requesting permission:", err);
+    }
+  };
 
   useEffect(() => {
     let unsubscribeRole: (() => void) | null = null;
@@ -62,6 +91,11 @@ export default function NotificationCenter() {
   }, []);
 
   useEffect(() => {
+    hasMountedRef.current = false;
+    existingDocIdsRef.current.clear();
+  }, [user, role]);
+
+  useEffect(() => {
     if (!user) {
       setUserNotifications([]);
       setAdminNotifications([]);
@@ -78,6 +112,35 @@ export default function NotificationCenter() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      if (hasMountedRef.current) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            const id = change.doc.id;
+            if (!existingDocIdsRef.current.has(id)) {
+              existingDocIdsRef.current.add(id);
+              if (!data.read && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification(data.title || "Booking Update", {
+                    body: data.message || "You have a new booking update.",
+                    icon: "/favicon.ico",
+                    tag: id
+                  });
+                } catch (e) {
+                  console.warn("Failed to trigger Notification API:", e);
+                }
+              }
+            }
+          }
+        });
+      } else {
+        snapshot.docs.forEach(doc => {
+          existingDocIdsRef.current.add(doc.id);
+        });
+        hasMountedRef.current = true;
+      }
+
       setUserNotifications(docs);
     }, (error) => {
       console.error("Error fetching notifications:", error);
@@ -94,6 +157,34 @@ export default function NotificationCenter() {
       );
       unsubscribeAdmin = onSnapshot(qAdmin, (snapshot) => {
         const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        if (hasMountedRef.current) {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              const id = change.doc.id;
+              if (!existingDocIdsRef.current.has(id)) {
+                existingDocIdsRef.current.add(id);
+                if (!data.read && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                  try {
+                    new Notification(data.title || "New Admin Notification", {
+                      body: data.message || "A customer made a booking or request.",
+                      icon: "/favicon.ico",
+                      tag: id
+                    });
+                  } catch (e) {
+                    console.warn("Failed to trigger Notification API:", e);
+                  }
+                }
+              }
+            }
+          });
+        } else {
+          snapshot.docs.forEach(doc => {
+            existingDocIdsRef.current.add(doc.id);
+          });
+        }
+
         setAdminNotifications(docs);
       }, (error) => {
         console.error("Error fetching admin notifications:", error);
@@ -180,6 +271,39 @@ export default function NotificationCenter() {
                   </Button>
                 </CardHeader>
                 <CardContent className="p-0 max-h-[400px] overflow-y-auto">
+                  {user && (
+                    <>
+                      {permission === 'default' && (
+                        <div className="p-3 bg-orange-50 dark:bg-orange-950/20 border-b border-border flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                            </span>
+                            <span>Enable browser push alerts to stay notified in real-time</span>
+                          </div>
+                          <button 
+                            className="bg-orange-600 hover:bg-orange-700 text-white font-semibold text-[10px] uppercase px-2 py-1 rounded transition-colors whitespace-nowrap cursor-pointer"
+                            onClick={requestNotificationPermission}
+                          >
+                            Enable
+                          </button>
+                        </div>
+                      )}
+                      {permission === 'denied' && (
+                        <div className="p-3 bg-red-50/50 dark:bg-red-950/10 border-b border-[#fed7d7]/30 dark:border-red-950/30 flex items-center gap-2 text-[11px] text-red-600 dark:text-red-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                          <span>Browser notifications are blocked. Please allow them in your browser settings.</span>
+                        </div>
+                      )}
+                      {permission === 'granted' && (
+                        <div className="p-2.5 bg-green-50/50 dark:bg-green-950/10 border-b border-border flex items-center gap-2 text-[10px] text-green-600 dark:text-green-500 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                          <span>Browser notifications active – you're receiving real-time booking updates.</span>
+                        </div>
+                      )}
+                    </>
+                  )}
                   {!user ? (
                     <div className="py-12 px-6 text-center space-y-4">
                       <div className="mx-auto w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">

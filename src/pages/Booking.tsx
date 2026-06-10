@@ -8,11 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
 export default function Booking() {
@@ -37,6 +37,14 @@ export default function Booking() {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const location = useLocation();
+
+  const [activeTab, setActiveTab] = useState<'book' | 'status'>('book');
+  const [statusSearchQuery, setStatusSearchQuery] = useState('');
+  const [statusSearchResult, setStatusSearchResult] = useState<any>(null);
+  const [isSearchingStatus, setIsSearchingStatus] = useState(false);
+  const [hasSearchedStatus, setHasSearchedStatus] = useState(false);
+  const [clientBookings, setClientBookings] = useState<any[]>([]);
+  const [loadingClientBookings, setLoadingClientBookings] = useState(false);
 
   const [step, setStep] = useState(1);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -112,11 +120,13 @@ export default function Booking() {
     };
   }, []);
 
-  // Parse query string for preferred staff selected on the Team page
+  // Parse query string for preferred staff selected on the Team page or status checking
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const staffId = params.get('staffId');
     const staffName = params.get('staffName');
+    const urlOrderNumber = params.get('orderNumber');
+    
     if (staffId && staffName) {
       setFormData(prev => ({
         ...prev,
@@ -124,7 +134,133 @@ export default function Booking() {
         teamMemberName: decodeURIComponent(staffName)
       }));
     }
+    
+    if (urlOrderNumber) {
+      setActiveTab('status');
+      setStatusSearchQuery(urlOrderNumber.toUpperCase());
+      
+      const performAutoSearch = async () => {
+        setIsSearchingStatus(true);
+        setHasSearchedStatus(true);
+        try {
+          const q = query(collection(db, 'bookings'), where('orderNumber', '==', urlOrderNumber.toUpperCase()));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const docSnap = querySnapshot.docs[0];
+            setStatusSearchResult({ id: docSnap.id, ...docSnap.data() });
+          }
+        } catch (err) {
+          console.error("Auto search error:", err);
+        } finally {
+          setIsSearchingStatus(false);
+        }
+      };
+      performAutoSearch();
+    }
   }, [location.search]);
+
+  // Real-time listener for automated client-side bookings list tracking
+  useEffect(() => {
+    if (!user) {
+      setClientBookings([]);
+      return;
+    }
+
+    setLoadingClientBookings(true);
+    
+    // Multi-criteria real-time syncing (query UID matching, fallback to email query merge)
+    const qUid = query(collection(db, 'bookings'), where('userId', '==', user.uid));
+    
+    const unsubscribeUid = onSnapshot(qUid, (snapshot) => {
+      const uidBookings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      if (user.email) {
+        const qEmail = query(collection(db, 'bookings'), where('userEmail', '==', user.email));
+        getDocs(qEmail).then((emailSnap) => {
+          const emailBookings = emailSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          
+          // Deduplicate on unique Firestore document ids
+          const merged = [...uidBookings];
+          emailBookings.forEach(eb => {
+            if (!merged.some(mb => mb.id === eb.id)) {
+              merged.push(eb);
+            }
+          });
+          
+          // Sort by schedule date descending, then time descending
+          merged.sort((a: any, b: any) => {
+            const dateA = a.date || '';
+            const dateB = b.date || '';
+            if (dateA !== dateB) return dateB.localeCompare(dateA);
+            return (b.time || '').localeCompare(a.time || '');
+          });
+          
+          setClientBookings(merged);
+          setLoadingClientBookings(false);
+        }).catch(err => {
+          console.error("Dynamic email-based merge queries failed:", err);
+          setClientBookings(uidBookings);
+          setLoadingClientBookings(false);
+        });
+      } else {
+        setClientBookings(uidBookings);
+        setLoadingClientBookings(false);
+      }
+    }, (error) => {
+      console.error("Realtime database link failed:", error);
+      setLoadingClientBookings(false);
+    });
+
+    return () => {
+      unsubscribeUid();
+    };
+  }, [user]);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      toast.success("Successfully signed in! Your previous bookings have loaded automatically below.");
+    } catch (error) {
+      console.error("Status check authentication failure:", error);
+      toast.error("Failed to sign in securely. Please try again.");
+    }
+  };
+
+  const handleCheckStatus = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const queryStr = statusSearchQuery.trim().toUpperCase();
+    if (!queryStr) {
+      toast.error("Please enter a valid order number");
+      return;
+    }
+
+    setIsSearchingStatus(true);
+    setHasSearchedStatus(true);
+    setStatusSearchResult(null);
+
+    try {
+      const q = query(collection(db, 'bookings'), where('orderNumber', '==', queryStr));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const docSnap = querySnapshot.docs[0];
+        setStatusSearchResult({ id: docSnap.id, ...docSnap.data() });
+        toast.success("Appointment found successfully!");
+      } else {
+        toast.error("No appointment matches this order number");
+      }
+    } catch (error) {
+      console.error("Error looking up booking status:", error);
+      try {
+        handleFirestoreError(error, OperationType.GET, `bookings/query?orderNumber=${queryStr}`);
+      } catch (e) {
+        toast.error("Could not complete lookup. Please try again.");
+      }
+    } finally {
+      setIsSearchingStatus(false);
+    }
+  };
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -294,393 +430,729 @@ export default function Booking() {
           </motion.p>
         </div>
 
-        {/* Step progress bar */}
-        <div className="mx-auto max-w-3xl mb-12" id="booking-stepper">
-          <div className="relative flex items-center justify-between">
-            {/* Background line */}
-            <div className="absolute left-0 top-1/2 h-0.5 w-full -translate-y-1/2 bg-muted-foreground/20" />
-            {/* Active progress line */}
-            <div 
-              className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-orange-600 transition-all duration-300" 
-              style={{ width: `${((step - 1) / 2) * 100}%` }}
-            />
-
-            {[
-              { num: 1, label: "Schedule", icon: CalendarIcon },
-              { num: 2, label: "Information", icon: User },
-              { num: 3, label: "Review & Book", icon: CheckCircle2 }
-            ].map((s) => {
-              const Icon = s.icon;
-              const isCompleted = step > s.num;
-              const isActive = step === s.num;
-              return (
-                <div key={s.num} className="relative z-10 flex flex-col items-center">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (s.num === 1) setStep(1);
-                      else if (s.num === 2 && date) setStep(2);
-                      else if (s.num === 3 && date && formData.userName && formData.userEmail && formData.serviceId) setStep(3);
-                    }}
-                    disabled={
-                      (s.num === 2 && !date) ||
-                      (s.num === 3 && (!date || !formData.userName || !formData.userEmail || !formData.serviceId))
-                    }
-                    className={`flex h-10 w-10 items-center justify-center rounded-full border-2 font-bold transition-all duration-300 ${
-                      isCompleted
-                        ? "bg-orange-600 border-orange-600 text-white"
-                        : isActive
-                        ? "bg-background border-orange-600 text-orange-600 ring-4 ring-orange-100 dark:ring-orange-950/40"
-                        : "bg-muted border-border text-muted-foreground cursor-not-allowed"
-                    }`}
-                  >
-                    {isCompleted ? <Check className="h-5 w-5" /> : <span>{s.num}</span>}
-                  </button>
-                  <span className={`mt-2 text-xs font-semibold ${isActive ? "text-orange-600 font-bold" : isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
-                    {s.label}
-                  </span>
-                </div>
-              );
-            })}
+        {/* Tabs for switching between Appointment Booking and Appointment Status Lookup */}
+        <div className="flex justify-center mb-12 animate-in fade-in duration-300">
+          <div className="inline-flex rounded-xl p-1 bg-muted border border-border">
+            <button
+              onClick={() => setActiveTab('book')}
+              className={`rounded-lg px-6 py-2.5 text-sm font-bold tracking-wide transition-all duration-200 flex items-center gap-2 ${
+                activeTab === 'book'
+                  ? 'bg-orange-600 text-white shadow-md'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-card/40'
+              }`}
+            >
+              <CalendarIcon className="h-4 w-4" />
+              Schedule Appointment
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('status');
+                setStatusSearchResult(null);
+                setHasSearchedStatus(false);
+              }}
+              className={`rounded-lg px-6 py-2.5 text-sm font-bold tracking-wide transition-all duration-200 flex items-center gap-2 ${
+                activeTab === 'status'
+                  ? 'bg-orange-600 text-white shadow-md'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-card/40'
+              }`}
+            >
+              <Search className="h-4 w-4" />
+              Check Appointment Status
+            </button>
           </div>
         </div>
 
-        {/* Form Steps Card Container */}
-        <div className="mx-auto max-w-3xl">
-          <Card className="border border-border/50 shadow-lg overflow-hidden bg-card">
-            <CardHeader className="bg-orange-600 text-white relative">
-              <div className="absolute top-4 right-4 bg-orange-700/60 backdrop-blur text-white border border-white/10 px-3 py-1 rounded-full text-xs font-bold font-mono">
-                Step {step} of 3
-              </div>
-              <CardTitle className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
-                {step === 1 && <><CalendarIcon className="h-6 w-6" /> Select Consultation Date</>}
-                {step === 2 && <><User className="h-6 w-6" /> Professional Service Details</>}
-                {step === 3 && <><CheckCircle2 className="h-6 w-6" /> Verify Your Selections</>}
-              </CardTitle>
-              <CardDescription className="text-orange-100 mt-1 max-w-xl">
-                {step === 1 && "Choose an available date on the calendar, then select your preferred hourly time slot."}
-                {step === 2 && "Provide your basic contact information, select the primary consulting area and request specialists."}
-                {step === 3 && "Take a brief moment to confirm that your booking schedule and particulars are fully accurate."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-6 sm:p-8 bg-card text-foreground">
-              <AnimatePresence mode="wait">
-                {step === 1 && (
-                  <motion.div
-                    key="step1"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="space-y-6"
-                  >
-                    <div className="flex flex-col items-center">
-                      <Calendar
-                        mode="single"
-                        selected={date}
-                        onSelect={setDate}
-                        disabled={disabledDays}
-                        modifiers={{ 
-                          booked: Object.keys(bookedDates).map(d => parseISO(d)) 
+        {activeTab === 'book' ? (
+          <>
+            {/* Step progress bar */}
+            <div className="mx-auto max-w-3xl mb-12" id="booking-stepper">
+              <div className="relative flex items-center justify-between">
+                {/* Background line */}
+                <div className="absolute left-0 top-1/2 h-0.5 w-full -translate-y-1/2 bg-muted-foreground/20" />
+                {/* Active progress line */}
+                <div 
+                  className="absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-orange-600 transition-all duration-300" 
+                  style={{ width: `${((step - 1) / 2) * 100}%` }}
+                />
+
+                {[
+                  { num: 1, label: "Schedule", icon: CalendarIcon },
+                  { num: 2, label: "Information", icon: User },
+                  { num: 3, label: "Review & Book", icon: CheckCircle2 }
+                ].map((s) => {
+                  const Icon = s.icon;
+                  const isCompleted = step > s.num;
+                  const isActive = step === s.num;
+                  return (
+                    <div key={s.num} className="relative z-10 flex flex-col items-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (s.num === 1) setStep(1);
+                          else if (s.num === 2 && date) setStep(2);
+                          else if (s.num === 3 && date && formData.userName && formData.userEmail && formData.serviceId) setStep(3);
                         }}
-                        modifiersClassNames={{ 
-                          booked: "ring-2 ring-orange-500 ring-offset-2" 
-                        }}
-                        className="rounded-xl border border-border shadow-md bg-card text-foreground p-3 animate-in fade-in"
-                      />
+                        disabled={
+                          (s.num === 2 && !date) ||
+                          (s.num === 3 && (!date || !formData.userName || !formData.userEmail || !formData.serviceId))
+                        }
+                        className={`flex h-10 w-10 items-center justify-center rounded-full border-2 font-bold transition-all duration-300 ${
+                          isCompleted
+                            ? "bg-orange-600 border-orange-600 text-white"
+                            : isActive
+                            ? "bg-background border-orange-600 text-orange-600 ring-4 ring-orange-100 dark:ring-orange-950/40"
+                            : "bg-muted border-border text-muted-foreground cursor-not-allowed"
+                        }`}
+                      >
+                        {isCompleted ? <Check className="h-5 w-5" /> : <span>{s.num}</span>}
+                      </button>
+                      <span className={`mt-2 text-xs font-semibold ${isActive ? "text-orange-600 font-bold" : isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
+                        {s.label}
+                      </span>
                     </div>
-                    
-                    {date ? (
-                      <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                        <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                          <Clock className="h-4 w-4 text-orange-600" /> Select Availability Slot
-                        </label>
-                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                          {timeSlots.map(t => (
-                            <button
-                              key={t}
-                              type="button"
-                              onClick={() => setFormData({ ...formData, time: t })}
-                              className={`rounded-xl border px-3 py-2.5 text-xs font-bold tracking-wide transition-all ${
-                                formData.time === t
-                                  ? 'bg-orange-600 border-orange-600 text-white shadow-md'
-                                  : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-                              }`}
-                            >
-                              {t}
-                            </button>
-                          ))}
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Form Steps Card Container */}
+            <div className="mx-auto max-w-3xl">
+              <Card className="border border-border/50 shadow-lg overflow-hidden bg-card">
+                <CardHeader className="bg-orange-600 text-white relative">
+                  <div className="absolute top-4 right-4 bg-orange-700/60 backdrop-blur text-white border border-white/10 px-3 py-1 rounded-full text-xs font-bold font-mono">
+                    Step {step} of 3
+                  </div>
+                  <CardTitle className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
+                    {step === 1 && <><CalendarIcon className="h-6 w-6" /> Select Consultation Date</>}
+                    {step === 2 && <><User className="h-6 w-6" /> Professional Service Details</>}
+                    {step === 3 && <><CheckCircle2 className="h-6 w-6" /> Verify Your Selections</>}
+                  </CardTitle>
+                  <CardDescription className="text-orange-100 mt-1 max-w-xl">
+                    {step === 1 && "Choose an available date on the calendar, then select your preferred hourly time slot."}
+                    {step === 2 && "Provide your basic contact information, select the primary consulting area and request specialists."}
+                    {step === 3 && "Take a brief moment to confirm that your booking schedule and particulars are fully accurate."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 sm:p-8 bg-card text-foreground">
+                  <AnimatePresence mode="wait">
+                    {step === 1 && (
+                      <motion.div
+                        key="step1"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 10 }}
+                        className="space-y-6"
+                      >
+                        <div className="flex flex-col items-center">
+                          <Calendar
+                            mode="single"
+                            selected={date}
+                            onSelect={setDate}
+                            disabled={disabledDays}
+                            modifiers={{ 
+                              booked: Object.keys(bookedDates).map(d => parseISO(d)) 
+                            }}
+                            modifiersClassNames={{ 
+                              booked: "ring-2 ring-orange-500 ring-offset-2" 
+                            }}
+                            className="rounded-xl border border-border shadow-md bg-card text-foreground p-3 animate-in fade-in"
+                          />
                         </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-6 px-4 border border-dashed rounded-xl border-border bg-muted/10 text-muted-foreground text-sm italic">
-                        Please select an available date on the calendar above to unlock reservation hours.
-                      </div>
+                        
+                        {date ? (
+                          <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                            <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                              <Clock className="h-4 w-4 text-orange-600" /> Select Availability Slot
+                            </label>
+                            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                              {timeSlots.map(t => (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, time: t })}
+                                  className={`rounded-xl border px-3 py-2.5 text-xs font-bold tracking-wide transition-all ${
+                                    formData.time === t
+                                      ? 'bg-orange-600 border-orange-600 text-white shadow-md'
+                                      : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                                  }`}
+                                >
+                                  {t}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 px-4 border border-dashed rounded-xl border-border bg-muted/10 text-muted-foreground text-sm italic">
+                            Please select an available date on the calendar above to unlock reservation hours.
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center text-xs py-2 border-t border-border mt-4">
+                          <div className="flex items-center gap-1.5 font-semibold">
+                            <div className="h-3 w-3 rounded bg-orange-600" />
+                            <span className="text-muted-foreground">Chosen Date</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 font-semibold">
+                            <div className="h-3 w-3 rounded-full ring-2 ring-orange-500 ring-offset-2" />
+                            <span className="text-muted-foreground">Bookings Active</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 font-semibold">
+                            <div className="h-3 w-3 rounded bg-muted" />
+                            <span className="text-muted-foreground">Fully Booked (5/5 Limits)</span>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end pt-4 border-t border-border">
+                          <Button
+                            type="button"
+                            disabled={!date}
+                            onClick={() => setStep(2)}
+                            className="bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl h-11 px-6 flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm"
+                          >
+                            Continue to Information <ArrowRight className="h-4.5 w-4.5" />
+                          </Button>
+                        </div>
+                      </motion.div>
                     )}
 
-                    <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center text-xs py-2 border-t border-border mt-4">
-                      <div className="flex items-center gap-1.5 font-semibold">
-                        <div className="h-3 w-3 rounded bg-orange-600" />
-                        <span className="text-muted-foreground">Chosen Date</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 font-semibold">
-                        <div className="h-3 w-3 rounded-full ring-2 ring-orange-500 ring-offset-2" />
-                        <span className="text-muted-foreground">Bookings Active</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 font-semibold">
-                        <div className="h-3 w-3 rounded bg-muted" />
-                        <span className="text-muted-foreground">Fully Booked (5/5 Limits)</span>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end pt-4 border-t border-border">
-                      <Button
-                        type="button"
-                        disabled={!date}
-                        onClick={() => setStep(2)}
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl h-11 px-6 flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm"
+                    {step === 2 && (
+                      <motion.div
+                        key="step2"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 10 }}
+                        className="space-y-5"
                       >
-                        Continue to Information <ArrowRight className="h-4.5 w-4.5" />
-                      </Button>
-                    </div>
-                  </motion.div>
-                )}
-
-                {step === 2 && (
-                  <motion.div
-                    key="step2"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="space-y-5"
-                  >
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Full Name *</label>
-                        <Input
-                          required
-                          value={formData.userName}
-                          onChange={(e) => setFormData({ ...formData, userName: e.target.value })}
-                          placeholder="Your complete name"
-                          className="bg-muted/50 border-border h-11 rounded-xl font-medium"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email Address *</label>
-                        <Input
-                          required
-                          type="email"
-                          value={formData.userEmail}
-                          onChange={(e) => setFormData({ ...formData, userEmail: e.target.value })}
-                          placeholder="primary@contact.com"
-                          className="bg-muted/50 border-border h-11 rounded-xl font-medium"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</label>
-                        <Input
-                          value={formData.userPhone}
-                          onChange={(e) => setFormData({ ...formData, userPhone: e.target.value })}
-                          placeholder="+233 ..."
-                          className="bg-muted/50 border-border h-11 rounded-xl font-medium"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Services *</label>
-                        <select
-                          className="w-full h-11 rounded-xl border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600 font-medium"
-                          value={formData.serviceId}
-                          required
-                          onChange={(e) => {
-                            const s = services.find(s => s.id === e.target.value);
-                            setFormData({ 
-                              ...formData, 
-                              serviceId: e.target.value,
-                              serviceTitle: s?.title || ''
-                            });
-                          }}
-                        >
-                          <option value="" className="bg-card">Select a service category</option>
-                          {services.map(s => (
-                            <option key={s.id} value={s.id} className="bg-card">{s.title}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Requested Specialist (Optional)</label>
-                      <select
-                        className="w-full h-11 rounded-xl border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600 font-medium"
-                        value={formData.teamMemberId}
-                        onChange={(e) => {
-                          const m = teamMembers.find(m => m.id === e.target.value);
-                          setFormData({ 
-                            ...formData, 
-                            teamMemberId: e.target.value,
-                            teamMemberName: m?.name || ''
-                          });
-                        }}
-                      >
-                        <option value="" className="bg-card">Primary available specialist (No preference)</option>
-                        {teamMembers.map(m => (
-                          <option key={m.id} value={m.id} className="bg-card">{m.name} — {m.role}</option>
-                        ))}
-                      </select>
-                      {formData.teamMemberName && (
-                        <p className="text-xs text-orange-600 font-bold flex items-center gap-1.5 mt-1.5 animate-in fade-in">
-                          ★ Pre-assigned Preferred Expert: {formData.teamMemberName}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Additional Event / Consultation Notes</label>
-                      <Textarea
-                        value={formData.notes}
-                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                        placeholder="Provide setup instructions, advisory goals, or details of corporate alignments..."
-                        rows={4}
-                        className="bg-muted/50 border-border rounded-xl resize-none text-sm leading-relaxed"
-                      />
-                    </div>
-
-                    <div className="flex justify-between gap-4 pt-4 border-t border-border">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setStep(1)}
-                        className="rounded-xl font-bold h-11 px-5 border-border hover:bg-muted text-muted-foreground flex items-center gap-1.5 text-sm"
-                      >
-                        <ArrowLeft className="h-4 w-4" /> Change Schedule
-                      </Button>
-                      <Button
-                        type="button"
-                        disabled={!formData.userName.trim() || !formData.userEmail.trim() || !formData.serviceId}
-                        onClick={() => {
-                          if (validateStep2()) {
-                            setStep(3);
-                          }
-                        }}
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-6 rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm"
-                      >
-                        Review Selections <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </motion.div>
-                )}
-
-                {step === 3 && (
-                  <motion.div
-                    key="step3"
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    className="space-y-6"
-                  >
-                    <div className="rounded-2xl border border-border bg-muted/10 overflow-hidden divide-y divide-border">
-                      <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Schedule Slot</span>
-                          <p className="text-foreground font-extrabold flex items-center gap-1.5 mt-1">
-                            <CalendarIcon className="h-4.5 w-4.5 text-orange-600" /> {date ? format(date, 'PPPP') : ''}
-                          </p>
-                          <p className="text-muted-foreground font-bold flex items-center gap-1.5 mt-1 text-xs pl-6">
-                            <Clock className="h-3.5 w-3.5 text-orange-600" /> {formData.time} (UTC Local Time)
-                          </p>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Full Name *</label>
+                            <Input
+                              required
+                              value={formData.userName}
+                              onChange={(e) => setFormData({ ...formData, userName: e.target.value })}
+                              placeholder="Your complete name"
+                              className="bg-muted/50 border-border h-11 rounded-xl font-medium"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email Address *</label>
+                            <Input
+                              required
+                              type="email"
+                              value={formData.userEmail}
+                              onChange={(e) => setFormData({ ...formData, userEmail: e.target.value })}
+                              placeholder="primary@contact.com"
+                              className="bg-muted/50 border-border h-11 rounded-xl font-medium"
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Service Category</span>
-                          <p className="text-foreground font-extrabold flex items-center gap-1.5 mt-1">
-                            <Briefcase className="h-4.5 w-4.5 text-orange-600" /> {formData.serviceTitle || 'General Consultation'}
-                          </p>
+
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</label>
+                            <Input
+                              value={formData.userPhone}
+                              onChange={(e) => setFormData({ ...formData, userPhone: e.target.value })}
+                              placeholder="+233 ..."
+                              className="bg-muted/50 border-border h-11 rounded-xl font-medium"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Services *</label>
+                            <select
+                              className="w-full h-11 rounded-xl border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600 font-medium"
+                              value={formData.serviceId}
+                              required
+                              onChange={(e) => {
+                                const s = services.find(s => s.id === e.target.value);
+                                setFormData({ 
+                                  ...formData, 
+                                  serviceId: e.target.value,
+                                  serviceTitle: s?.title || ''
+                                });
+                              }}
+                            >
+                              <option value="" className="bg-card">Select a service category</option>
+                              {services.map(s => (
+                                <option key={s.id} value={s.id} className="bg-card">{s.title}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Requested Specialist (Optional)</label>
+                          <select
+                            className="w-full h-11 rounded-xl border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600 font-medium"
+                            value={formData.teamMemberId}
+                            onChange={(e) => {
+                              const m = teamMembers.find(m => m.id === e.target.value);
+                              setFormData({ 
+                                ...formData, 
+                                teamMemberId: e.target.value,
+                                teamMemberName: m?.name || ''
+                              });
+                            }}
+                          >
+                            <option value="" className="bg-card">Primary available specialist (No preference)</option>
+                            {teamMembers.map(m => (
+                              <option key={m.id} value={m.id} className="bg-card">{m.name} — {m.role}</option>
+                            ))}
+                          </select>
                           {formData.teamMemberName && (
-                            <p className="text-orange-600 font-extrabold text-xs mt-1 pl-6 flex items-center gap-1">
-                              ★ Specialist: {formData.teamMemberName}
+                            <p className="text-xs text-orange-600 font-bold flex items-center gap-1.5 mt-1.5 animate-in fade-in">
+                              ★ Pre-assigned Preferred Expert: {formData.teamMemberName}
                             </p>
                           )}
                         </div>
-                      </div>
 
-                      <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Contact Name</span>
-                          <p className="text-foreground font-extrabold flex items-center gap-1.5 mt-1">
-                            <User className="h-4.5 w-4.5 text-orange-600" /> {formData.userName}
-                          </p>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Additional Event / Consultation Notes</label>
+                          <Textarea
+                            value={formData.notes}
+                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                            placeholder="Provide setup instructions, advisory goals, or details of corporate alignments..."
+                            rows={4}
+                            className="bg-muted/50 border-border rounded-xl resize-none text-sm leading-relaxed"
+                          />
                         </div>
-                        <div>
-                          <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Email & Phone</span>
-                          <p className="text-foreground font-semibold flex items-center gap-1.5 mt-1">
-                            <Mail className="h-4.5 w-4.5 text-muted-foreground" /> {formData.userEmail}
-                          </p>
-                          {formData.userPhone && (
-                            <p className="text-muted-foreground text-sm font-semibold flex items-center gap-1.5 mt-1 pl-6">
-                              <Phone className="h-3.5 w-3.5 text-muted-foreground" /> {formData.userPhone}
-                            </p>
+
+                        <div className="flex justify-between gap-4 pt-4 border-t border-border">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setStep(1)}
+                            className="rounded-xl font-bold h-11 px-5 border-border hover:bg-muted text-muted-foreground flex items-center gap-1.5 text-sm"
+                          >
+                            <ArrowLeft className="h-4 w-4" /> Change Schedule
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={!formData.userName.trim() || !formData.userEmail.trim() || !formData.serviceId}
+                            onClick={() => {
+                              if (validateStep2()) {
+                                setStep(3);
+                              }
+                            }}
+                            className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-6 rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm"
+                          >
+                            Review Selections <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {step === 3 && (
+                      <motion.div
+                        key="step3"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 10 }}
+                        className="space-y-6"
+                      >
+                        <div className="rounded-2xl border border-border bg-muted/10 overflow-hidden divide-y divide-border">
+                          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Schedule Slot</span>
+                              <p className="text-foreground font-extrabold flex items-center gap-1.5 mt-1">
+                                <CalendarIcon className="h-4.5 w-4.5 text-orange-600" /> {date ? format(date, 'PPPP') : ''}
+                              </p>
+                              <p className="text-muted-foreground font-bold flex items-center gap-1.5 mt-1 text-xs pl-6">
+                                <Clock className="h-3.5 w-3.5 text-orange-600" /> {formData.time} (UTC Local Time)
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Service Category</span>
+                              <p className="text-foreground font-extrabold flex items-center gap-1.5 mt-1">
+                                <Briefcase className="h-4.5 w-4.5 text-orange-600" /> {formData.serviceTitle || 'General Consultation'}
+                              </p>
+                              {formData.teamMemberName && (
+                                <p className="text-orange-600 font-extrabold text-xs mt-1 pl-6 flex items-center gap-1">
+                                  ★ Specialist: {formData.teamMemberName}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Contact Name</span>
+                              <p className="text-foreground font-extrabold flex items-center gap-1.5 mt-1">
+                                <User className="h-4.5 w-4.5 text-orange-600" /> {formData.userName}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Email & Phone</span>
+                              <p className="text-foreground font-semibold flex items-center gap-1.5 mt-1">
+                                <Mail className="h-4.5 w-4.5 text-muted-foreground" /> {formData.userEmail}
+                              </p>
+                              {formData.userPhone && (
+                                <p className="text-muted-foreground text-sm font-semibold flex items-center gap-1.5 mt-1 pl-6">
+                                  <Phone className="h-3.5 w-3.5 text-muted-foreground" /> {formData.userPhone}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {formData.notes && (
+                            <div className="p-5">
+                              <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Additional Details</span>
+                              <p className="text-foreground mt-1.5 text-sm bg-muted/40 p-4 rounded-xl border border-border/40 italic leading-relaxed">
+                                "{formData.notes}"
+                              </p>
+                            </div>
                           )}
                         </div>
+
+                        <div className="rounded-xl border border-orange-200/50 dark:border-orange-950/40 bg-orange-500/5 p-4 flex gap-3 items-start text-xs font-semibold text-orange-850 dark:text-orange-400">
+                          <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                          <p className="leading-relaxed">
+                            By submitting this request, you secure this block on our schedule. Due to our strictly kept 5-bookings limit per day rule, our consult desk will lock this slot and evaluate the alignment within normal review cycles.
+                          </p>
+                        </div>
+
+                        <div className="flex justify-between gap-4 pt-4 border-t border-border">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setStep(2)}
+                            className="rounded-xl font-bold h-11 px-5 border-border hover:bg-muted text-muted-foreground flex items-center gap-1.5 text-sm"
+                          >
+                            <ArrowLeft className="h-4 w-4" /> Edit Details
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={handleBooking}
+                            disabled={submitting}
+                            className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-6 rounded-xl flex-1 justify-center flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm"
+                          >
+                            {submitting ? (
+                              <span className="flex items-center gap-1.5 justify-center"><Loader2 className="h-5 w-5 animate-spin" /> Transmitting Booking...</span>
+                            ) : (
+                              <>Confirm & Request Booking <Check className="h-4.5 w-4.5" /></>
+                            )}
+                          </Button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </CardContent>
+              </Card>
+
+              <div className="mt-8 rounded-2xl bg-orange-50 dark:bg-orange-950/10 p-6 border border-orange-100 dark:border-orange-950/20">
+                <h4 className="flex items-center gap-2 font-bold text-orange-900 dark:text-orange-400">
+                  <CheckCircle2 className="h-5 w-5 text-orange-600 animate-pulse" /> Why Book With Grefas?
+                </h4>
+                <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-orange-800 dark:text-orange-300 font-medium">
+                  <li className="flex items-start gap-1.5">• <span><span className="font-semibold text-orange-950 dark:text-orange-200">Focused Attention:</span> Max 5 bookings daily guarantees elite custom review.</span></li>
+                  <li className="flex items-start gap-1.5">• <span><span className="font-semibold text-orange-950 dark:text-orange-200">Integrated Expertise:</span> Merges corporate advising and stagecraft.</span></li>
+                  <li className="flex items-start gap-1.5">• <span><span className="font-semibold text-orange-950 dark:text-orange-200">Direct Communication:</span> Transparent channels via email & Live WhatsApp.</span></li>
+                  <li className="flex items-start gap-1.5">• <span><span className="font-semibold text-orange-950 dark:text-orange-200">Professional Personnel:</span> Pick specialized partners for precise milestones.</span></li>
+                </ul>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mx-auto max-w-3xl">
+            <Card className="border border-border/50 shadow-lg overflow-hidden bg-card">
+              <CardHeader className="bg-zinc-900 text-white dark:bg-zinc-950 p-6 sm:p-8">
+                <CardTitle className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
+                  <Search className="h-6 w-6 text-orange-500" />
+                  Appointment Status Lookup
+                </CardTitle>
+                <CardDescription className="text-zinc-300 mt-1 max-w-xl">
+                  Retrieve real-time booking updates, specialist assignments, and approved scheduling blocks.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 sm:p-8 space-y-6 bg-card text-foreground">
+                {user ? (
+                  <div className="space-y-6 animate-in fade-in duration-300">
+                    <div className="border border-border/55 rounded-2xl p-5 bg-muted/20">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/40 pb-4 mb-4">
+                        <div>
+                          <h3 className="font-extrabold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                            <Briefcase className="h-4.5 w-4.5 text-orange-600" />
+                            My Registered Bookings ({clientBookings.length})
+                          </h3>
+                          <p className="text-xs text-muted-foreground font-semibold mt-1">
+                            Logged in as <span className="text-orange-600 font-extrabold">{user.email || 'Anonymous User'}</span>
+                          </p>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="xs" 
+                          onClick={() => auth.signOut()}
+                          className="font-bold border-border/80 text-foreground transition-all active:scale-95"
+                        >
+                          Sign Out
+                        </Button>
                       </div>
 
-                      {formData.notes && (
-                        <div className="p-5">
-                          <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase">Additional Details</span>
-                          <p className="text-foreground mt-1.5 text-sm bg-muted/40 p-4 rounded-xl border border-border/40 italic leading-relaxed">
-                            "{formData.notes}"
-                          </p>
+                      {loadingClientBookings ? (
+                        <div className="flex items-center justify-center py-8 gap-2">
+                          <Loader2 className="h-5 w-5 animate-spin text-orange-600" />
+                          <span className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Syncing historical receipts...</span>
+                        </div>
+                      ) : clientBookings.length === 0 ? (
+                        <div className="py-8 text-center space-y-3">
+                          <AlertCircle className="h-6 w-6 text-muted-foreground mx-auto" />
+                          <p className="text-xs font-bold uppercase text-muted-foreground tracking-wide">No registered bookings found</p>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setActiveTab('book')}
+                            className="bg-orange-600/10 text-orange-600 border-orange-600/30 font-bold hover:bg-orange-600/20"
+                          >
+                            Schedule Consultation Slot
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5 max-h-76 overflow-y-auto pr-1">
+                          {clientBookings.map((b) => {
+                            const isSelected = statusSearchResult?.id === b.id;
+                            return (
+                              <div 
+                                key={b.id}
+                                onClick={() => {
+                                  setStatusSearchResult(b);
+                                  setHasSearchedStatus(true);
+                                  setStatusSearchQuery(b.orderNumber || '');
+                                }}
+                                className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                                  isSelected 
+                                    ? 'bg-orange-600/[0.08] border-orange-600/50 shadow-xs' 
+                                    : 'bg-card hover:bg-muted/45 border-border/60'
+                                }`}
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-mono text-xs font-black text-orange-600 dark:text-orange-400 bg-orange-600/10 px-2 py-0.5 rounded">
+                                      #{b.orderNumber}
+                                    </span>
+                                    <span className="text-xs font-extrabold text-foreground">
+                                      {b.serviceTitle || 'General Consultation'}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5 pt-0.5">
+                                    <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" /> {b.date} @ {b.time} (UTC)
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-3 justify-between sm:justify-end">
+                                  {b.status === 'confirmed' || b.status === 'approved' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide bg-green-500/15 text-green-600 border border-green-500/20">
+                                      Approved
+                                    </span>
+                                  ) : b.status === 'cancelled' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide bg-red-500/15 text-red-600 border border-red-500/20">
+                                      Cancelled
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide bg-amber-500/15 text-amber-600 border border-amber-500/20">
+                                      Pending
+                                    </span>
+                                  )}
+                                  <Button 
+                                    size="xs" 
+                                    variant="ghost" 
+                                    className="text-xs text-orange-600 font-bold hover:text-orange-700 bg-transparent hover:bg-transparent p-0 flex items-center gap-1"
+                                  >
+                                    Track <ArrowRight className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
 
-                    <div className="rounded-xl border border-orange-200/50 dark:border-orange-950/40 bg-orange-500/5 p-4 flex gap-3 items-start text-xs font-semibold text-orange-850 dark:text-orange-400">
-                      <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                      <p className="leading-relaxed">
-                        By submitting this request, you secure this block on our schedule. Due to our strictly kept 5-bookings limit per day rule, our consult desk will lock this slot and evaluate the alignment within normal review cycles.
+                    <div className="relative flex py-2 items-center">
+                      <div className="flex-grow border-t border-border/40"></div>
+                      <span className="flex-shrink mx-4 text-[10px] text-muted-foreground font-black uppercase tracking-widest bg-card px-2">Or Look Up By Code Manually</span>
+                      <div className="flex-grow border-t border-border/40"></div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-5 border border-orange-500/15 bg-orange-650/[0.03] rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-5 animate-in fade-in duration-350">
+                    <div className="space-y-1.5 text-center sm:text-left">
+                      <h4 className="font-extrabold text-sm text-foreground flex items-center justify-center sm:justify-start gap-1.5">
+                        <User className="h-4 w-4 text-orange-600" />
+                        Automated Booking Status Control!
+                      </h4>
+                      <p className="text-xs text-muted-foreground font-semibold max-w-md leading-relaxed">
+                        Sign in with Google to sync all consultation schedules and track confirmations in real-time on your private client status dashboard.
                       </p>
                     </div>
+                    <Button 
+                      onClick={handleGoogleSignIn}
+                      className="bg-zinc-950 dark:bg-zinc-900 border border-zinc-900 dark:border-zinc-800 text-white hover:bg-zinc-800 font-bold px-4 h-10 rounded-xl flex items-center gap-2 flex-shrink-0 text-xs w-full sm:w-auto justify-center transition-all active:scale-95"
+                    >
+                      <img src="https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png" alt="Google Logo" className="h-4.5 w-4.5 bg-white p-0.5 rounded-full" />
+                      Sign in with Google
+                    </Button>
+                  </div>
+                )}
 
-                    <div className="flex justify-between gap-4 pt-4 border-t border-border">
+                <form onSubmit={handleCheckStatus} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider block">
+                      Enter Unique 6-Digit Order Number
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Input
+                        value={statusSearchQuery}
+                        onChange={(e) => setStatusSearchQuery(e.target.value.toUpperCase())}
+                        placeholder="E.g., KX3R7V"
+                        maxLength={6}
+                        required
+                        className="text-lg font-mono font-bold tracking-widest uppercase bg-muted/50 border-border h-12 rounded-xl text-center flex-1"
+                      />
                       <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setStep(2)}
-                        className="rounded-xl font-bold h-11 px-5 border-border hover:bg-muted text-muted-foreground flex items-center gap-1.5 text-sm"
+                        type="submit"
+                        disabled={isSearchingStatus}
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-6 h-12 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all w-full sm:w-auto"
                       >
-                        <ArrowLeft className="h-4 w-4" /> Edit Details
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={handleBooking}
-                        disabled={submitting}
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-6 rounded-xl flex-1 justify-center flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm"
-                      >
-                        {submitting ? (
-                          <span className="flex items-center gap-1.5 justify-center"><Loader2 className="h-5 w-5 animate-spin" /> Transmitting Booking...</span>
+                        {isSearchingStatus ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
                         ) : (
-                          <>Confirm & Request Booking <Check className="h-4.5 w-4.5" /></>
+                          <>Search Status</>
                         )}
                       </Button>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </CardContent>
-          </Card>
+                  </div>
+                </form>
 
-          <div className="mt-8 rounded-2xl bg-orange-50 dark:bg-orange-950/10 p-6 border border-orange-100 dark:border-orange-950/20">
-            <h4 className="flex items-center gap-2 font-bold text-orange-900 dark:text-orange-400">
-              <CheckCircle2 className="h-5 w-5 text-orange-600 animate-pulse" /> Why Book With Grefas?
-            </h4>
-            <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-orange-800 dark:text-orange-300 font-medium">
-              <li className="flex items-start gap-1.5">• <span><span className="font-semibold text-orange-950 dark:text-orange-200">Focused Attention:</span> Max 5 bookings daily guarantees elite custom review.</span></li>
-              <li className="flex items-start gap-1.5">• <span><span className="font-semibold text-orange-950 dark:text-orange-200">Integrated Expertise:</span> Merges corporate advising and stagecraft.</span></li>
-              <li className="flex items-start gap-1.5">• <span><span className="font-semibold text-orange-950 dark:text-orange-200">Direct Communication:</span> Transparent channels via email & Live WhatsApp.</span></li>
-              <li className="flex items-start gap-1.5">• <span><span className="font-semibold text-orange-950 dark:text-orange-200">Professional Personnel:</span> Pick specialized partners for precise milestones.</span></li>
-            </ul>
+                <AnimatePresence mode="wait">
+                  {isSearchingStatus && (
+                    <motion.div
+                      key="searching"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex flex-col items-center justify-center py-12"
+                    >
+                      <Loader2 className="h-8 w-8 animate-spin text-orange-600 animate-duration-1000" />
+                      <p className="text-sm mt-3 text-muted-foreground font-semibold">Scanning strategic planning desk registers...</p>
+                    </motion.div>
+                  )}
+
+                  {!isSearchingStatus && hasSearchedStatus && statusSearchResult && (
+                    <motion.div
+                      key="result"
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="border border-border/80 rounded-2xl overflow-hidden shadow bg-muted/5 animate-in fade-in"
+                    >
+                      {/* Booking Header Status Block */}
+                      <div className="p-5 border-b border-border bg-muted/30 dark:bg-muted/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">TICKET ID / ORDER NUMBER</p>
+                          <p className="text-2xl font-mono font-black text-foreground tracking-wider mt-0.5">{statusSearchResult.orderNumber}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status:</span>
+                          {statusSearchResult.status === 'confirmed' || statusSearchResult.status === 'approved' ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold leading-none bg-green-500/10 text-green-600 border border-green-500/20">
+                              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" /> Approved & Confirmed
+                            </span>
+                          ) : statusSearchResult.status === 'cancelled' ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold leading-none bg-red-500/10 text-red-600 border border-red-500/20">
+                              <span className="h-2 w-2 rounded-full bg-red-500" /> Cancelled
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold leading-none bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" /> Pending Review
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Details Grid */}
+                      <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-card text-foreground">
+                        <div className="space-y-4">
+                          <div>
+                            <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase block">Client Name</span>
+                            <p className="text-foreground font-extrabold flex items-center gap-2 mt-1">
+                              <User className="h-4.5 w-4.5 text-orange-600" /> {statusSearchResult.userName}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase block">Appointment Slot</span>
+                            <p className="text-foreground font-extrabold flex items-center gap-2 mt-1">
+                              <CalendarIcon className="h-4.5 w-4.5 text-orange-500" /> {statusSearchResult.date}
+                            </p>
+                            <p className="text-muted-foreground font-bold flex items-center gap-2 mt-1 text-xs">
+                              <Clock className="h-3.5 w-3.5 text-orange-500" /> {statusSearchResult.time} (UTC Local)
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div>
+                            <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase block">Service Selected</span>
+                            <p className="text-foreground font-extrabold flex items-center gap-2 mt-1 border-b border-border/10 pb-1">
+                              <Briefcase className="h-4.5 w-4.5 text-orange-600" /> {statusSearchResult.serviceTitle || 'General Consultation'}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase block">Assigned Specialist</span>
+                            <p className="text-foreground font-extrabold flex items-center gap-1.5 mt-1">
+                              ★ {statusSearchResult.teamMemberName || 'Primary Available Specialist'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {statusSearchResult.notes && (
+                          <div className="md:col-span-2 pt-3 border-t border-border">
+                            <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase block">Additional Notes</span>
+                            <p className="text-foreground mt-1.5 text-sm bg-muted/40 p-4 rounded-xl border border-border/40 italic leading-relaxed">
+                              "{statusSearchResult.notes}"
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Success / Instructions Message */}
+                      <div className="p-5 border-t border-border bg-orange-650/[0.02] flex gap-3 text-xs text-muted-foreground leading-relaxed">
+                        <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                        <div className="font-semibold">
+                          {statusSearchResult.status === 'confirmed' || statusSearchResult.status === 'approved' ? (
+                            <p className="text-green-700 dark:text-green-400">
+                              Your appointment is secured perfectly on our desk! Please make sure to be ready on {statusSearchResult.date} at {statusSearchResult.time}. Need to adjust dates? Chat with us live or email support referencing ticket #{statusSearchResult.orderNumber}.
+                            </p>
+                          ) : statusSearchResult.status === 'cancelled' ? (
+                            <p className="text-red-700 dark:text-red-400">
+                              This booking has been cancelled. Please initiate a new scheduling session if you would like to reserve a new date or slot.
+                            </p>
+                          ) : (
+                            <p className="text-amber-700 dark:text-amber-400">
+                              Our consultants are evaluating your briefcase alignment. You will be notified automatically with the resolution. No action is required from you at this time.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {!isSearchingStatus && hasSearchedStatus && !statusSearchResult && (
+                    <motion.div
+                      key="no-result"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="border border-red-200/50 dark:border-red-950/40 bg-red-500/5 p-6 rounded-2xl text-center space-y-2"
+                    >
+                      <AlertCircle className="h-8 w-8 text-red-500 mx-auto" />
+                      <h4 className="text-sm font-bold text-foreground">Ticket Profile Not Found</h4>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed font-semibold">
+                        Could not find any appointment associated with order number <strong className="font-mono text-orange-600 dark:text-orange-400 font-extrabold">"{statusSearchQuery}"</strong>. Please verify that the code was typed correctly and matches the 6-character receipt format.
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </CardContent>
+            </Card>
           </div>
-        </div>
+        )}
 
         {/* FAQ Accordion Section */}
         <div className="mx-auto max-w-3xl mt-20 border-t border-border pt-16">

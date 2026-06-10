@@ -5,7 +5,7 @@ import ReactPlayer from 'react-player';
 import { db, auth, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
-import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2 } from 'lucide-react';
+import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2, Download } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -236,6 +236,65 @@ export default function Gallery() {
     }
   };
 
+  const handleDownload = async (item: any) => {
+    if (!item || !item.url) return;
+    
+    // Check if it's a direct file or a hosted platform
+    const isDirectFile = item.url.includes('firebasestorage.googleapis.com') ||
+                         item.url.match(/\.(jpeg|jpg|gif|png|webp|mp4|webm|ogg|mp3|wav)/i);
+
+    if (!isDirectFile) {
+      toast.info("This is an externally hosted link (YouTube/Vimeo). Opening in a new tab to play or download...");
+      window.open(item.url, '_blank');
+      return;
+    }
+
+    const toastId = toast.loading(`Preparing optimized download for "${item.title || 'media'}"...`);
+    
+    try {
+      const response = await fetch(item.url);
+      if (!response.ok) throw new Error('CORS or connectivity blockage');
+      
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      
+      let extension = item.type === 'video' ? 'mp4' : 'jpg';
+      const match = item.url.split('?')[0].match(/\.([a-zA-Z0-9]+)$/);
+      if (match) {
+        extension = match[1];
+      }
+      
+      const fileName = `${(item.title || 'grefas_media').toLowerCase().replace(/[^a-z0-9]+/g, '_')}.${extension}`;
+      
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+      
+      toast.success('Download started successfully!', { id: toastId });
+    } catch (error) {
+      console.warn('Direct fetch download failed, falling back to direct tab access:', error);
+      
+      try {
+        const link = document.createElement('a');
+        link.href = item.url;
+        link.target = '_blank';
+        link.download = item.title || 'grefas_download';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('A new browser tab was opened to initiate download.', { id: toastId });
+      } catch (fallbackErr) {
+        toast.error('Could not complete download automatically.', { id: toastId });
+      }
+    }
+  };
+
   const handleDelete = async (item: any) => {
     if (!window.confirm('Are you sure you want to delete this gallery item? This action cannot be undone.')) {
       return;
@@ -436,21 +495,35 @@ export default function Gallery() {
                             <MessageSquare className="h-4 w-4" />
                             <span className="text-xs font-bold">{item.comments?.length || 0}</span>
                           </div>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleShare(item); }}
-                            className="ml-auto glass-overlay p-2 rounded-full hover:bg-orange-600 transition-colors"
-                          >
-                            <Share2 className="h-4 w-4 text-white" />
-                          </button>
+                          <div className="ml-auto flex items-center space-x-2">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleDownload(item); }}
+                              className="glass-overlay p-2 rounded-full hover:bg-orange-600 transition-colors"
+                              title="Download Media File"
+                            >
+                              <Download className="h-4 w-4 text-white" />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleShare(item); }}
+                              className="glass-overlay p-2 rounded-full hover:bg-orange-600 transition-colors"
+                              title="Share Media File"
+                            >
+                              <Share2 className="h-4 w-4 text-white" />
+                            </button>
+                          </div>
                         </div>
                       </motion.div>
                     </div>
                     
                     {/* Interaction Buttons (Small screen support) */}
-                    <div className="absolute top-4 right-4 z-20 md:hidden flex space-x-2">
-                       <button className="glass-overlay p-2 rounded-full text-white">
-                         <Heart className="h-4 w-4" />
-                       </button>
+                    <div className="absolute top-4 right-4 z-20 md:hidden flex space-x-2 pointer-events-auto">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDownload(item); }}
+                        className="glass-overlay p-2 rounded-full text-white hover:bg-orange-600"
+                        title="Download Mobile"
+                      >
+                        <Download className="h-4 w-4" />
+                      </button>
                     </div>
                   </motion.div>
                 );
@@ -523,27 +596,39 @@ export default function Gallery() {
                     {selectedItem?.title}
                   </DialogTitle>
                   
-                  <div className="flex items-center space-x-6">
+                  <div className="flex items-center space-x-4">
                     <button 
                       onClick={() => handleLike(selectedItem)}
-                      className={`flex items-center space-x-2.5 transition-all group/like ${
+                      className={`flex items-center space-x-2 transition-all group/like ${
                         selectedItem?.likes?.includes(user?.uid || getAnonymousId()) ? 'text-orange-600' : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      <div className={`p-2.5 rounded-full transition-colors ${selectedItem?.likes?.includes(user?.uid || getAnonymousId()) ? 'bg-orange-600/10' : 'bg-muted group-hover/like:bg-muted-foreground/10'}`}>
+                      <div className={`p-2 rounded-full transition-colors ${selectedItem?.likes?.includes(user?.uid || getAnonymousId()) ? 'bg-orange-600/10' : 'bg-muted group-hover/like:bg-muted-foreground/10'}`}>
                         <Heart className={`h-5 w-5 ${selectedItem?.likes?.includes(user?.uid || getAnonymousId()) ? 'fill-current animate-float' : ''}`} />
                       </div>
-                      <span className="font-bold text-lg">{selectedItem?.likes?.length || 0}</span>
+                      <span className="font-bold text-md">{selectedItem?.likes?.length || 0}</span>
+                    </button>
+
+                    <button 
+                      onClick={() => handleDownload(selectedItem)}
+                      className="flex items-center space-x-2 text-muted-foreground hover:text-foreground transition-all group/download"
+                      title="Download Media File"
+                    >
+                      <div className="p-2 rounded-full bg-muted group-hover/download:bg-muted-foreground/10">
+                        <Download className="h-5 w-5" />
+                      </div>
+                      <span className="font-bold text-md">Download</span>
                     </button>
 
                     <button 
                       onClick={() => handleShare(selectedItem)}
-                      className="flex items-center space-x-2.5 text-muted-foreground hover:text-foreground transition-all group/share"
+                      className="flex items-center space-x-2 text-muted-foreground hover:text-foreground transition-all group/share"
+                      title="Share Media File"
                     >
-                      <div className="p-2.5 rounded-full bg-muted group-hover/share:bg-muted-foreground/10">
+                      <div className="p-2 rounded-full bg-muted group-hover/share:bg-muted-foreground/10">
                         <Share2 className="h-5 w-5" />
                       </div>
-                      <span className="font-bold text-lg">Share</span>
+                      <span className="font-bold text-md">Share</span>
                     </button>
                   </div>
                 </div>

@@ -157,6 +157,17 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["senderName", "senderEmail", "message"]
+    },
+    "SiteVisit": {
+      "title": "Site Visit",
+      "description": "A daily counter tracking unique visitor sessions on the Grefas site.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "The date of the session YYYY-MM-DD" },
+        "count": { "type": "number", "description": "Number of unique sessions on this day" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last increment timestamp" }
+      },
+      "required": ["date", "count"]
     }
   },
   "firestore": {
@@ -199,6 +210,10 @@
     "/messages/{messageId}": {
       "schema": "Message",
       "description": "Collection of inquiry and booking messages sent directly to specific specialists."
+    },
+    "/site_visits/{dateStr}": {
+      "schema": "SiteVisit",
+      "description": "Daily counts of unique website visitors"
     }
   }
 }

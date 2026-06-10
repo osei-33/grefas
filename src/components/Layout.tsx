@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import Chat from './Chat';
 import NotificationCenter from './NotificationCenter';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
-import { doc, onSnapshot, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, setDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 interface LayoutProps {
@@ -36,6 +36,26 @@ export default function Layout({ children }: LayoutProps) {
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    // Only track unique browser session visits
+    if (typeof window !== 'undefined' && !sessionStorage.getItem('has_registered_visit')) {
+      try {
+        sessionStorage.setItem('has_registered_visit', 'true');
+        const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const visitDocRef = doc(db, 'site_visits', todayStr);
+        setDoc(visitDocRef, {
+          date: todayStr,
+          count: increment(1),
+          updatedAt: serverTimestamp()
+        }, { merge: true }).catch(err => {
+          console.warn("Could not register page visit:", err);
+        });
+      } catch (err) {
+        console.warn("Tracking failed:", err);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (authenticatedUser) => {
