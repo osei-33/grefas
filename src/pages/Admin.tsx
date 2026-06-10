@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -918,6 +918,10 @@ function ManageServices() {
 function ManageTeam() {
   const [members, setMembers] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState(0);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [newMember, setNewMember] = useState({
     name: '',
     role: '',
@@ -930,6 +934,170 @@ function ManageTeam() {
     available: true,
     highlightsInput: ''
   });
+
+  const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.8): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Resize while protecting original aspect ratio
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(file); // Fallback to raw file if context fails
+            return;
+          }
+
+          // Draw the image onto the canvas
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to blob with optimal compressed quality
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(blob);
+              } else {
+                resolve(file); // Fallback to original
+              }
+            },
+            'image/jpeg',
+            quality
+          );
+        };
+        img.onerror = (err) => reject(err);
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          resolve('');
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const handleImageUpload = async (file: File) => {
+    if (!file) return;
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Only image files (JPEG, PNG, WEBP, GIF) are allowed.');
+      return;
+    }
+
+    // Larger original limit (25MB) now that we compress on-the-fly
+    const MAX_ORIGINAL_SIZE = 25 * 1024 * 1024;
+    if (file.size > MAX_ORIGINAL_SIZE) {
+      toast.error('Image is too large. Maximum size allowed is 25MB.');
+      return;
+    }
+
+    setIsUploadingImage(true);
+    setImageUploadProgress(0);
+
+    try {
+      // Compress first on the client side
+      toast.loading('Optimizing profile image format...', { id: 'img-compress' });
+      const compressedBlob = await compressImage(file);
+      toast.dismiss('img-compress');
+
+      // Create storage reference
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+      const storageRef = ref(storage, `team_members/${Date.now()}_${cleanFileName}`);
+      
+      const uploadTask = uploadBytesResumable(storageRef, compressedBlob, {
+        contentType: 'image/jpeg'
+      });
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setImageUploadProgress(Math.round(progress));
+        },
+        async (error) => {
+          console.warn('Team image upload to Firebase Storage failed, falling back to local base64 optimization:', error);
+          try {
+            toast.loading('Saving optimized photo inside profile...', { id: 'img-fallback' });
+            // Rescale slightly smaller (max 400x400, quality 0.7) to guarantee highly optimized Base64
+            const extraCompressedBlob = await compressImage(file, 400, 400, 0.7);
+            const base64String = await blobToBase64(extraCompressedBlob);
+            if (base64String) {
+              setNewMember(prev => ({ ...prev, imageUrl: base64String }));
+              toast.dismiss('img-fallback');
+              toast.success('Optimized locally! Profile photo applied successfully.');
+            } else {
+              throw new Error('Failed to convert optimized image to base64');
+            }
+          } catch (fallbackError) {
+            console.error('Local photo fallback failed:', fallbackError);
+            toast.dismiss('img-fallback');
+            toast.error('Team image upload failed & fallback failed.');
+          } finally {
+            setIsUploadingImage(false);
+          }
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          setNewMember(prev => ({ ...prev, imageUrl: downloadURL }));
+          setIsUploadingImage(false);
+          toast.success('Optimized profile photo uploaded instantly!');
+        }
+      );
+    } catch (error) {
+      console.error('Team image upload setup/compression failed:', error);
+      toast.dismiss('img-compress');
+      toast.error('Could not optimize or upload profile photo.');
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingImage(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDraggingImage(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingImage(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'team_members'), orderBy('createdAt', 'desc'));
@@ -995,6 +1163,77 @@ function ManageTeam() {
     }
   };
 
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingId) return;
+    try {
+      const skills = newMember.skillsInput
+        ? newMember.skillsInput.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+
+      const projectHighlights = newMember.highlightsInput
+        ? newMember.highlightsInput.split('\n').map(h => h.trim()).filter(Boolean)
+        : [];
+
+      const defaultImages = [
+        "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400&h=400",
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=400&h=400",
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400&h=400"
+      ];
+      const imageUrl = newMember.imageUrl.trim() || defaultImages[Math.floor(Math.random() * defaultImages.length)];
+
+      await updateDoc(doc(db, 'team_members', editingId), {
+        name: newMember.name,
+        role: newMember.role,
+        experience: newMember.experience,
+        bio: newMember.bio,
+        imageUrl,
+        rating: Number(newMember.rating) || 4.9,
+        category: newMember.category,
+        skills,
+        available: newMember.available,
+        projectHighlights,
+        updatedAt: serverTimestamp()
+      });
+
+      toast.success('Specialist profile updated successfully!');
+      setEditingId(null);
+      setIsAdding(false);
+      setNewMember({
+        name: '',
+        role: '',
+        experience: '',
+        bio: '',
+        imageUrl: '',
+        rating: 4.9,
+        category: 'consulting',
+        skillsInput: '',
+        available: true,
+        highlightsInput: ''
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `team_members/${editingId}`);
+    }
+  };
+
+  const startEdit = (member: any) => {
+    setEditingId(member.id);
+    setNewMember({
+      name: member.name || '',
+      role: member.role || '',
+      experience: member.experience || '',
+      bio: member.bio || '',
+      imageUrl: member.imageUrl || '',
+      rating: member.rating || 4.9,
+      category: member.category || 'consulting',
+      skillsInput: member.skills ? member.skills.join(', ') : '',
+      available: member.available !== false,
+      highlightsInput: member.projectHighlights ? member.projectHighlights.join('\n') : ''
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this specialist profile?')) return;
     try {
@@ -1024,20 +1263,38 @@ function ManageTeam() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Manage Team</h1>
           <p className="text-sm text-muted-foreground mt-1">Add or update team specialists, consultants, and event show hosts.</p>
         </div>
-        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white">
-          <Plus className="mr-2 h-4 w-4" />
-          {isAdding ? 'Cancel' : 'Add Specialist'}
+        <Button onClick={() => {
+          if (editingId) {
+            setEditingId(null);
+            setNewMember({
+              name: '',
+              role: '',
+              experience: '',
+              bio: '',
+              imageUrl: '',
+              rating: 4.9,
+              category: 'consulting',
+              skillsInput: '',
+              available: true,
+              highlightsInput: ''
+            });
+            setIsAdding(false);
+          } else {
+            setIsAdding(!isAdding);
+          }
+        }} className="bg-orange-600 hover:bg-orange-700 text-white">
+          {editingId ? 'Cancel Edit' : (isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add Specialist</>)}
         </Button>
       </div>
 
-      {isAdding && (
+      {(isAdding || editingId) && (
         <Card className="border border-border">
           <CardHeader>
-            <CardTitle>Add New Specialist</CardTitle>
-            <CardDescription>Fill out the profile details of the new consultant or host.</CardDescription>
+            <CardTitle>{editingId ? 'Edit Specialist Profile' : 'Add New Specialist'}</CardTitle>
+            <CardDescription>{editingId ? 'Modify the profile details of this consultant or host.' : 'Fill out the profile details of the new consultant or host.'}</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleAdd} className="space-y-4">
+            <form onSubmit={editingId ? handleUpdate : handleAdd} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Full Name *</label>
@@ -1083,23 +1340,106 @@ function ManageTeam() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-4 border border-zinc-250 dark:border-zinc-800 p-4 rounded-lg bg-zinc-50/50 dark:bg-zinc-900/10">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Profile Image URL (Optional)</label>
-                  <Input
-                    value={newMember.imageUrl}
-                    onChange={(e) => setNewMember({ ...newMember, imageUrl: e.target.value })}
-                    placeholder="Leave blank for a premium fallback image"
-                  />
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Camera className="h-4 w-4 text-orange-600" /> Professional Profile Photo
+                  </label>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                    {/* Drag and Drop with manual click */}
+                    <div 
+                      className={`md:col-span-2 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all duration-200 ${
+                        isDraggingImage 
+                          ? 'border-orange-500 bg-orange-500/5' 
+                          : 'border-border hover:border-orange-500/50 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/10'
+                      } flex flex-col items-center justify-center min-h-[140px]`}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => {
+                        const fileInput = document.getElementById('team-image-device-upload') as HTMLInputElement;
+                        if (fileInput) fileInput.click();
+                      }}
+                    >
+                      <input 
+                        type="file" 
+                        id="team-image-device-upload" 
+                        className="hidden" 
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImageUpload(file);
+                        }}
+                      />
+                      
+                      {isUploadingImage ? (
+                        <div className="space-y-3 w-full max-w-[240px] text-center">
+                          <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto" />
+                          <p className="text-xs text-muted-foreground font-medium">Uploading to secure cloud storage... {imageUploadProgress}%</p>
+                          <div className="w-full bg-border rounded-full h-2 overflow-hidden">
+                            <div 
+                              className="bg-orange-600 h-2 rounded-full transition-all duration-300" 
+                              style={{ width: `${imageUploadProgress}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      ) : newMember.imageUrl ? (
+                        <div className="flex items-center space-x-4 text-left w-full h-full">
+                          <div className="relative h-20 w-20 flex-shrink-0 rounded-lg overflow-hidden border border-border bg-muted">
+                            <img 
+                              src={newMember.imageUrl} 
+                              alt="Team Specialist Preview" 
+                              className="h-full w-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground">Selected Specialist Image</p>
+                            <p className="text-xs text-muted-foreground truncate max-w-[200px] mb-2">{newMember.imageUrl}</p>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNewMember(prev => ({ ...prev, imageUrl: '' }));
+                              }}
+                              className="text-xs text-red-600 hover:text-red-700 font-semibold flex items-center gap-1 hover:underline"
+                            >
+                              <Trash2 className="h-3 w-3" /> Remove & Clear
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 py-2">
+                          <Camera className="h-8 w-8 text-zinc-400 mx-auto" />
+                          <p className="text-sm font-medium text-foreground">Drag & drop profile picture, or click to browse</p>
+                          <p className="text-xs text-muted-foreground">Supports JPG, PNG, WEBP, GIF (Max 5MB)</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Manual Image URL field */}
+                    <div className="space-y-2 h-full flex flex-col justify-center">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Or Manual Image URL</label>
+                      <Input
+                        value={newMember.imageUrl}
+                        onChange={(e) => setNewMember({ ...newMember, imageUrl: e.target.value })}
+                        placeholder="Paste premium image web URL"
+                        className="text-xs bg-background"
+                      />
+                      <p className="text-[11px] text-muted-foreground italic leading-tight mt-1">Paste direct link or upload image from device.</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Skills / Expertise (Comma Separated)</label>
-                  <Input
-                    value={newMember.skillsInput}
-                    onChange={(e) => setNewMember({ ...newMember, skillsInput: e.target.value })}
-                    placeholder="E.g., Brand Audits, Sound Design, MC"
-                  />
-                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Skills / Expertise (Comma Separated)</label>
+                <Input
+                  value={newMember.skillsInput}
+                  onChange={(e) => setNewMember({ ...newMember, skillsInput: e.target.value })}
+                  placeholder="E.g., Brand Audits, Sound Design, MC, Sales Strategy"
+                />
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1148,8 +1488,8 @@ function ManageTeam() {
                 />
               </div>
 
-              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white">
-                Save Specialist Profile
+              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold">
+                {editingId ? 'Update Specialist Profile' : 'Save Specialist Profile'}
               </Button>
             </form>
           </CardContent>
@@ -1200,6 +1540,10 @@ function ManageTeam() {
                     >
                       <span className={`h-1.5 w-1.5 rounded-full ${userAvailable ? 'bg-green-500 animate-pulse' : 'bg-zinc-400'}`} />
                       {userAvailable ? 'Accepting bookings' : 'Fully booked'}
+                    </Button>
+
+                    <Button variant="ghost" size="sm" onClick={() => startEdit(member)} className="text-zinc-650 hover:bg-zinc-50 dark:hover:bg-zinc-900/10 hover:text-zinc-800 dark:text-zinc-400">
+                      <Edit className="h-4 w-4" />
                     </Button>
 
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(member.id)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-700">
