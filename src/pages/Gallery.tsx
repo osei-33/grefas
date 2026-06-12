@@ -7,7 +7,7 @@ import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arr
 import { ref, deleteObject } from 'firebase/storage';
 import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2, Download } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -556,9 +556,15 @@ export default function Gallery() {
         {/* Cinematic Media Modal */}
         <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
           <DialogContent className="max-w-7xl overflow-hidden p-0 bg-black border-none gap-0 sm:rounded-[2rem] h-[90vh] md:h-[85vh]">
+            <DialogTitle className="sr-only">
+              {selectedItem?.title || "Gallery Media Details"}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              View details, likes, comments and engage with this media.
+            </DialogDescription>
             <div className="flex flex-col md:flex-row h-full">
               {/* Media Section (Dominant) */}
-              <div className="flex-1 bg-neutral-950 flex items-center justify-center relative overflow-hidden group">
+              <div className="h-[40vh] md:h-full w-full md:flex-1 bg-neutral-950 flex items-center justify-center relative overflow-hidden group">
                 <MediaViewer item={selectedItem} />
                 
                 {/* Floating Close - Mobile */}
@@ -571,7 +577,7 @@ export default function Gallery() {
               </div>
 
               {/* Sidebar Section (Interactions & Details) */}
-              <div className="w-full md:w-[400px] h-full flex flex-col bg-card border-l border-white/5">
+              <div className="w-full md:w-[400px] h-[50vh] md:h-full flex flex-col bg-card border-l border-white/5">
                 <div className="p-8 border-b border-border/50 bg-muted/20">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center space-x-2">
@@ -592,9 +598,9 @@ export default function Gallery() {
                       <X className="h-5 w-5" />
                     </button>
                   </div>
-                  <DialogTitle className="text-2xl font-black text-foreground tracking-tight leading-none mb-4">
+                  <h2 className="text-2xl font-black text-foreground tracking-tight leading-none mb-4">
                     {selectedItem?.title}
-                  </DialogTitle>
+                  </h2>
                   
                   <div className="flex items-center space-x-4">
                     <button 

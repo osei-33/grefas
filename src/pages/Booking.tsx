@@ -543,7 +543,7 @@ export default function Booking() {
                         exit={{ opacity: 0, x: 10 }}
                         className="space-y-6"
                       >
-                        <div className="flex flex-col items-center">
+                        <div className="flex flex-col items-center w-full overflow-x-auto pb-1">
                           <Calendar
                             mode="single"
                             selected={date}
@@ -555,7 +555,7 @@ export default function Booking() {
                             modifiersClassNames={{ 
                               booked: "ring-2 ring-orange-500 ring-offset-2" 
                             }}
-                            className="rounded-xl border border-border shadow-md bg-card text-foreground p-3 animate-in fade-in"
+                            className="rounded-xl border border-border shadow-md bg-card text-foreground p-3 animate-in fade-in max-w-full"
                           />
                         </div>
                         
@@ -564,7 +564,7 @@ export default function Booking() {
                             <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                               <Clock className="h-4 w-4 text-orange-600" /> Select Availability Slot
                             </label>
-                            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                            <div className="grid grid-cols-2 min-[420px]:grid-cols-3 sm:grid-cols-4 gap-2">
                               {timeSlots.map(t => (
                                 <button
                                   key={t}

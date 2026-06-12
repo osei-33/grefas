@@ -41,16 +41,25 @@ export default function About() {
             animate={{ opacity: 1, x: 0 }}
             className="space-y-6"
           >
-            <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-              About Grefas Consult & Entertainment
-            </h1>
+            <div className="space-y-2">
+              <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+                About Grefas Consult & Entertainment
+              </h1>
+              <p className="inline-flex items-center gap-2 px-3 py-1 bg-orange-150/10 dark:bg-orange-950/20 text-orange-600 dark:text-orange-500 font-bold tracking-wider text-xs uppercase rounded-full border border-orange-500/10">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                </span>
+                Nyinahin-Ashanti, Ashanti Region, Ghana
+              </p>
+            </div>
             <div className="prose prose-zinc dark:prose-invert max-w-none text-lg text-muted-foreground">
               {settings?.aboutContent || (
                 <p>
-                  Grefas Consult & Entertainment is a premier service provider dedicated to delivering 
+                  Based in Nyinahin-Ashanti, Ashanti Region, Grefas Consult & Entertainment is a premier service provider dedicated to delivering 
                   excellence in both professional consulting and high-end entertainment. With a 
                   passion for innovation and a commitment to quality, we help our clients achieve 
-                  their goals and create unforgettable experiences.
+                  their goals and create unforgettable experiences across the continent.
                 </p>
               )}
             </div>

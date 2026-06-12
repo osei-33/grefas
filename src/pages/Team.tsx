@@ -19,6 +19,7 @@ interface TeamMember {
   experience: string;
   bio: string;
   imageUrl: string;
+  email?: string;
   skills: string[];
   rating?: number;
   category?: 'consulting' | 'entertainment' | 'both';
@@ -33,6 +34,7 @@ const DEFAULT_MEMBERS = [
     experience: "12+ Years in Corporate Consulting",
     bio: "Dr. Linda lead-directs Grefas Consult. Her background in development planning and executive corporate coaching ensures every client engagement reaches impeccable results. She combines traditional strategic management with forward-acting leadership programs.",
     imageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=500&h=500",
+    email: "serwaahlinda1995@gmail.com",
     skills: ["Corporate Strategy", "Brand Audits", "Executive Advising", "Venture Incubation"],
     rating: 4.9,
     category: "consulting",
@@ -49,6 +51,7 @@ const DEFAULT_MEMBERS = [
     experience: "9+ Years in Live Events",
     bio: "Kofi is the visionary orchestrator of our entertainment team. Having overseen premium live shows, custom corporate events, and bespoke performance layouts across West Africa, he knows how to transform general audio-visual ideas into unforgettable realities.",
     imageUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=500&h=500",
+    email: "kofi.production@grefas.com",
     skills: ["Creative Directing", "Sound Design", "Artist Bookings", "Master of Ceremonies"],
     rating: 4.8,
     category: "entertainment",
@@ -65,6 +68,7 @@ const DEFAULT_MEMBERS = [
     experience: "7+ Years in Strategy & Markets",
     bio: "Amara coordinates market audits, startup scaling paths, and financial strategies. She helps small and medium-scale companies define operational benchmarks to execute flawless growth models with high-efficiency capital management.",
     imageUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=500&h=500",
+    email: "amara.specialist@grefas.com",
     skills: ["Market Entry", "Operations Audit", "Financial Engineering", "SME Structure"],
     rating: 4.9,
     category: "consulting",
@@ -130,9 +134,40 @@ export default function Team() {
         message: messageForm.message,
         recipientId: activeModalMember?.id || '',
         recipientName: activeModalMember?.name || '',
+        recipientEmail: activeModalMember?.email || '',
         createdAt: serverTimestamp()
       });
-      toast.success(`Message sent successfully to ${activeModalMember?.name || 'the specialist'}!`);
+
+      if (activeModalMember?.email) {
+        try {
+          const response = await fetch('/api/send-direct-message', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              recipientEmail: activeModalMember.email,
+              recipientName: activeModalMember.name,
+              senderName: `${messageForm.firstName} ${messageForm.lastName}`,
+              senderEmail: messageForm.email,
+              subject: messageForm.subject,
+              message: messageForm.message
+            }),
+          });
+          const resJson = await response.json();
+          if (resJson.results?.email === 'sent') {
+            toast.success(`Inquiry sent directly to ${activeModalMember.name}'s professional inbox!`);
+          } else {
+            toast.success(`Message recorded and queued for ${activeModalMember.name}.`);
+          }
+        } catch (fetchErr) {
+          console.warn("Direct mail routing failed:", fetchErr);
+          toast.success(`Message recorded for ${activeModalMember.name}.`);
+        }
+      } else {
+        toast.success(`Message sent successfully to ${activeModalMember?.name || 'the specialist'}!`);
+      }
+
       setIsMessaging(false);
     } catch (err) {
       console.error("Error sending message:", err);
@@ -169,6 +204,7 @@ export default function Team() {
             experience: data.experience || '',
             bio: data.bio || '',
             imageUrl: data.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200&h=200',
+            email: data.email || '',
             skills: Array.isArray(data.skills) ? data.skills : [],
             rating: typeof data.rating === 'number' ? data.rating : 5.0,
             category: data.category || 'both',
@@ -437,6 +473,10 @@ export default function Team() {
         <DialogContent className="max-w-2xl bg-card border border-border p-0 overflow-hidden rounded-2xl shadow-2xl">
           {activeModalMember && (
             <div className="flex flex-col max-h-[90vh]">
+              <DialogTitle className="sr-only">Specialist Profile - {activeModalMember.name}</DialogTitle>
+              <DialogDescription className="sr-only">
+                Detailed profile, professional bio, key skills, and rating of {activeModalMember.name}
+              </DialogDescription>
               {/* Header Image Area */}
               {!isMessaging && (
                 <div className="relative h-48 sm:h-56 bg-muted overflow-hidden flex-shrink-0">

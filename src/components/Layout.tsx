@@ -226,6 +226,11 @@ export default function Layout({ children }: LayoutProps) {
                   Sign Out
                 </button>
               )}
+              <div className="pt-4 mt-2 border-t border-border">
+                <Button asChild className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 text-sm rounded-xl py-3 flex items-center justify-center">
+                  <Link to="/booking" onClick={() => setIsMenuOpen(false)}>Book Your Session Now</Link>
+                </Button>
+              </div>
             </div>
           </motion.div>
         )}

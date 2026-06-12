@@ -112,7 +112,8 @@ service cloud.firestore {
       return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
              data.role is string && data.role.size() > 0 && data.role.size() < 100 &&
              data.experience is string && data.experience.size() > 0 &&
-             data.bio is string && data.bio.size() > 0;
+             data.bio is string && data.bio.size() > 0 &&
+             (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() < 120));
     }
 
     // ===============================================================

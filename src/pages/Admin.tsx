@@ -1092,6 +1092,7 @@ function ManageTeam() {
     experience: '',
     bio: '',
     imageUrl: '',
+    email: '',
     rating: 4.9,
     category: 'consulting',
     skillsInput: '',
@@ -1300,6 +1301,7 @@ function ManageTeam() {
         experience: newMember.experience,
         bio: newMember.bio,
         imageUrl,
+        email: newMember.email.trim(),
         rating: Number(newMember.rating) || 4.9,
         category: newMember.category,
         skills,
@@ -1316,6 +1318,7 @@ function ManageTeam() {
         experience: '',
         bio: '',
         imageUrl: '',
+        email: '',
         rating: 4.9,
         category: 'consulting',
         skillsInput: '',
@@ -1352,6 +1355,7 @@ function ManageTeam() {
         experience: newMember.experience,
         bio: newMember.bio,
         imageUrl,
+        email: newMember.email.trim(),
         rating: Number(newMember.rating) || 4.9,
         category: newMember.category,
         skills,
@@ -1369,6 +1373,7 @@ function ManageTeam() {
         experience: '',
         bio: '',
         imageUrl: '',
+        email: '',
         rating: 4.9,
         category: 'consulting',
         skillsInput: '',
@@ -1388,6 +1393,7 @@ function ManageTeam() {
       experience: member.experience || '',
       bio: member.bio || '',
       imageUrl: member.imageUrl || '',
+      email: member.email || '',
       rating: member.rating || 4.9,
       category: member.category || 'consulting',
       skillsInput: member.skills ? member.skills.join(', ') : '',
@@ -1436,6 +1442,7 @@ function ManageTeam() {
               experience: '',
               bio: '',
               imageUrl: '',
+              email: '',
               rating: 4.9,
               category: 'consulting',
               skillsInput: '',
@@ -1501,6 +1508,20 @@ function ManageTeam() {
                     <option value="entertainment">Entertainment Production</option>
                     <option value="both">Both (Consult & Event)</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Direct Email Address *</label>
+                  <Input
+                    required
+                    type="email"
+                    value={newMember.email}
+                    onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
+                    placeholder="E.g., specialist@grefas.com"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">Direct message notifications from the chosen specialist's modal will be routed right to this address.</p>
                 </div>
               </div>
 
@@ -1686,6 +1707,11 @@ function ManageTeam() {
                         </span>
                       </p>
                       <p className="text-xs text-orange-600 font-semibold">{member.role}</p>
+                      {member.email && (
+                        <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1 mt-0.5">
+                          <span className="font-semibold text-foreground/85">Email:</span> {member.email}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground truncate max-w-sm mt-0.5">{member.bio}</p>
                     </div>
                   </div>

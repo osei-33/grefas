@@ -315,7 +315,7 @@ export default function Chat() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed right-6 bottom-24 z-50 flex h-[500px] w-[350px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+            className="fixed right-4 bottom-24 left-4 sm:right-6 sm:left-auto z-50 flex h-[500px] sm:w-[350px] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
           >
             {/* Header with active online status */}
             <div className="flex items-center justify-between bg-orange-600 p-4 text-white">

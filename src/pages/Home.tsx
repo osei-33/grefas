@@ -122,7 +122,7 @@ export default function Home() {
               transition={{ duration: 0.8, delay: 0.4 }}
               className="mt-6 text-3xl font-bold text-white sm:text-5xl"
             >
-              Elevate Your <span className="text-orange-600">Vision</span> with Grefas
+              Elevate Your <span className="text-orange-600">Vision</span> with Grefas in Nyinahin-Ashanti, Ashanti Region
             </motion.h2>
 
             <motion.p 
@@ -131,7 +131,7 @@ export default function Home() {
               transition={{ duration: 0.8, delay: 0.6 }}
               className="mt-6 text-xl text-zinc-300 max-w-2xl"
             >
-              Your premier partner for professional consulting and world-class entertainment services. 
+              Our Nyinahin-Ashanti, Ashanti Region based agency is your premier partner for professional consulting and world-class entertainment services. 
               We turn your ideas into unforgettable experiences.
             </motion.p>
 

@@ -40,7 +40,7 @@ export default function Contact() {
             animate={{ opacity: 1, y: 0 }}
             className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl"
           >
-            Get in Touch
+            Get in Touch <span className="text-orange-600">—</span> Nyinahin-Ashanti, Ashanti Region
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -48,7 +48,7 @@ export default function Contact() {
             transition={{ delay: 0.1 }}
             className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground"
           >
-            Have a question or want to work with us? Send us a message and we'll respond as soon as possible.
+            Have an inquiry or want to collaborate with our team in Nyinahin-Ashanti, Ashanti Region? Send us a message and we'll reply promptly.
           </motion.p>
         </div>
 
@@ -112,7 +112,7 @@ export default function Contact() {
                 </div>
                 <div>
                   <p className="font-semibold text-foreground">Address</p>
-                  <p className="text-muted-foreground">{settings?.address || '123 Business Avenue, Accra, Ghana'}</p>
+                  <p className="text-muted-foreground">{settings?.address || '123 Business Avenue, Nyinahin-Ashanti, Ashanti Region, Ghana'}</p>
                 </div>
               </div>
             </div>
@@ -120,8 +120,8 @@ export default function Contact() {
             {/* Map Placeholder */}
             <div className="aspect-video w-full overflow-hidden rounded-2xl bg-muted border border-border/50">
               <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                <MapPin className="mr-2 h-6 w-6" />
-                <span>Map Location Placeholder</span>
+                <MapPin className="mr-2 h-6 w-6 text-orange-600" />
+                <span>Nyinahin-Ashanti, Ashanti Region, Ghana</span>
               </div>
             </div>
           </motion.div>

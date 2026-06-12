@@ -201,6 +201,58 @@ async function startServer() {
     res.json({ status: "ok", results });
   });
 
+  app.post("/api/send-direct-message", async (req, res) => {
+    const { recipientEmail, recipientName, senderName, senderEmail, subject, message } = req.body;
+
+    if (!recipientEmail || !recipientName || !senderName || !senderEmail || !message) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const results = { email: "skipped" };
+
+    if (resend) {
+      try {
+        await resend.emails.send({
+          from: "Grefas Consult <notifications@resend.dev>",
+          to: recipientEmail,
+          replyTo: senderEmail,
+          subject: subject || `Grefas Message: ${senderName}`,
+          html: `
+            <div style="font-family: sans-serif; color: #18181b; max-width: 600px; margin: 0 auto; border: 1px solid #e4e4e7; border-radius: 12px; overflow: hidden;">
+              <div style="background-color: #ea580c; padding: 24px; text-align: center;">
+                <h1 style="color: white; margin: 0; font-size: 24px; letter-spacing: -0.025em; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">GREFAS.</h1>
+              </div>
+              <div style="padding: 32px;">
+                <h2 style="margin-top: 0; font-size: 20px; color: #ea580c;">Direct Specialist Message Alert</h2>
+                <p>Hello ${recipientName},</p>
+                <p>You have received a new direct advisory / booking message from a client on your Grefas profile page.</p>
+                
+                <div style="background-color: #f4f4f5; padding: 20px; border-radius: 8px; margin: 24px 0;">
+                  <h3 style="margin-top: 0; font-size: 15px; border-bottom: 1px solid #e4e4e7; padding-bottom: 8px; margin-bottom: 12px; color: #27272a;">Inquiry Details</h3>
+                  <p style="margin: 6px 0;"><strong>Sender:</strong> ${senderName}</p>
+                  <p style="margin: 6px 0;"><strong>Sender Email:</strong> <a href="mailto:${senderEmail}">${senderEmail}</a></p>
+                  <p style="margin: 6px 0;"><strong>Subject:</strong> ${subject || 'No Subject'}</p>
+                  <p style="margin: 16px 0 0 0; white-space: pre-wrap; font-style: italic; color: #3f3f46; border-left: 3px solid #ea580c; padding-left: 12px;">"${message}"</p>
+                </div>
+                
+                <p style="font-size: 14px; color: #71717a;">You can reply to this email directly to contact ${senderName} at their email: ${senderEmail}.</p>
+                <p style="margin-top: 32px; font-size: 14px; color: #71717a;">Best regards,<br>The Grefas Platform</p>
+              </div>
+            </div>
+          `,
+        });
+        results.email = "sent";
+      } catch (error) {
+        console.error("Direct email trigger breakdown:", error);
+        results.email = "failed";
+      }
+    } else {
+      console.warn("RESEND_API_KEY NOT configured; direct email skipped.");
+    }
+
+    res.json({ status: "ok", results });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
