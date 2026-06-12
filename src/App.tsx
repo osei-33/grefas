@@ -13,27 +13,31 @@ import Team from './pages/Team';
 import Admin from './pages/Admin';
 import { Toaster } from 'sonner';
 import ErrorBoundary from './components/ErrorBoundary';
+import { LanguageProvider } from './lib/LanguageContext';
 
 export default function App() {
   return (
     <ErrorBoundary>
-      <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/services" element={<Services />} />
-            <Route path="/services/:id" element={<ServiceDetail />} />
-            <Route path="/portfolio" element={<Portfolio />} />
-            <Route path="/gallery" element={<Gallery />} />
-            <Route path="/team" element={<Team />} />
-            <Route path="/booking" element={<Booking />} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/admin/*" element={<Admin />} />
-          </Routes>
-        </Layout>
-        <Toaster position="top-center" />
-      </Router>
+      <LanguageProvider>
+        <Router>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/services" element={<Services />} />
+              <Route path="/services/:id" element={<ServiceDetail />} />
+              <Route path="/portfolio" element={<Portfolio />} />
+              <Route path="/gallery" element={<Gallery />} />
+              <Route path="/team" element={<Team />} />
+              <Route path="/booking" element={<Booking />} />
+              <Route path="/contact" element={<Contact />} />
+              <Route path="/admin/*" element={<Admin />} />
+            </Routes>
+          </Layout>
+          <Toaster position="top-center" />
+        </Router>
+      </LanguageProvider>
     </ErrorBoundary>
   );
 }
+

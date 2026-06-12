@@ -1,7 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle } from 'lucide-react';
+import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { safeGetLocalStorage, safeSetLocalStorage, safeGetSessionStorage, safeSetSessionStorage } from '@/lib/utils';
@@ -10,6 +10,7 @@ import NotificationCenter from './NotificationCenter';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot, getDoc, setDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import { useLanguage, LANGUAGES } from '@/lib/LanguageContext';
 
 interface LayoutProps {
   children: ReactNode;
@@ -109,17 +110,21 @@ export default function Layout({ children }: LayoutProps) {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
+  const { t, language, setLanguage, currentLanguage } = useLanguage();
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+
   const navLinks = [
-    { name: 'Home', href: '/' },
-    { name: 'About', href: '/about' },
-    { name: 'Services', href: '/services' },
-    { name: 'Portfolio', href: '/portfolio' },
-    { name: 'Gallery', href: '/gallery' },
-    { name: 'Team', href: '/team' },
-    { name: 'Booking', href: '/booking' },
-    { name: 'Contact', href: '/contact' },
-    { name: 'Admin', href: '/admin' },
+    { name: t('nav.home'), href: '/' },
+    { name: t('nav.about'), href: '/about' },
+    { name: t('nav.services'), href: '/services' },
+    { name: t('nav.portfolio'), href: '/portfolio' },
+    { name: t('nav.gallery'), href: '/gallery' },
+    { name: t('nav.team'), href: '/team' },
+    { name: t('nav.booking'), href: '/booking' },
+    { name: t('nav.contact'), href: '/contact' },
+    { name: t('nav.admin'), href: '/admin' },
   ];
+
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -151,9 +156,44 @@ export default function Layout({ children }: LayoutProps) {
                 {link.name}
               </Link>
             ))}
-            <Button asChild size="sm" className="bg-orange-600 hover:bg-orange-700 text-white">
-              <Link to="/booking">Book Now</Link>
+            <Button asChild size="sm" className="bg-orange-600 hover:bg-orange-700 text-white font-sans">
+              <Link to="/booking">{t('nav.bookNow')}</Link>
             </Button>
+
+            {/* Desktop Language Switcher */}
+            <div className="relative">
+              <button
+                onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
+                onBlur={() => setTimeout(() => setIsLangDropdownOpen(false), 200)}
+                className="flex items-center space-x-1.5 text-sm font-medium text-muted-foreground hover:text-orange-600 transition-colors focus:outline-none py-1.5"
+                title={t('nav.chooseLanguage')}
+              >
+                <Globe className="h-4 w-4 text-orange-600" />
+                <span>{currentLanguage.flag}</span>
+                <span className="hidden lg:inline">{currentLanguage.name}</span>
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </button>
+              {isLangDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-36 rounded-xl border border-border bg-card shadow-lg p-1 z-50 animate-in fade-in slide-in-from-top-1">
+                  {LANGUAGES.map((lang) => (
+                    <button
+                      key={lang.code}
+                      onClick={() => {
+                        setLanguage(lang.code);
+                        setIsLangDropdownOpen(false);
+                      }}
+                      className={`flex w-full items-center space-x-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold transition-colors hover:bg-muted ${
+                        language === lang.code ? 'text-orange-600 bg-orange-500/10' : 'text-foreground'
+                      }`}
+                    >
+                      <span className="text-sm">{lang.flag}</span>
+                      <span>{lang.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <NotificationCenter />
             <Button
               variant="ghost"
@@ -168,7 +208,7 @@ export default function Layout({ children }: LayoutProps) {
                 onClick={() => auth.signOut()}
                 className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hover:text-orange-600"
               >
-                Sign Out
+                {t('nav.signOut')}
               </button>
             )}
           </div>
@@ -221,13 +261,36 @@ export default function Layout({ children }: LayoutProps) {
                   }}
                   className="block w-full text-left py-2 text-base font-medium text-muted-foreground hover:text-orange-600"
                 >
-                  Sign Out
+                  {t('nav.signOut')}
                 </button>
               )}
               <div className="pt-4 mt-2 border-t border-border">
                 <Button asChild className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 text-sm rounded-xl py-3 flex items-center justify-center">
-                  <Link to="/booking" onClick={() => setIsMenuOpen(false)}>Book Your Session Now</Link>
+                  <Link to="/booking" onClick={() => setIsMenuOpen(false)}>{t('nav.bookSessionNow')}</Link>
                 </Button>
+              </div>
+
+              {/* Language Switcher in Mobile Nav */}
+              <div className="pt-4 mt-2 border-t border-border">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5 p-1">
+                  <Globe className="h-3.5 w-3.5 text-orange-600" /> {t('nav.chooseLanguage')}
+                </p>
+                <div className="grid grid-cols-4 gap-2">
+                  {LANGUAGES.map((lang) => (
+                    <button
+                      key={lang.code}
+                      onClick={() => setLanguage(lang.code)}
+                      className={`flex flex-col items-center justify-center rounded-xl p-2.5 border transition-all ${
+                        language === lang.code
+                          ? 'border-orange-500 bg-orange-500/10 text-orange-600 font-bold'
+                          : 'border-border bg-muted/30 text-muted-foreground'
+                      }`}
+                    >
+                      <span className="text-lg">{lang.flag}</span>
+                      <span className="text-[10px] mt-1 font-semibold">{lang.name}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </motion.div>
@@ -253,8 +316,7 @@ export default function Layout({ children }: LayoutProps) {
                 )}
               </Link>
               <p className="mt-4 max-w-xs text-muted-foreground">
-                Professional consulting and entertainment services tailored to your needs. 
-                Excellence in every project we undertake.
+                {t('footer.description')}
               </p>
               <div className="mt-6 flex space-x-4">
                 {settings?.facebook && (
@@ -277,7 +339,7 @@ export default function Layout({ children }: LayoutProps) {
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">Contact</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{t('footer.contactUs')}</h3>
               <ul className="mt-4 space-y-2">
                 <li className="flex items-center space-x-2 text-sm text-muted-foreground">
                   <Mail className="h-4 w-4" />
@@ -305,7 +367,7 @@ export default function Layout({ children }: LayoutProps) {
               </ul>
             </div>
             <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">Quick Links</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">{t('footer.quickLinks')}</h3>
               <ul className="mt-4 space-y-2">
                 {navLinks.map((link) => (
                   <li key={link.name}>
@@ -318,7 +380,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
-            <p>© {new Date().getFullYear()} Grefas Consult & Entertainment. All rights reserved.</p>
+            <p>© {new Date().getFullYear()} Grefas Consult & Entertainment. {t('footer.copyright')}</p>
             <p className="mt-2 text-xs opacity-70">
               Grefas Consult & Entertainment was generated using <a href="https://ai.studio" target="_blank" rel="noopener noreferrer" className="hover:text-orange-600 underline decoration-orange-600/30">Google AI Studio</a>
             </p>

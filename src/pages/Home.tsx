@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useLanguage } from '@/lib/LanguageContext';
 
 import { AdSense } from '@/components/AdSense';
 
 export default function Home() {
+  const { t, language } = useLanguage();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [quote, setQuote] = useState<string>("");
   const [loadingQuote, setLoadingQuote] = useState(true);
@@ -99,7 +101,7 @@ export default function Home() {
               transition={{ duration: 0.8, delay: 0.2 }}
             >
               <span className="inline-block rounded-full bg-orange-600/20 px-4 py-1 text-sm font-semibold text-orange-500 backdrop-blur-sm">
-                Excellence in Every Detail
+                {t('hero.badge')}
               </span>
             </motion.div>
 
@@ -120,9 +122,17 @@ export default function Home() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
-              className="mt-6 text-3xl font-bold text-white sm:text-5xl"
+              className="mt-6 text-3xl font-bold text-white sm:text-5xl leading-tight"
             >
-              Elevate Your <span className="text-orange-600">Vision</span> with Grefas in Nyinahin-Ashanti, Ashanti Region
+              {language === 'en' ? (
+                <>Elevate Your <span className="text-orange-600">Vision</span> with Grefas in Nyinahin-Ashanti, Ashanti Region</>
+              ) : language === 'fr' ? (
+                <>Élevez votre <span className="text-orange-600">vision</span> avec Grefas à Nyinahin-Ashanti, région d'Ashanti</>
+              ) : language === 'es' ? (
+                <>Eleve su <span className="text-orange-600">visión</span> con Grefas en Nyinahin-Ashanti, Región de Ashanti</>
+              ) : (
+                <>Ma wo <span className="text-orange-600">anisoadehunu</span> kɔ anim ne Grefas wɔ Nyinahin-Ashanti, Ashanti Mantam</>
+              )}
             </motion.h2>
 
             <motion.p 
@@ -131,8 +141,7 @@ export default function Home() {
               transition={{ duration: 0.8, delay: 0.6 }}
               className="mt-6 text-xl text-zinc-300 max-w-2xl"
             >
-              Our Nyinahin-Ashanti, Ashanti Region based agency is your premier partner for professional consulting and world-class entertainment services. 
-              We turn your ideas into unforgettable experiences.
+              {t('hero.description')}
             </motion.p>
 
             <motion.div 
@@ -142,10 +151,10 @@ export default function Home() {
               className="mt-10 flex flex-wrap gap-4"
             >
               <Button size="lg" className="bg-orange-600 hover:bg-orange-700" asChild>
-                <Link to="/contact">Get Started <ArrowRight className="ml-2 h-5 w-5" /></Link>
+                <Link to="/contact">{t('hero.getStarted')} <ArrowRight className="ml-2 h-5 w-5" /></Link>
               </Button>
               <Button size="lg" variant="outline" className="border-white text-white hover:bg-white hover:text-zinc-900" asChild>
-                <Link to="/gallery">View Gallery</Link>
+                <Link to="/gallery">{t('hero.viewGallery')}</Link>
               </Button>
             </motion.div>
           </motion.div>
@@ -175,7 +184,7 @@ export default function Home() {
             className="relative rounded-3xl bg-zinc-800/50 p-12 backdrop-blur-sm border border-zinc-700/50"
           >
             <Quote className="absolute -top-6 left-1/2 -translate-x-1/2 h-12 w-12 text-orange-600 opacity-50" />
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-orange-500 mb-6">Daily Inspiration</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-orange-500 mb-6">{t('hero.dailyInspiration')}</h2>
             {loadingQuote ? (
               <div className="flex justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
