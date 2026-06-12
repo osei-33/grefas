@@ -9,6 +9,7 @@ import { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp,
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
+import { safeGetLocalStorage, safeSetLocalStorage } from '@/lib/utils';
 
 const formatMessageTime = (timestamp: any) => {
   if (!timestamp) return 'Just now';
@@ -86,7 +87,7 @@ export default function Chat() {
   const setUserTypingStatus = async (isTyping: boolean) => {
     let chatId = user?.uid;
     if (!chatId) {
-      chatId = localStorage.getItem('grefas_chat_id') || '';
+      chatId = safeGetLocalStorage('grefas_chat_id');
     }
     if (!chatId) return;
 
@@ -122,10 +123,10 @@ export default function Chat() {
     // Determine chat ID: either user UID or a persistent guest ID
     let chatId = user?.uid;
     if (!chatId) {
-      chatId = localStorage.getItem('grefas_chat_id') || '';
+      chatId = safeGetLocalStorage('grefas_chat_id');
       if (!chatId) {
         chatId = 'guest_' + Math.random().toString(36).substring(2, 10);
-        localStorage.setItem('grefas_chat_id', chatId);
+        safeSetLocalStorage('grefas_chat_id', chatId);
       }
     }
 
@@ -176,7 +177,7 @@ export default function Chat() {
 
   useEffect(() => {
     // Show promo popup after 3 seconds if not dismissed and chat is closed
-    const dismissed = localStorage.getItem('grefas_chat_promo_dismissed');
+    const dismissed = safeGetLocalStorage('grefas_chat_promo_dismissed');
     if (!dismissed && !isOpen) {
       const timer = setTimeout(() => {
         setShowPromoPopup(true);
@@ -193,7 +194,7 @@ export default function Chat() {
 
     let chatId = user?.uid;
     if (!chatId) {
-      chatId = localStorage.getItem('grefas_chat_id') || '';
+      chatId = safeGetLocalStorage('grefas_chat_id');
     }
 
     try {
@@ -279,7 +280,7 @@ export default function Chat() {
               onClick={(e) => {
                 e.stopPropagation();
                 setShowPromoPopup(false);
-                localStorage.setItem('grefas_chat_promo_dismissed', 'true');
+                safeSetLocalStorage('grefas_chat_promo_dismissed', 'true');
               }}
               className="absolute top-2.5 right-2.5 text-muted-foreground hover:text-foreground hover:bg-muted p-1 rounded-full transition"
               title="Dismiss welcome message"
@@ -362,7 +363,7 @@ export default function Chat() {
                     className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
                       msg.isFromStaff
                         ? 'bg-muted text-foreground rounded-tl-none ring-1 ring-orange-100'
-                        : msg.userId === user?.uid || (msg.chatId === localStorage.getItem('grefas_chat_id'))
+                        : msg.userId === user?.uid || (msg.chatId === safeGetLocalStorage('grefas_chat_id'))
                           ? 'bg-orange-600 text-white rounded-tr-none'
                           : 'bg-muted text-foreground rounded-tl-none'
                     }`}
@@ -378,7 +379,7 @@ export default function Chat() {
                         />
                         {msg.caption && (
                           <div className={`p-2 text-xs border-t border-border/10 italic break-words ${
-                            msg.isFromStaff || !(msg.userId === user?.uid || (msg.chatId === localStorage.getItem('grefas_chat_id')))
+                            msg.isFromStaff || !(msg.userId === user?.uid || (msg.chatId === safeGetLocalStorage('grefas_chat_id')))
                               ? 'bg-black/5 text-muted-foreground'
                               : 'bg-white/10 text-orange-50'
                           }`}>

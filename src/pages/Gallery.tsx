@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { onAuthStateChanged } from 'firebase/auth';
 import { AdSense } from '@/components/AdSense';
+import { safeGetLocalStorage, safeSetLocalStorage } from '@/lib/utils';
 
 const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: string; className?: string; onClick?: () => void }) => {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -125,7 +126,7 @@ export default function Gallery() {
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
-  const [guestName, setGuestName] = useState(localStorage.getItem('grefas_guest_name') || '');
+  const [guestName, setGuestName] = useState(() => safeGetLocalStorage('grefas_guest_name'));
   const [activeTab, setActiveTab] = useState('all');
 
   useEffect(() => {
@@ -165,10 +166,10 @@ export default function Gallery() {
   }, []);
 
   const getAnonymousId = () => {
-    let id = localStorage.getItem('grefas_gallery_id');
+    let id = safeGetLocalStorage('grefas_gallery_id');
     if (!id) {
       id = 'anon_' + Math.random().toString(36).substring(2, 11);
-      localStorage.setItem('grefas_gallery_id', id);
+      safeSetLocalStorage('grefas_gallery_id', id);
     }
     return id;
   };
@@ -196,7 +197,7 @@ export default function Gallery() {
     const displayName = user?.displayName || user?.email?.split('@')[0] || guestName.trim() || 'Anonymous Viewer';
 
     if (!user && guestName.trim()) {
-      localStorage.setItem('grefas_guest_name', guestName.trim());
+      safeSetLocalStorage('grefas_guest_name', guestName.trim());
     }
 
     const itemRef = doc(db, 'gallery', selectedItem.id);

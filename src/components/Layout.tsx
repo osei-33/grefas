@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { safeGetLocalStorage, safeSetLocalStorage, safeGetSessionStorage, safeSetSessionStorage } from '@/lib/utils';
 import Chat from './Chat';
 import NotificationCenter from './NotificationCenter';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
@@ -20,10 +21,7 @@ export default function Layout({ children }: LayoutProps) {
   const [user, setUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
-    }
-    return 'light';
+    return (safeGetLocalStorage('theme', 'light') as 'light' | 'dark');
   });
   const location = useLocation();
 
@@ -34,14 +32,14 @@ export default function Layout({ children }: LayoutProps) {
     } else {
       root.classList.remove('dark');
     }
-    localStorage.setItem('theme', theme);
+    safeSetLocalStorage('theme', theme);
   }, [theme]);
 
   useEffect(() => {
     // Only track unique browser session visits
-    if (typeof window !== 'undefined' && !sessionStorage.getItem('has_registered_visit')) {
+    if (!safeGetSessionStorage('has_registered_visit')) {
       try {
-        sessionStorage.setItem('has_registered_visit', 'true');
+        safeSetSessionStorage('has_registered_visit', 'true');
         const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         const visitDocRef = doc(db, 'site_visits', todayStr);
         setDoc(visitDocRef, {
