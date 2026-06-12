@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactPlayer from 'react-player';
 import { db, auth, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -37,6 +37,108 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
         onLoad={() => setIsLoaded(true)}
         onClick={onClick}
       />
+    </div>
+  );
+};
+
+const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string; title: string }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Helper to extract YouTube video ID
+  const getYoutubeId = (urlStr: string) => {
+    if (!urlStr) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = urlStr.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
+  const youtubeId = getYoutubeId(url);
+
+  // Helper to extract Vimeo ID
+  const getVimeoId = (urlStr: string) => {
+    if (!urlStr) return null;
+    const regExp = /vimeo\.com\/(?:video\/)?([0-9]+)/;
+    const match = urlStr.match(regExp);
+    return match ? match[1] : null;
+  };
+
+  const vimeoId = getVimeoId(url);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      if (isHovered) {
+        videoRef.current.play().catch(() => {});
+      } else {
+        videoRef.current.pause();
+        videoRef.current.currentTime = 0;
+      }
+    }
+  }, [isHovered]);
+
+  if (youtubeId) {
+    const ytThumb = `https://img.youtube.com/vi/${youtubeId}/0.jpg`;
+    return (
+      <div className="relative h-full w-full bg-black overflow-hidden flex items-center justify-center">
+        <img
+          src={ytThumb}
+          alt={title}
+          className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
+          referrerPolicy="no-referrer"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+          <div className="rounded-full bg-white/20 p-2 text-white backdrop-blur-md">
+            <Play className="h-6 w-6 fill-white text-white" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (vimeoId) {
+    return (
+      <div className="relative h-full w-full bg-black overflow-hidden flex items-center justify-center">
+        <img
+          src={thumbnail || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80"}
+          alt={title}
+          className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
+          referrerPolicy="no-referrer"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+          <div className="rounded-full bg-white/20 p-2 text-white backdrop-blur-md">
+            <Play className="h-6 w-6 fill-white text-white" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Direct MP4 video preview with hover support
+  return (
+    <div 
+      className="relative h-full w-full bg-black overflow-hidden"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <video
+        ref={videoRef}
+        src={url}
+        poster={thumbnail}
+        preload="metadata"
+        muted
+        loop
+        playsInline
+        className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+      />
+      {!isHovered && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+          <div className="rounded-full bg-white/20 p-2 text-white backdrop-blur-md">
+            <Play className="h-6 w-6 fill-white text-white" />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -433,11 +535,19 @@ export default function Gallery() {
                       className="h-full w-full relative cursor-pointer"
                       onClick={() => setSelectedItem(item)}
                     >
-                      <ImageWithLoading
-                        src={item.type === 'image' ? item.url : item.thumbnail}
-                        alt={item.title}
-                        className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
-                      />
+                      {item.type === 'image' ? (
+                        <ImageWithLoading
+                          src={item.url}
+                          alt={item.title}
+                          className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
+                        />
+                      ) : (
+                        <VideoCover
+                          url={item.url}
+                          thumbnail={item.thumbnail}
+                          title={item.title}
+                        />
+                      )}
                     </div>
                     
                     {/* Floating Info Badge */}

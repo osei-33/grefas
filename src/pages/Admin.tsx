@@ -2088,10 +2088,9 @@ function ManageGallery() {
                   />
                   {newItem.type === 'video' && (
                     <Input 
-                      placeholder="Thumbnail URL" 
+                      placeholder="Thumbnail URL (Optional)" 
                       value={newItem.thumbnail} 
                       onChange={e => setNewItem({...newItem, thumbnail: e.target.value})} 
-                      required 
                       className="bg-muted/50 border-border"
                     />
                   )}
@@ -2121,12 +2120,56 @@ function ManageGallery() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {items.map((item) => (
           <div key={item.id} className="group relative aspect-square overflow-hidden rounded-xl bg-muted border border-border/50">
-            <img
-              src={item.type === 'image' ? item.url : item.thumbnail}
-              alt={item.title}
-              className="h-full w-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+            {(() => {
+              if (item.type === 'image') {
+                return (
+                  <img
+                    src={item.url}
+                    alt={item.title}
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                );
+              } else {
+                const getYoutubeId = (urlStr: string) => {
+                  if (!urlStr) return null;
+                  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+                  const match = urlStr.match(regExp);
+                  return (match && match[2].length === 11) ? match[2] : null;
+                };
+                const ytId = getYoutubeId(item.url);
+                if (ytId) {
+                  return (
+                    <img
+                      src={`https://img.youtube.com/vi/${ytId}/0.jpg`}
+                      alt={item.title}
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  );
+                }
+                const isDirect = item.url?.includes('firebasestorage.googleapis.com') || item.url?.match(/\.(mp4|webm|ogg)/i);
+                if (isDirect) {
+                  return (
+                    <video
+                      src={item.url}
+                      poster={item.thumbnail}
+                      preload="metadata"
+                      muted
+                      className="h-full w-full object-cover"
+                    />
+                  );
+                }
+                return (
+                  <img
+                    src={item.thumbnail || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80"}
+                    alt={item.title}
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                );
+              }
+            })()}
             <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
               <Button variant="destructive" size="sm" onClick={() => handleDelete(item.id, item.url, item.thumbnail)}>
                 <Trash2 className="h-4 w-4" />
