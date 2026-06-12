@@ -42,8 +42,13 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('');
   const [user, setUser] = useState<any>(null);
   const [isStaffTyping, setIsStaffTyping] = useState(false);
+  const [isAutoTyping, setIsAutoTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [settings, setSettings] = useState<any>({
+    isAgentOnline: true,
+    autoReplyMessage: "Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible."
+  });
 
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -162,10 +167,22 @@ export default function Chat() {
       }
     });
 
+    // Listen to global agency settings
+    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSettings({
+          isAgentOnline: data.isAgentOnline !== false,
+          autoReplyMessage: data.autoReplyMessage || "Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible."
+        });
+      }
+    });
+
     return () => {
       unsubscribeAuth();
       unsubscribeChat();
       unsubscribeTyping();
+      unsubscribeSettings();
     };
   }, [user]);
 
@@ -237,6 +254,36 @@ export default function Chat() {
       setNewMessage('');
       resetSelectedImage();
       setUserTypingStatus(false);
+
+      // Automated away reply if agent is offline
+      if (settings.isAgentOnline === false) {
+        const lastAutoReplyTime = safeGetLocalStorage(`grefas_last_autoreply_${chatId}`);
+        const now = Date.now();
+        const twoMinutes = 2 * 60 * 1000;
+
+        if (!lastAutoReplyTime || now - parseInt(lastAutoReplyTime, 10) > twoMinutes) {
+          safeSetLocalStorage(`grefas_last_autoreply_${chatId}`, now.toString());
+
+          setIsAutoTyping(true);
+          setTimeout(async () => {
+            try {
+              await addDoc(collection(db, 'chat'), {
+                text: settings.autoReplyMessage,
+                userId: 'grefas_auto_reply',
+                userName: 'Support Assistant (Automated)',
+                chatId: chatId,
+                timestamp: serverTimestamp(),
+                isFromStaff: true,
+                isAutoReply: true
+              });
+            } catch (err) {
+              console.error("Auto-reply send failure:", err);
+            } finally {
+              setIsAutoTyping(false);
+            }
+          }, 1500);
+        }
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       toast.error('Failed to send message');
@@ -263,14 +310,20 @@ export default function Chat() {
           >
             <div className="relative flex-shrink-0 h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-950 flex items-center justify-center text-orange-600 font-bold">
               GC
-              <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-background animate-pulse" />
+              <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-background ${settings.isAgentOnline ? 'bg-green-500 animate-pulse' : 'bg-zinc-400'}`} />
             </div>
             <div className="flex-1 text-left min-w-0 pr-4">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="font-semibold text-xs text-foreground group-hover:text-orange-600 transition-colors">Grefas Support</span>
-                <span className="inline-flex items-center gap-1 bg-green-500/15 text-green-600 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
-                  <span className="h-1 w-1 rounded-full bg-green-500 animate-ping" /> Online
-                </span>
+                {settings.isAgentOnline ? (
+                  <span className="inline-flex items-center gap-1 bg-green-500/15 text-green-600 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
+                    <span className="h-1 w-1 rounded-full bg-green-500 animate-ping" /> Online
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 bg-zinc-500/15 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
+                    <span className="h-1 w-1 rounded-full bg-zinc-400" /> Away
+                  </span>
+                )}
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed font-normal">
                 👋 Hello! Need help or want to book an entertainment service? Let's chat!
@@ -303,8 +356,8 @@ export default function Chat() {
 
         {/* Live Online Badge / Indicator */}
         {!isOpen && (
-          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 border-2 border-background shadow-md">
-            <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+          <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background shadow-md ${settings.isAgentOnline ? 'bg-green-500' : 'bg-zinc-500'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full bg-white ${settings.isAgentOnline ? 'animate-pulse' : ''}`} />
           </span>
         )}
       </button>
@@ -322,12 +375,16 @@ export default function Chat() {
             <div className="flex items-center justify-between bg-orange-600 p-4 text-white">
               <div className="flex items-center space-x-2">
                 <div className="relative h-2.5 w-2.5 flex items-center justify-center">
-                  <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+                  {settings.isAgentOnline && (
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
+                  )}
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${settings.isAgentOnline ? 'bg-green-400' : 'bg-zinc-300'}`} />
                 </div>
                 <div className="flex flex-col">
                   <span className="font-semibold text-sm leading-tight">Live Support</span>
-                  <span className="text-[10px] text-green-100/90 font-medium">We're Online Status: Active</span>
+                  <span className="text-[10px] text-green-100/90 font-medium font-sans">
+                    {settings.isAgentOnline ? "We're Online Status: Active" : "Status: Away / Offline"}
+                  </span>
                 </div>
               </div>
               <button 
@@ -394,11 +451,11 @@ export default function Chat() {
                   </div>
                 </div>
               ))}
-              {isStaffTyping && (
+              {(isStaffTyping || isAutoTyping) && (
                 <div className="flex flex-col items-start animate-in fade-in slide-in-from-left-1">
                   <div className="flex items-center space-x-1 mb-1">
                     <span className="text-[10px] font-medium text-orange-600">
-                      Grefas Staff
+                      {isAutoTyping ? 'Support Assistant (Automated)' : 'Grefas Staff'}
                     </span>
                   </div>
                   <div className="bg-muted text-foreground rounded-2xl rounded-tl-none px-4 py-2 text-sm flex items-center gap-1">
@@ -409,16 +466,18 @@ export default function Chat() {
                   </div>
                 </div>
               )}
-              {messages.length === 0 && !isStaffTyping && (
+              {messages.length === 0 && !isStaffTyping && !isAutoTyping && (
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   <div className="rounded-full bg-orange-50 dark:bg-orange-900/10 p-4 text-orange-600 dark:text-orange-500">
                     <MessageCircle className="h-8 w-8" />
                   </div>
                   <p className="mt-4 text-sm font-medium text-foreground">
-                    How can we help you today?
+                    {settings.isAgentOnline ? "How can we help you today?" : "Leave us a message"}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Our team is online and ready to chat.
+                    {settings.isAgentOnline 
+                      ? "Our team is online and ready to chat." 
+                      : "We're currently away, but your message will trigger an automatic reply, and we will get back to you soon!"}
                   </p>
                 </div>
               )}

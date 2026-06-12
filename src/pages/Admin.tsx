@@ -2271,14 +2271,30 @@ function ManageSettings() {
     facebook: '',
     youtube: '',
     tiktok: '',
-    logoUrl: ''
+    logoUrl: '',
+    isAgentOnline: true,
+    autoReplyMessage: 'Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible.'
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) {
-        setSettings(doc.data());
+        const data = doc.data();
+        setSettings({
+          address: data.address || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          aboutContent: data.aboutContent || '',
+          aboutImageUrl: data.aboutImageUrl || '',
+          dailyQuote: data.dailyQuote || '',
+          facebook: data.facebook || '',
+          youtube: data.youtube || '',
+          tiktok: data.tiktok || '',
+          logoUrl: data.logoUrl || '',
+          isAgentOnline: data.isAgentOnline !== false,
+          autoReplyMessage: data.autoReplyMessage || 'Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible.'
+        });
       }
       setLoading(false);
     });
@@ -2424,6 +2440,51 @@ function ManageSettings() {
                   placeholder="https://tiktok.com/@..."
                   className="bg-muted/50 border-border"
                 />
+              </div>
+            </div>
+
+            {/* Live Chat & Auto-Reply Settings Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                <MessageCircle className="h-5 w-5 text-orange-600" /> Live Chat Support Settings
+              </h3>
+              <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-sm text-foreground">Support Representative Status</p>
+                    <p className="text-xs text-muted-foreground">Toggle whether agents are currently available to respond live.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${settings.isAgentOnline !== false ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+                      {settings.isAgentOnline !== false ? '● Online' : '○ Away / Offline'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isAgentOnline: settings.isAgentOnline === false ? true : false })}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${settings.isAgentOnline !== false ? 'bg-orange-600' : 'bg-zinc-300 dark:bg-zinc-700'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settings.isAgentOnline !== false ? 'translate-x-5' : 'translate-x-0'}`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2 text-foreground">
+                    Away Automatic Reply Message
+                  </label>
+                  <Textarea
+                    value={settings.autoReplyMessage}
+                    onChange={(e) => setSettings({ ...settings, autoReplyMessage: e.target.value })}
+                    placeholder="Enter the automated message that users will receive when agents are away..."
+                    rows={3}
+                    className="bg-background border-border"
+                  />
+                  <p className="text-[11px] text-muted-foreground italic">
+                    This message will automatically trigger in a client's chat screen after they send a message while representatives are away or offline.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -3797,6 +3858,28 @@ function ManageChat() {
   const [reply, setReply] = useState('');
   const [isUserTyping, setIsUserTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isAgentOnline, setIsAgentOnline] = useState<boolean>(true);
+
+  useEffect(() => {
+    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists()) {
+        setIsAgentOnline(docSnap.data().isAgentOnline !== false);
+      }
+    });
+    return () => unsubscribeSettings();
+  }, []);
+
+  const toggleAgentOnline = async () => {
+    try {
+      await setDoc(doc(db, 'settings', 'global'), {
+        isAgentOnline: !isAgentOnline
+      }, { merge: true });
+      toast.success(!isAgentOnline ? 'Status updated to Online' : 'Status updated to Offline / Away');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to update online status');
+    }
+  };
 
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -3984,7 +4067,34 @@ function ManageChat() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-[70vh] gap-6">
+    <div className="space-y-4">
+      {/* Quick Support Status Banner */}
+      <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-muted/40 border border-border rounded-xl gap-4">
+        <div className="flex items-center gap-3">
+          <div className="relative flex h-3.5 w-3.5 items-center justify-center">
+            {isAgentOnline && (
+              <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
+            )}
+            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isAgentOnline ? 'bg-green-500' : 'bg-zinc-400'}`} />
+          </div>
+          <div>
+            <h4 className="font-bold text-sm text-foreground">Live Availability: {isAgentOnline ? 'Online & Active' : 'Away / Offline Mode'}</h4>
+            <p className="text-xs text-muted-foreground">
+              {isAgentOnline ? 'Clients can see you online; auto-replies are paused.' : 'The widget will show you as Away and automatically reply with your Away Response.'}
+            </p>
+          </div>
+        </div>
+        <Button
+          onClick={toggleAgentOnline}
+          variant={isAgentOnline ? "outline" : "default"}
+          className={isAgentOnline ? "border-border text-foreground hover:bg-muted font-sans" : "bg-orange-600 hover:bg-orange-700 text-white font-sans"}
+          size="sm"
+        >
+          {isAgentOnline ? 'Set Status to Away' : 'Set Status to Online'}
+        </Button>
+      </div>
+
+      <div className="flex flex-col md:flex-row h-[70vh] gap-6">
       <div className="w-full md:w-1/3 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
         <div className="p-4 border-b border-border bg-muted/50">
           <h2 className="font-bold flex items-center gap-2">
@@ -4158,6 +4268,7 @@ function ManageChat() {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }
