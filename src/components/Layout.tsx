@@ -343,7 +343,7 @@ export default function Layout({ children }: LayoutProps) {
               <ul className="mt-4 space-y-2">
                 <li className="flex items-center space-x-2 text-sm text-muted-foreground">
                   <Mail className="h-4 w-4" />
-                  <span>{settings?.email || 'info@grefas.com'}</span>
+                  <span>{settings?.email || 'info@grefasconsultandentertainment.com'}</span>
                 </li>
                 <li className="flex items-center space-x-2 text-sm text-muted-foreground">
                   <Phone className="h-4 w-4" />

@@ -46,3 +46,36 @@ export function safeSetSessionStorage(key: string, value: string): void {
     console.warn(`Session storage write error for key ${key}:`, e);
   }
 }
+
+/**
+ * Triggers a browser native desktop notification if permission is granted.
+ * Requests permission if it hasn't been requested or decided yet.
+ */
+export function showBrowserNotification(title: string, body: string, icon = "/favicon.ico"): void {
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    return;
+  }
+
+  const trigger = () => {
+    try {
+      new Notification(title, {
+        body,
+        icon,
+        tag: "grefas-notification",
+      });
+    } catch (e) {
+      console.warn("Error displaying system notification:", e);
+    }
+  };
+
+  if (Notification.permission === "granted") {
+    trigger();
+  } else if (Notification.permission !== "denied") {
+    Notification.requestPermission().then((permission) => {
+      if (permission === "granted") {
+        trigger();
+      }
+    });
+  }
+}
+

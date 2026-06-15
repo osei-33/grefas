@@ -2373,7 +2373,7 @@ function ManageSettings() {
                 <Input
                   value={settings.email}
                   onChange={(e) => setSettings({ ...settings, email: e.target.value })}
-                  placeholder="info@grefas.com"
+                  placeholder="info@grefasconsultandentertainment.com"
                   className="bg-muted/50 border-border"
                 />
               </div>

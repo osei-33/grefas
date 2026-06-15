@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
+import { showBrowserNotification } from '@/lib/utils';
 
 export default function Booking() {
   const [date, setDate] = useState<Date | undefined>(undefined);
@@ -337,6 +338,19 @@ export default function Booking() {
           console.error("Failed to notify admin in Firestore:", adminNotifErr);
         }
       }
+
+      // Trigger browser-based toast notification
+      toast.success("Booking Submitted Successfully!", {
+        description: `Reference: ${newOrderNumber} for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time}.`,
+        duration: 8000,
+      });
+
+      // Trigger browser native system notification
+      showBrowserNotification(
+        'Booking Confirmed - Grefas',
+        `Ref: ${newOrderNumber}. Your booking for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time} has been received!`,
+        '/favicon.ico'
+      );
 
       setShowSuccessDialog(true);
       setDate(undefined);

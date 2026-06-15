@@ -4,14 +4,16 @@ import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Mail, Phone, MapPin, Send, MessageCircle, Navigation, ExternalLink } from 'lucide-react';
+import { Mail, Phone, MapPin, Send, MessageCircle, Navigation, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { showBrowserNotification } from '@/lib/utils';
 import SEO from '@/components/SEO';
 
 export default function Contact() {
   const [settings, setSettings] = useState<any>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const errorPath = 'settings/global';
@@ -26,11 +28,106 @@ export default function Contact() {
     return () => unsubscribe();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success('Message sent successfully! We will get back to you soon.');
-    (e.target as HTMLFormElement).reset();
+    if (isSubmitting) return;
+
+    const target = e.target as HTMLFormElement;
+    const firstName = (target.querySelector('#first-name') as HTMLInputElement)?.value || '';
+    const lastName = (target.querySelector('#last-name') as HTMLInputElement)?.value || '';
+    const email = (target.querySelector('#email') as HTMLInputElement)?.value || '';
+    const subject = (target.querySelector('#subject') as HTMLInputElement)?.value || 'General Inquiry';
+    const message = (target.querySelector('#message') as HTMLTextAreaElement)?.value || '';
+
+    setIsSubmitting(true);
+
+    const siteEmail = settings?.email || 'info@grefasconsultandentertainment.com';
+    const siteName = 'Grefas Consult & Entertainment';
+
+    try {
+      // 1. Log and persist the message in the Firestore 'messages' collection
+      await addDoc(collection(db, 'messages'), {
+        senderName: `${firstName} ${lastName}`,
+        senderEmail: email,
+        subject: subject,
+        message: message,
+        recipientId: 'general',
+        recipientName: siteName,
+        recipientEmail: siteEmail,
+        createdAt: serverTimestamp()
+      });
+
+      // 2. Dispatch the message directly to Grefas's site email address using the Resend API server route
+      let emailSentStatus = false;
+      try {
+        const response = await fetch('/api/send-direct-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            recipientEmail: siteEmail,
+            recipientName: siteName,
+            senderName: `${firstName} ${lastName}`,
+            senderEmail: email,
+            subject: subject,
+            message: message
+          }),
+        });
+
+        if (response.ok) {
+          const resJson = await response.json();
+          if (resJson?.results?.email === 'sent') {
+            emailSentStatus = true;
+          }
+        }
+      } catch (err) {
+        console.warn("Direct Resend email transmission skipped on server, triggering mailto fallback:", err);
+      }
+
+      if (emailSentStatus) {
+        toast.success(`Message sent directly to Grefas!`, {
+          description: `Thank you, ${firstName}. We will respond soon about "${subject}".`,
+          duration: 6000,
+        });
+      } else {
+        // Fallback option: Directly activate browser-based mail client pre-filled configuration
+        toast.success(`Message recorded! Opening your mail application...`, {
+          description: `Sending directly to our dynamic address: ${siteEmail}`,
+          duration: 6000,
+        });
+
+        const mailtoUrl = `mailto:${siteEmail}?subject=${encodeURIComponent(subject)}&reply-to=${encodeURIComponent(email)}&body=${encodeURIComponent(
+          `Sender: ${firstName} ${lastName}\nSender Email: ${email}\n\nMessage:\n${message}`
+        )}`;
+        window.location.href = mailtoUrl;
+      }
+
+      // 3. Emit browser desktop popup notification
+      showBrowserNotification(
+        'Message Received - Grefas Consult',
+        `Thank you, ${firstName}! We've received your message and will respond shortly.`,
+        '/favicon.ico'
+      );
+
+      target.reset();
+    } catch (firebaseErr: any) {
+      console.error("Firestore submission failure:", firebaseErr);
+      try {
+        handleFirestoreError(firebaseErr, OperationType.CREATE, 'messages');
+      } catch (e) {
+        // Absolute fallback to direct mailto launcher
+        toast.info(`Opening default mail app to send...`);
+        const mailtoUrl = `mailto:${siteEmail}?subject=${encodeURIComponent(subject)}&reply-to=${encodeURIComponent(email)}&body=${encodeURIComponent(
+          `Sender: ${firstName} ${lastName}\nSender Email: ${email}\n\nMessage:\n${message}`
+        )}`;
+        window.location.href = mailtoUrl;
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
 
   return (
     <div className="bg-background py-20">
@@ -79,7 +176,7 @@ export default function Contact() {
                 </div>
                 <div>
                   <p className="font-semibold text-foreground">Email</p>
-                  <p className="text-muted-foreground">{settings?.email || 'info@grefas.com'}</p>
+                  <p className="text-muted-foreground">{settings?.email || 'info@grefasconsultandentertainment.com'}</p>
                 </div>
               </div>
 
@@ -196,8 +293,16 @@ export default function Contact() {
                 <Textarea id="message" placeholder="Tell us about your project..." className="min-h-[150px] bg-muted/50 border-border" required />
               </div>
 
-              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white">
-                <Send className="mr-2 h-4 w-4" /> Send Message
+              <Button type="submit" disabled={isSubmitting} className="w-full bg-orange-600 hover:bg-orange-700 text-white">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending Message...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" /> Send Message
+                  </>
+                )}
               </Button>
             </form>
           </motion.div>

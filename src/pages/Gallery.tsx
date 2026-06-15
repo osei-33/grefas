@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
-import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2, Download } from 'lucide-react';
+import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2, Download, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -20,8 +20,8 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
   
   return (
     <div 
-      className={`relative h-full w-full bg-muted/20 overflow-hidden ${!isLoaded ? 'animate-pulse' : ''}`}
-      style={{ minHeight: '200px' }}
+      className={`relative w-full bg-muted/20 overflow-hidden ${!isLoaded ? 'animate-pulse' : ''}`}
+      style={{ minHeight: !isLoaded ? '180px' : 'auto' }}
     >
       {!isLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-linear-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[shimmer_3s_infinite]">
@@ -31,7 +31,7 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
       <img
         src={src}
         alt={alt}
-        className={`${className} ${isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'} transition-all duration-1000 ease-out`}
+        className={`${className || ''} ${isLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-105'} transition-all duration-1000 ease-out w-full h-auto block`}
         referrerPolicy="no-referrer"
         loading="lazy"
         onLoad={() => setIsLoaded(true)}
@@ -79,11 +79,11 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
   if (youtubeId) {
     const ytThumb = `https://img.youtube.com/vi/${youtubeId}/0.jpg`;
     return (
-      <div className="relative h-full w-full bg-black overflow-hidden flex items-center justify-center">
+      <div className="relative w-full aspect-video bg-black overflow-hidden flex items-center justify-center">
         <img
           src={ytThumb}
           alt={title}
-          className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
+          className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
           referrerPolicy="no-referrer"
           loading="lazy"
         />
@@ -98,11 +98,11 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
 
   if (vimeoId) {
     return (
-      <div className="relative h-full w-full bg-black overflow-hidden flex items-center justify-center">
+      <div className="relative w-full aspect-video bg-black overflow-hidden flex items-center justify-center">
         <img
           src={thumbnail || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80"}
           alt={title}
-          className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
+          className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
           referrerPolicy="no-referrer"
           loading="lazy"
         />
@@ -118,7 +118,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
   // Direct MP4 video preview with hover support
   return (
     <div 
-      className="relative h-full w-full bg-black overflow-hidden"
+      className="relative w-full aspect-video bg-black overflow-hidden"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -130,7 +130,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
         muted
         loop
         playsInline
-        className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+        className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
       />
       {!isHovered && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
@@ -473,6 +473,37 @@ export default function Gallery() {
   const isAdmin = userRole === 'admin' || userRole === 'editor';
   const filteredItems = activeTab === 'all' ? items : items.filter(item => item.category === activeTab);
 
+  const [isLightboxExpanded, setIsLightboxExpanded] = useState(false);
+
+  const handlePrevItem = () => {
+    if (!selectedItem || filteredItems.length <= 1) return;
+    const currentIndex = filteredItems.findIndex(item => item.id === selectedItem.id);
+    if (currentIndex === -1) return;
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : filteredItems.length - 1;
+    setSelectedItem(filteredItems[prevIndex]);
+  };
+
+  const handleNextItem = () => {
+    if (!selectedItem || filteredItems.length <= 1) return;
+    const currentIndex = filteredItems.findIndex(item => item.id === selectedItem.id);
+    if (currentIndex === -1) return;
+    const nextIndex = currentIndex < filteredItems.length - 1 ? currentIndex + 1 : 0;
+    setSelectedItem(filteredItems[nextIndex]);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedItem) return;
+      if (e.key === 'ArrowLeft') {
+        handlePrevItem();
+      } else if (e.key === 'ArrowRight') {
+        handleNextItem();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedItem, filteredItems]);
+
   if (loading) {
     return (
       <div className="bg-background py-20">
@@ -552,32 +583,26 @@ export default function Gallery() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-[300px]"
+              className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6 [column-fill:_balance]"
             >
               {filteredItems.map((item, i) => {
-                // Occasional large items for bento feel
-                const isLarge = i % 7 === 0;
-                const isWide = i % 10 === 3;
-                
                 return (
                   <motion.div
                     key={item.id}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: i * 0.05, duration: 0.5 }}
-                    className={`group relative cursor-pointer overflow-hidden rounded-[2rem] bg-muted ring-1 ring-border/50 shadow-sm hover:shadow-2xl hover:shadow-orange-500/15 transition-all duration-700 ${
-                      isLarge ? 'md:row-span-2' : ''
-                    } ${isWide ? 'md:col-span-2' : ''}`}
+                    initial={{ opacity: 0, y: 15, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ delay: i * 0.03, duration: 0.4, ease: "easeOut" }}
+                    className="break-inside-avoid mb-6 group relative cursor-pointer overflow-hidden rounded-[2rem] bg-muted ring-1 ring-border/50 shadow-sm hover:shadow-2xl hover:shadow-orange-500/15 transition-all duration-500"
                   >
                     <div 
-                      className="h-full w-full relative cursor-pointer"
+                      className="w-full relative cursor-pointer"
                       onClick={() => setSelectedItem(item)}
                     >
                       {item.type === 'image' ? (
                         <ImageWithLoading
                           src={item.url}
                           alt={item.title}
-                          className="h-full w-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
+                          className="w-full h-auto object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
                         />
                       ) : (
                         <VideoCover
@@ -703,8 +728,10 @@ export default function Gallery() {
         </div>
 
         {/* Cinematic Media Modal */}
-        <Dialog open={!!selectedItem} onOpenChange={() => setSelectedItem(null)}>
-          <DialogContent className="max-w-7xl overflow-hidden p-0 bg-black border-none gap-0 sm:rounded-[2rem] h-[90vh] md:h-[85vh]">
+        <Dialog open={!!selectedItem} onOpenChange={() => { setSelectedItem(null); setIsLightboxExpanded(false); }}>
+          <DialogContent className={`overflow-hidden p-0 bg-black border-none gap-0 sm:rounded-[2rem] h-[90vh] md:h-[85vh] transition-all duration-300 ${
+            isLightboxExpanded ? 'max-w-[95vw]' : 'max-w-7xl'
+          }`}>
             <DialogTitle className="sr-only">
               {selectedItem?.title || "Gallery Media Details"}
             </DialogTitle>
@@ -713,20 +740,99 @@ export default function Gallery() {
             </DialogDescription>
             <div className="flex flex-col md:flex-row h-full">
               {/* Media Section (Dominant) */}
-              <div className="h-[40vh] md:h-full w-full md:flex-1 bg-neutral-950 flex items-center justify-center relative overflow-hidden group">
+              <div className="h-[45vh] md:h-full w-full md:flex-1 bg-neutral-950 flex items-center justify-center relative overflow-hidden group">
                 <MediaViewer item={selectedItem} />
                 
+                {/* Floating Navigation Controls */}
+                {filteredItems.length > 1 && (
+                  <>
+                    {/* Left Button */}
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handlePrevItem(); }}
+                      className="absolute left-6 top-1/2 -translate-y-1/2 z-40 p-3 rounded-full bg-black/40 hover:bg-orange-600 border border-white/10 hover:border-orange-500 text-white backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 hidden md:block"
+                      title="Previous (Left Arrow)"
+                    >
+                      <ChevronLeft className="h-6 w-6" />
+                    </button>
+                    
+                    {/* Right Button */}
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleNextItem(); }}
+                      className="absolute right-6 top-1/2 -translate-y-1/2 z-40 p-3 rounded-full bg-black/40 hover:bg-orange-600 border border-white/10 hover:border-orange-500 text-white backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 hidden md:block"
+                      title="Next (Right Arrow)"
+                    >
+                      <ChevronRight className="h-6 w-6" />
+                    </button>
+                  </>
+                )}
+
+                {/* Top Control Bar overlay */}
+                <div className="absolute top-4 left-4 right-4 z-40 flex items-center justify-between pointer-events-none">
+                  {/* Item counter */}
+                  <div className="glass-overlay px-4 py-1.5 rounded-full text-xs font-bold text-white/90 shadow-lg pointer-events-auto flex items-center space-x-2">
+                    <span className="text-orange-500 font-black">
+                      {filteredItems.findIndex(item => item.id === selectedItem?.id) + 1}
+                    </span>
+                    <span className="text-white/40">/</span>
+                    <span>{filteredItems.length}</span>
+                  </div>
+
+                  {/* Top Right Controls */}
+                  <div className="flex items-center space-x-2 pointer-events-auto">
+                    {/* Expand/Collapse Toggle */}
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setIsLightboxExpanded(!isLightboxExpanded); }}
+                      className="glass-overlay p-2.5 rounded-full text-white hover:bg-orange-600 transition-all shadow-lg hidden md:block"
+                      title={isLightboxExpanded ? "Show Details Sidebar" : "Full Screen Lightbox"}
+                    >
+                      {isLightboxExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </button>
+
+                    {/* Floating Close - Desktop (always shown when sidebar is hidden) */}
+                    {isLightboxExpanded && (
+                      <button 
+                        onClick={() => setSelectedItem(null)}
+                        className="glass-overlay p-2.5 rounded-full text-white hover:bg-red-600 transition-all shadow-lg"
+                        title="Close Overlay"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {/* Floating Close - Mobile */}
                 <button 
                   onClick={() => setSelectedItem(null)}
-                  className="absolute top-6 right-6 z-50 md:hidden glass-overlay p-2 rounded-full text-white"
+                  className="absolute bottom-6 right-6 z-50 md:hidden glass-overlay p-3 rounded-full text-white shadow-xl shadow-black/50"
+                  title="Close Media View"
                 >
-                  <X className="h-6 w-6" />
+                  <X className="h-5 w-5" />
                 </button>
+                
+                {/* Mobile Next/Prev floating arrows (always visible, smaller size) */}
+                {filteredItems.length > 1 && (
+                  <div className="absolute bottom-6 left-6 z-50 md:hidden flex space-x-2">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handlePrevItem(); }}
+                      className="glass-overlay p-3 rounded-full text-white shadow-xl"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleNextItem(); }}
+                      className="glass-overlay p-3 rounded-full text-white shadow-xl"
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Sidebar Section (Interactions & Details) */}
-              <div className="w-full md:w-[400px] h-[50vh] md:h-full flex flex-col bg-card border-l border-white/5">
+              <div className={`w-full md:w-[400px] h-[45vh] md:h-full flex flex-col bg-card border-l border-white/5 transition-all duration-300 ${
+                isLightboxExpanded ? 'hidden' : 'flex'
+              }`}>
                 <div className="p-8 border-b border-border/50 bg-muted/20">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center space-x-2">
