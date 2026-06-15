@@ -119,16 +119,24 @@ export default function Contact() {
                 <div>
                   <p className="font-semibold text-foreground">Address</p>
                   <p className="text-muted-foreground">{settings?.address || '123 Business Avenue, Nyinahin-Ashanti, Ashanti Region, Ghana'}</p>
+                  <p className="text-sm font-medium text-orange-600 mt-1 dark:text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded inline-block">
+                    GPS Address: AI-0008-9223
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Map Placeholder */}
-            <div className="aspect-video w-full overflow-hidden rounded-2xl bg-muted border border-border/50">
-              <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                <MapPin className="mr-2 h-6 w-6 text-orange-600" />
-                <span>Nyinahin-Ashanti, Ashanti Region, Ghana</span>
-              </div>
+            {/* Google Map */}
+            <div className="aspect-video w-full overflow-hidden rounded-2xl bg-muted border border-border/50 shadow-sm relative group h-[320px]">
+              <iframe
+                title="Grefas Location Map"
+                width="100%"
+                height="100%"
+                className="border-0 w-full h-full grayscale-[15%] group-hover:grayscale-0 transition-all duration-500"
+                loading="lazy"
+                allowFullScreen
+                src="https://maps.google.com/maps?q=AI-0008-9223,+Nyinahin-Ashanti,+Ghana&t=&z=16&ie=UTF8&iwloc=&output=embed"
+              ></iframe>
             </div>
           </motion.div>
 

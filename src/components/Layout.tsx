@@ -360,9 +360,14 @@ export default function Layout({ children }: LayoutProps) {
                     Chat on WhatsApp
                   </a>
                 </li>
-                <li className="flex items-center space-x-2 text-sm text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  <span>{settings?.address || 'Accra, Ghana'}</span>
+                <li className="flex flex-col gap-1 text-sm text-muted-foreground mt-1">
+                  <div className="flex items-center space-x-2">
+                    <MapPin className="h-4 w-4 shrink-0 text-orange-600" />
+                    <span>{settings?.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'}</span>
+                  </div>
+                  <div className="text-[11px] font-medium text-orange-600 dark:text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded w-max ml-6">
+                    GPS Address: AI-0008-9223
+                  </div>
                 </li>
               </ul>
             </div>
