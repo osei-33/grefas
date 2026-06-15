@@ -8,6 +8,7 @@ import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useLanguage } from '@/lib/LanguageContext';
 import SEO from '@/components/SEO';
+import BlogSection from '@/components/BlogSection';
 
 import { AdSense } from '@/components/AdSense';
 
@@ -273,6 +274,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Blog Section at the bottom of the page */}
+      <BlogSection />
 
       {/* CTA Section */}
       <section className="bg-orange-600 py-20 text-white">

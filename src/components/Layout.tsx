@@ -1,7 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown } from 'lucide-react';
+import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown, ExternalLink, Navigation } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { safeGetLocalStorage, safeSetLocalStorage, safeGetSessionStorage, safeSetSessionStorage } from '@/lib/utils';
@@ -365,8 +365,19 @@ export default function Layout({ children }: LayoutProps) {
                     <MapPin className="h-4 w-4 shrink-0 text-orange-600" />
                     <span>{settings?.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'}</span>
                   </div>
-                  <div className="text-[11px] font-medium text-orange-600 dark:text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded w-max ml-6">
-                    GPS Address: AI-0008-9223
+                  <div className="flex items-center gap-2 ml-6">
+                    <span className="text-[11px] font-medium text-orange-600 dark:text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded w-max">
+                      GPS Address: AI-0008-9223
+                    </span>
+                    <a
+                      href="https://www.google.com/maps/dir/?api=1&destination=AI-0008-9223,+Nyinahin-Ashanti,+Ashanti+Region,+Ghana"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-semibold text-orange-600 dark:text-orange-500 hover:underline flex items-center gap-0.5"
+                    >
+                      <span>Directions</span>
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
                   </div>
                 </li>
               </ul>

@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Mail, Phone, MapPin, Send, MessageCircle } from 'lucide-react';
+import { Mail, Phone, MapPin, Send, MessageCircle, Navigation, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -119,9 +119,20 @@ export default function Contact() {
                 <div>
                   <p className="font-semibold text-foreground">Address</p>
                   <p className="text-muted-foreground">{settings?.address || '123 Business Avenue, Nyinahin-Ashanti, Ashanti Region, Ghana'}</p>
-                  <p className="text-sm font-medium text-orange-600 mt-1 dark:text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded inline-block">
-                    GPS Address: AI-0008-9223
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="text-sm font-semibold text-orange-600 dark:text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-2.5 py-1 rounded inline-block">
+                      GPS Address: AI-0008-9223
+                    </span>
+                    <a
+                      href="https://www.google.com/maps/dir/?api=1&destination=AI-0008-9223,+Nyinahin-Ashanti,+Ashanti+Region,+Ghana"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-white bg-orange-600 hover:bg-orange-700 transition-colors px-3 py-1 rounded-md shadow-sm"
+                    >
+                      <Navigation className="h-3 w-3 fill-white/20 animate-bounce" />
+                      Get Directions
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
@@ -137,6 +148,18 @@ export default function Contact() {
                 allowFullScreen
                 src="https://maps.google.com/maps?q=AI-0008-9223,+Nyinahin-Ashanti,+Ghana&t=&z=16&ie=UTF8&iwloc=&output=embed"
               ></iframe>
+              <div className="absolute bottom-4 left-4 right-4 z-10 flex justify-center">
+                <a
+                  href="https://www.google.com/maps/dir/?api=1&destination=AI-0008-9223,+Nyinahin-Ashanti,+Ashanti+Region,+Ghana"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-black/80 hover:bg-black text-white text-xs font-bold uppercase tracking-widest px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-lg transition-all duration-300 border border-white/10 hover:border-orange-500 hover:scale-[1.02] active:scale-95 cursor-pointer"
+                >
+                  <Navigation className="h-3.5 w-3.5 text-orange-500 fill-orange-500/20" />
+                  <span>Navigate To GPS Address</span>
+                  <ExternalLink className="h-3 w-3 opacity-60" />
+                </a>
+              </div>
             </div>
           </motion.div>
 
