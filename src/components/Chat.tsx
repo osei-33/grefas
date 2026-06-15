@@ -138,10 +138,13 @@ export default function Chat() {
     // Role check (simplified for the chat UI)
     const checkRole = async () => {
       if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists() && (userDoc.data().role === 'admin' || userDoc.data().role === 'editor')) {
-          setMessages([]); // Admins should use the Admin Panel chat normally, but let's allow them here too for now
-          // Actually, if it's the main chat component, let's keep it user-facing
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists() && (userDoc.data().role === 'admin' || userDoc.data().role === 'editor')) {
+            setMessages([]); // Admins should use the Admin Panel chat normally, but let's allow them here too for now
+          }
+        } catch (error) {
+          console.debug("Offline or error checking role in chat (handled):", error);
         }
       }
     };
@@ -157,7 +160,7 @@ export default function Chat() {
     const unsubscribeChat = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
-      console.error("Error fetching chat messages:", error);
+      console.debug("Offline/unreachable fetching chat messages (handled):", error);
     });
 
     // Listen for typing status
@@ -165,6 +168,8 @@ export default function Chat() {
       if (docSnap.exists()) {
         setIsStaffTyping(docSnap.data().isStaffTyping || false);
       }
+    }, (error) => {
+      console.debug("Offline/unreachable chat status subscription (handled):", error);
     });
 
     // Listen to global agency settings
@@ -176,6 +181,8 @@ export default function Chat() {
           autoReplyMessage: data.autoReplyMessage || "Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible."
         });
       }
+    }, (error) => {
+      console.debug("Offline/unreachable global settings in chat (handled):", error);
     });
 
     return () => {

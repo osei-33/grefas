@@ -1,8 +1,10 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Calendar, Clock, BookOpen, X, ArrowRight, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { db } from '@/firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 interface BlogPost {
   id: string;
@@ -68,7 +70,27 @@ const BLOG_POSTS: BlogPost[] = [
 ];
 
 export default function BlogSection() {
+  const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
+
+  useEffect(() => {
+    const q = query(collection(db, 'blogs'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedBlogs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as BlogPost[];
+      setPosts(fetchedBlogs);
+      setLoading(false);
+    }, (error) => {
+      console.warn("Firestore error listening to blogs, falling back to static posts:", error);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const displayPosts = posts.length > 0 ? posts : BLOG_POSTS;
 
   return (
     <section className="bg-muted/10 py-24 border-t border-border/40 relative">
@@ -97,7 +119,7 @@ export default function BlogSection() {
 
         {/* Blog Grid */}
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-          {BLOG_POSTS.map((post, idx) => (
+          {displayPosts.map((post, idx) => (
             <motion.div
               key={post.id}
               initial={{ opacity: 0, y: 20 }}

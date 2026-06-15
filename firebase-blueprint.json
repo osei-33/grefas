@@ -94,6 +94,23 @@
       },
       "required": ["email", "role"]
     },
+    "BlogPost": {
+      "title": "Blog Post",
+      "description": "An article or blog post.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "content": { "type": "array", "items": { "type": "string" } },
+        "category": { "type": "string" },
+        "date": { "type": "string" },
+        "readTime": { "type": "string" },
+        "image": { "type": "string" },
+        "author": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "summary", "content", "category", "date", "image", "author"]
+    },
     "Booking": {
       "title": "Booking",
       "description": "A service booking request.",
@@ -215,6 +232,10 @@
     "/site_visits/{dateStr}": {
       "schema": "SiteVisit",
       "description": "Daily counts of unique website visitors"
+    },
+    "/blogs/{blogId}": {
+      "schema": "BlogPost",
+      "description": "Collection of blog posts"
     }
   }
 }

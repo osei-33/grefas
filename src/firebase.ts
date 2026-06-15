@@ -60,9 +60,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   }
   
-  // Only log and throw if it's NOT a connectivity error during initialization
-  if (errInfo.error.includes('the client is offline') || errInfo.error.includes('Could not reach')) {
-    console.debug('Firestore is currently offline (handled):', path);
+  // Only log and throw if it's NOT a connectivity/offline error
+  const lowercaseError = errInfo.error.toLowerCase();
+  if (
+    lowercaseError.includes('offline') || 
+    lowercaseError.includes('could not reach') || 
+    lowercaseError.includes('unavailable') || 
+    lowercaseError.includes('connection failed') || 
+    lowercaseError.includes('network')
+  ) {
+    console.debug('Firestore is currently offline or unreachable (handled):', path, errInfo.error);
     return; // Don't throw for offline errors to prevent UI crashes
   }
 

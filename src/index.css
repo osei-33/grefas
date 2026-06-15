@@ -169,3 +169,29 @@
     @apply font-sans;
     }
 }
+
+/* Print Styles for Booking Confirmation Pass */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #booking-print-area, #booking-print-area * {
+    visibility: visible !important;
+  }
+  #booking-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 30px !important;
+    background: white !important;
+    color: black !important;
+    font-family: 'Geist Variable', sans-serif !important;
+    display: block !important;
+  }
+  @page {
+    size: portrait;
+    margin: 1.5cm;
+  }
+}

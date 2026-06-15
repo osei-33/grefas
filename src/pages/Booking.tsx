@@ -12,7 +12,7 @@ import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc, q
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import { showBrowserNotification } from '@/lib/utils';
@@ -1279,16 +1279,140 @@ export default function Booking() {
               Please save this number for reference
             </p>
           </div>
-          <div className="flex justify-center">
+          <div className="flex flex-col sm:flex-row gap-3">
             <Button 
+              onClick={() => window.print()}
+              className="flex-1 bg-orange-600 hover:bg-orange-700 text-white flex items-center justify-center gap-2 font-bold cursor-pointer"
+            >
+              <Printer className="h-4 w-4" />
+              Print Booking
+            </Button>
+            <Button 
+              variant="outline"
               onClick={() => setShowSuccessDialog(false)}
-              className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+              className="flex-1 border-border hover:bg-muted text-foreground font-bold cursor-pointer"
             >
               Close
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Hidden high-fidelity layout optimized specifically for desktop/mobile physical printing */}
+      <div id="booking-print-area" className="hidden">
+        <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '650px', margin: '0 auto', color: '#111827', lineHeight: '1.5' }}>
+          
+          {/* Print Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #ea580c', paddingBottom: '20px', marginBottom: '25px' }}>
+            <div>
+              <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#ea580c', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Grefas Consult & Entertainment
+              </h1>
+              <p style={{ fontSize: '12px', color: '#4b5563', margin: '0' }}>
+                Tailored Legal Consulting, Dynamic Media & Creative Agency
+              </p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', color: '#9ca3af', letterSpacing: '0.05em' }}>
+                Reservation Pass
+              </div>
+              <div style={{ fontSize: '13px', fontWeight: '600', color: '#111827', marginTop: '2px' }}>
+                {date ? format(date, 'MMM d, yyyy') : ''}
+              </div>
+            </div>
+          </div>
+
+          {/* Large Ticket Badge for Reference */}
+          <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '12px', padding: '18px', textAlign: 'center', marginBottom: '25px' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: '#6b7280', fontWeight: 'bold', letterSpacing: '0.1em' }}>
+              Unique Reference Code
+            </span>
+            <div style={{ fontSize: '32px', fontWeight: '900', color: '#ea580c', letterSpacing: '0.15em', marginTop: '4px' }}>
+              {orderNumber}
+            </div>
+            <p style={{ fontSize: '11px', color: '#6b7280', margin: '8px 0 0 0' }}>
+              *Always supply this code to representative lines when demanding schedule adjustments.
+            </p>
+          </div>
+
+          {/* Grid Layout of Details */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '25px' }}>
+            
+            {/* Section 1: Customer Details */}
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px' }}>
+              <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#9ca3af', fontWeight: 'bold', margin: '0 0 12px 0', letterSpacing: '0.05em', borderBottom: '1px solid #f3f4f6', paddingBottom: '6px' }}>
+                Client Details
+              </h3>
+              <div>
+                <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#6b7280' }}>Full Name:</span> <strong style={{ color: '#111827' }}>{formData.userName}</strong>
+                </p>
+                <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#6b7280' }}>Email Address:</span> <strong style={{ color: '#111827' }}>{formData.userEmail}</strong>
+                </p>
+                <p style={{ margin: '0', fontSize: '13px' }}>
+                  <span style={{ color: '#6b7280' }}>Phone Number:</span> <strong style={{ color: '#111827' }}>{formData.userPhone || 'Not provided'}</strong>
+                </p>
+              </div>
+            </div>
+
+            {/* Section 2: Session Details */}
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px' }}>
+              <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#9ca3af', fontWeight: 'bold', margin: '0 0 12px 0', letterSpacing: '0.05em', borderBottom: '1px solid #f3f4f6', paddingBottom: '6px' }}>
+                Session Schedule
+              </h3>
+              <div>
+                <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#6b7280' }}>Type of Service:</span> <strong style={{ color: '#111827' }}>{formData.serviceTitle || 'General Consultation'}</strong>
+                </p>
+                <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#6b7280' }}>Date Assigned:</span> <strong style={{ color: '#ea580c' }}>{date ? format(date, 'EEEE, MMMM d, yyyy') : 'N/A'}</strong>
+                </p>
+                <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#6b7280' }}>Assigned Hour slot:</span> <strong style={{ color: '#111827' }}>{formData.time}</strong>
+                </p>
+                <p style={{ margin: '0', fontSize: '13px' }}>
+                  <span style={{ color: '#6b7280' }}>Assigned Specialist:</span> <strong style={{ color: '#111827' }}>{formData.teamMemberName || 'First Available Specialist'}</strong>
+                </p>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Notes Section */}
+          {formData.notes && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px', marginBottom: '25px' }}>
+              <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#9ca3af', fontWeight: 'bold', margin: '0 0 8px 0', letterSpacing: '0.05em' }}>
+                Special Client Notes & Requirements
+              </h3>
+              <p style={{ fontSize: '13px', color: '#374151', margin: '0', fontStyle: 'italic', background: '#f9fafb', padding: '10px', borderRadius: '8px', borderLeft: '3px solid #ea580c' }}>
+                "{formData.notes}"
+              </p>
+            </div>
+          )}
+
+          {/* Quick Notice Card */}
+          <div style={{ border: '1px dashed #e5e7eb', borderRadius: '12px', padding: '16px', background: '#fafafa', marginBottom: '30px' }}>
+            <h4 style={{ fontSize: '12px', fontWeight: 'bold', color: '#111827', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+              Terms & Alignment Policies
+            </h4>
+            <p style={{ fontSize: '11px', color: '#6b7280', margin: '0', lineHeight: '1.6' }}>
+              Cancellations or timeslot adjustments are completely free if communicated at least twenty-four hours in advance. To make changes, please live chat our representatives or copy this reservation to email and direct it to: <strong>info@grefasconsultandentertainment.com</strong>.
+            </p>
+          </div>
+
+          {/* Print Footer */}
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+              Printed on {new Date().toLocaleString('en-US', { timeZoneName: 'short' })}
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#ea580c' }}>
+              www.grefasconsultandentertainment.com
+            </div>
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 }

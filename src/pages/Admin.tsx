@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -34,6 +34,7 @@ import {
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { GoogleGenAI } from "@google/genai";
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line } from 'recharts';
+import ManageBlog from './ManageBlog';
 
 const isAdminEmail = (email: string | null) => {
   if (!email) return false;
@@ -87,7 +88,14 @@ export default function Admin() {
         }, (error) => {
           // Check if it's an offline error
           const errorMsg = error instanceof Error ? error.message : String(error);
-          if (errorMsg.includes('the client is offline') || errorMsg.includes('Could not reach')) {
+          const lowercaseError = errorMsg.toLowerCase();
+          if (
+            lowercaseError.includes('offline') || 
+            lowercaseError.includes('could not reach') || 
+            lowercaseError.includes('unavailable') ||
+            lowercaseError.includes('connection failed') || 
+            lowercaseError.includes('network')
+          ) {
             console.debug("Firestore offline - sticking with default role for email");
             // We already set role to admin above if isAdminEmail(user.email)
           } else {
@@ -458,6 +466,19 @@ export default function Admin() {
                 {isActive('/admin/portfolio') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
+                to="/admin/blog"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/blog') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <BookOpen className={`h-4 w-4 ${isActive('/admin/blog') ? 'text-orange-600' : ''}`} />
+                <span>Manage Blog</span>
+                {isActive('/admin/blog') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+              <Link
                 to="/admin/bookings"
                 onClick={() => setIsSidebarOpen(false)}
                 className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -572,6 +593,7 @@ export default function Admin() {
           <Route path="/bookings" element={<ManageBookings />} />
           <Route path="/team" element={<ManageTeam />} />
           <Route path="/tasks" element={<ManageTasks />} />
+          <Route path="/blog" element={<ManageBlog />} />
           {role === 'admin' && (
             <>
               <Route path="/users" element={<ManageUsers />} />

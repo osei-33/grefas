@@ -103,16 +103,16 @@ async function startServer() {
         results.sms = "sent";
       } catch (error: any) {
         if (error.code === 21608) {
-          console.error("SMS error (Twilio Trial Account): The recipient number is unverified.");
+          console.warn("SMS warning (Twilio Trial Account): The recipient number is unverified.");
           results.sms = "failed (Twilio Trial: Unverified Number)";
         } else if (error.code === 21211) {
-          console.error("SMS error (Invalid Number): The 'To' phone number is invalid.");
+          console.warn("SMS warning (Invalid Number): The 'To' phone number is invalid.");
           results.sms = "failed (Invalid Phone Number)";
         } else if (error.code === 21408) {
-          console.error("SMS error (Region Not Supported): The destination region is not supported by this account.");
+          console.warn("SMS warning (Region Not Supported): The destination region is not supported by this account.");
           results.sms = "failed (Region Not Supported)";
         } else {
-          console.error(`SMS error (Code ${error.code}):`, error.message);
+          console.warn(`SMS warning (Code ${error.code}):`, error.message);
           results.sms = `failed (${error.message || 'Unknown Error'})`;
         }
       }
@@ -183,16 +183,16 @@ async function startServer() {
         results.sms = "sent";
       } catch (error: any) {
         if (error.code === 21608) {
-          console.error("SMS error (Twilio Trial Account): The recipient number is unverified.");
+          console.warn("SMS warning (Twilio Trial Account): The recipient number is unverified.");
           results.sms = "failed (Twilio Trial: Unverified Number)";
         } else if (error.code === 21211) {
-          console.error("SMS error (Invalid Number): The 'To' phone number is invalid.");
+          console.warn("SMS warning (Invalid Number): The 'To' phone number is invalid.");
           results.sms = "failed (Invalid Phone Number)";
         } else if (error.code === 21408) {
-          console.error("SMS error (Region Not Supported): The destination region is not supported by this account.");
+          console.warn("SMS warning (Region Not Supported): The destination region is not supported by this account.");
           results.sms = "failed (Region Not Supported)";
         } else {
-          console.error(`SMS error (Code ${error.code}):`, error.message);
+          console.warn(`SMS warning (Code ${error.code}):`, error.message);
           results.sms = `failed (${error.message || 'Unknown Error'})`;
         }
       }
