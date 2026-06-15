@@ -12,7 +12,7 @@ import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc, q
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
 
@@ -37,7 +37,16 @@ export default function Booking() {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
+  const [copied, setCopied] = useState(false);
   const location = useLocation();
+
+  const handleCopyOrderNumber = () => {
+    if (!orderNumber) return;
+    navigator.clipboard.writeText(orderNumber);
+    setCopied(true);
+    toast.success("Order number copied to clipboard!");
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const [activeTab, setActiveTab] = useState<'book' | 'status'>('book');
   const [statusSearchQuery, setStatusSearchQuery] = useState('');
@@ -1227,10 +1236,29 @@ export default function Booking() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center justify-center space-y-4 py-4">
-            <div className="bg-orange-600/10 border border-orange-600/20 rounded-lg p-6 w-full text-center">
+            <div className="bg-orange-600/10 border border-orange-600/20 rounded-lg p-6 w-full text-center relative">
               <span className="text-xs uppercase tracking-widest text-muted-foreground font-black">Your Order Number</span>
               <div className="text-4xl font-black text-orange-600 tracking-widest mt-1">
                 {orderNumber}
+              </div>
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleCopyOrderNumber}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-orange-600 dark:text-orange-500 border border-orange-600/30 bg-orange-600/5 hover:bg-orange-600/10 transition-all px-3 py-1.5 rounded-lg shadow-sm cursor-pointer"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-green-600 dark:text-green-500" />
+                      <span>Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Copy to Clipboard</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground text-center uppercase tracking-widest font-bold">
