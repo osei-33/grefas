@@ -8,6 +8,7 @@ import { Mail, Phone, MapPin, Send, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import SEO from '@/components/SEO';
 
 export default function Contact() {
   const [settings, setSettings] = useState<any>(null);
@@ -33,6 +34,11 @@ export default function Contact() {
 
   return (
     <div className="bg-background py-20">
+      <SEO 
+        title="Contact Us"
+        description="Get in touch with Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region. Contact us for strategic advising, concert events, and general organization management."
+        keywords="Contact Grefas, Nyinahin office, phone Grefas, Grefas address"
+      />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center">
           <motion.h1

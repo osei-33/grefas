@@ -5,6 +5,7 @@ import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { Loader2, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import SEO from '@/components/SEO';
 
 export default function Portfolio() {
   const [items, setItems] = useState<any[]>([]);
@@ -34,6 +35,11 @@ export default function Portfolio() {
 
   return (
     <div className="bg-background py-20">
+      <SEO 
+        title="Portfolio"
+        description="Browse the historical success work portfolio of Grefas Consult & Entertainment. Take a look at our completed client advisory cases, major regional entertainment events, star productions, and artist programs."
+        keywords="Grefas portfolio, event showcase Ghana, commercial consulting projects, entertainment showcase Ashanti"
+      />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center">
           <motion.h1

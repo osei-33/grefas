@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import * as LucideIcons from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import SEO from '@/components/SEO';
 
 export default function Services() {
   const [services, setServices] = useState<any[]>([]);
@@ -30,6 +31,11 @@ export default function Services() {
 
   return (
     <div className="bg-background py-20">
+      <SEO 
+        title="Our Services"
+        description="Explore the services of Grefas Consult & Entertainment, including strategic business consulting, live entertainment events, artist management, production, and audio-video solutions in Ashanti Region, Ghana."
+        keywords="Grefas services, business consulting Ghana, talent agency Nyinahin, event organization, artist manager Ghana"
+      />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center">
           <motion.h1

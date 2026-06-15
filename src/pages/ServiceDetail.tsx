@@ -8,6 +8,7 @@ import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Loader2, ArrowLeft, Calendar } from 'lucide-react';
+import SEO from '@/components/SEO';
 
 export default function ServiceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +59,11 @@ export default function ServiceDetail() {
 
   return (
     <div className="bg-background min-h-screen pb-20">
+      <SEO 
+        title={service.title}
+        description={service.description || `Read details regarding ${service.title} provided by Grefas Consult & Entertainment in Ashanti Region.`}
+        keywords={`Grefas ${service.title}, ${service.title} Nyinahin, ${service.title} Ghana, ${service.title} services`}
+      />
       {/* Hero Section */}
       <div className={`relative h-[40vh] min-h-[300px] w-full overflow-hidden ${service.color || 'bg-orange-600'}`}>
         <div className="absolute inset-0 bg-black/20" />

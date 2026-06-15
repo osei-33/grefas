@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useLanguage } from '@/lib/LanguageContext';
+import SEO from '@/components/SEO';
 
 import { AdSense } from '@/components/AdSense';
 
@@ -61,6 +62,11 @@ export default function Home() {
 
   return (
     <div className="relative overflow-hidden">
+      <SEO 
+        title="Official Website"
+        description="Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region is your premier partner for professional consulting and world-class entertainment services."
+        keywords="Home Grefas, Nyinahin, Ashanti Region, Ghana Consult, Entertainment Ghana, Grefas official website"
+      />
       {/* Hero Section with Carousel */}
       <section ref={heroRef} className="relative h-[90vh] w-full overflow-hidden bg-zinc-900">
         <AnimatePresence mode="wait">

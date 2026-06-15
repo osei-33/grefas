@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import ReactPlayer from 'react-player';
 import { db, auth, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
@@ -14,6 +13,7 @@ import { toast } from 'sonner';
 import { onAuthStateChanged } from 'firebase/auth';
 import { AdSense } from '@/components/AdSense';
 import { safeGetLocalStorage, safeSetLocalStorage } from '@/lib/utils';
+import SEO from '@/components/SEO';
 
 const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: string; className?: string; onClick?: () => void }) => {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -171,52 +171,85 @@ const MediaViewer = ({ item }: { item: any }) => {
     );
   }
 
-  // Use ReactPlayer for all video types (Local, YouTube, Vimeo)
-  const Player = ReactPlayer as any;
+  // Identify video type
+  const getYoutubeId = (urlStr: string) => {
+    if (!urlStr) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = urlStr.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
 
-  return (
-    <div className="w-full h-full relative bg-black flex items-center justify-center">
-      {isLoading && item.thumbnail && (
-        <div className="absolute inset-0 z-10 transition-opacity duration-500">
-          <img src={item.thumbnail} className="w-full h-full object-cover blur-sm opacity-50" alt="" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex flex-col items-center space-y-4">
-              <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
-              <span className="text-white/50 text-xs font-bold uppercase tracking-widest">Warming up...</span>
-            </div>
+  const getVimeoId = (urlStr: string) => {
+    if (!urlStr) return null;
+    const regExp = /vimeo\.com\/(?:video\/)?([0-9]+)/;
+    const match = urlStr.match(regExp);
+    return match ? match[1] : null;
+  };
+
+  const youtubeId = getYoutubeId(item.url);
+  const vimeoId = getVimeoId(item.url);
+
+  if (youtubeId) {
+    return (
+      <div className="w-full h-full relative bg-neutral-950 flex items-center justify-center">
+        {isLoading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40">
+            <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
+            <span className="text-white/50 text-xs font-bold uppercase tracking-widest mt-2">Loading YouTube Video...</span>
           </div>
-        </div>
-      )}
-      <div className="w-full h-full max-w-full max-h-full aspect-video flex items-center justify-center">
-        <Player
-          url={item.url}
-          controls
-          playing={!isLoading}
-          width="100%"
-          height="100%"
-          onReady={() => setIsLoading(false)}
-          onStart={() => setIsLoading(false)}
-          config={{
-            youtube: {
-              playerVars: { 
-                modestbranding: 1, 
-                rel: 0,
-                color: 'white'
-              }
-            },
-            vimeo: {
-              playerOptions: { 
-                badge: 0, 
-                byline: 0, 
-                portrait: 0, 
-                title: 0 
-              }
-            }
-          }}
-          className="react-player"
-          playsInline
+        )}
+        <iframe
+          src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&rel=0&modestbranding=1`}
+          title={item.title}
+          onLoad={() => setIsLoading(false)}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          className="w-full h-full border-none aspect-video max-h-full"
         />
       </div>
+    );
+  }
+
+  if (vimeoId) {
+    return (
+      <div className="w-full h-full relative bg-neutral-950 flex items-center justify-center">
+        {isLoading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40">
+            <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
+            <span className="text-white/50 text-xs font-bold uppercase tracking-widest mt-2">Loading Vimeo Video...</span>
+          </div>
+        )}
+        <iframe
+          src={`https://player.vimeo.com/video/${vimeoId}?autoplay=1&title=0&byline=0&portrait=0`}
+          title={item.title}
+          onLoad={() => setIsLoading(false)}
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+          className="w-full h-full border-none aspect-video max-h-full"
+        />
+      </div>
+    );
+  }
+
+  // Direct storage / MP4 video with native HTML5 controller
+  return (
+    <div className="w-full h-full relative bg-black flex items-center justify-center">
+      {isLoading && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40">
+          <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
+          <span className="text-white/50 text-xs font-bold uppercase tracking-widest mt-2">Preparing Video...</span>
+        </div>
+      )}
+      <video
+        src={item.url}
+        poster={item.thumbnail}
+        controls
+        autoPlay
+        playsInline
+        onCanPlay={() => setIsLoading(false)}
+        onLoadStart={() => setIsLoading(true)}
+        className="max-h-full max-w-full aspect-video object-contain"
+      />
     </div>
   );
 };
@@ -469,6 +502,11 @@ export default function Gallery() {
 
   return (
     <div className="bg-background min-h-screen">
+      <SEO 
+        title="Gallery"
+        description="Experience the visual journey of Grefas Consult & Entertainment. Discover highlights of our major consult missions, concerts, corporate galas, and live events in Nyinahin-Ashanti, Ashanti Region."
+        keywords="Grefas photo gallery, entertainment videos Ghana, Nyinahin event video, corporate gala Africa"
+      />
       {/* Hero Section with Pattern */}
       <div className="relative overflow-hidden pt-24 pb-16 bg-muted/10">
         <div className="absolute inset-0 z-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)', backgroundSize: '32px 32px' }}></div>

@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
+import SEO from '@/components/SEO';
 
 export default function About() {
   const [settings, setSettings] = useState<any>(null);
@@ -34,6 +35,11 @@ export default function About() {
 
   return (
     <div className="bg-background py-20">
+      <SEO 
+        title="About Us"
+        description="Learn more about Grefas Consult & Entertainment. Providing professional strategic consulting, event management, and world-class artist coordination in Nyinahin-Ashanti, Ghana."
+        keywords="About Grefas, Grefas team, Grefas vision, entertainment consult Nyinahin"
+      />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
           <motion.div

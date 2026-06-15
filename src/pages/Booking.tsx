@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { toast } from 'sonner';
 import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import SEO from '@/components/SEO';
 
 export default function Booking() {
   const [date, setDate] = useState<Date | undefined>(undefined);
@@ -411,6 +412,11 @@ export default function Booking() {
 
   return (
     <div className="bg-background py-20">
+      <SEO 
+        title="Book Appointment"
+        description="Book local Grefas advisory sessions or world-class entertainment packages. Schedule consulting times and check real-time availability in Nyinahin-Ashanti, Ghana."
+        keywords="book Grefas, event booking Ghana, schedule consultation Ashanti Region, real-time appointments"
+      />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <motion.h1

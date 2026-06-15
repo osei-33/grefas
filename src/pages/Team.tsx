@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Loader2, Briefcase, Award, Star, Mail, ArrowRight, Filter, Sparkles, Check, CheckCircle, Flame, Calendar, MessageSquare, Send, ArrowLeft, MessageCircle } from 'lucide-react';
+import SEO from '@/components/SEO';
 
 interface TeamMember {
   id: string;
@@ -262,6 +263,11 @@ export default function Team() {
 
   return (
     <div className="bg-background py-20 px-4 sm:px-6 lg:px-8">
+      <SEO 
+        title="Our Team of Specialists"
+        description="Book executive advisement and planning sessions with Grefas Consult & Entertainment leading specialists. Partner with Dr. Linda Serwaah and other top consultants in Ghana."
+        keywords="Grefas team, advisory consultants Ashanti, Dr Linda Serwaah, executive planner Ghana"
+      />
       <div className="mx-auto max-w-7xl">
         
         {/* Header Block */}
