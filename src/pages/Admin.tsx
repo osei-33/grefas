@@ -517,6 +517,20 @@ export default function Admin() {
                 <span>Internal Tasks</span>
                 {isActive('/admin/tasks') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+              <Link
+                to="/admin/newsletter"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/newsletter') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-newsletter"
+              >
+                <Mail className={`h-4 w-4 ${isActive('/admin/newsletter') ? 'text-orange-600' : ''}`} />
+                <span>Mailing List</span>
+                {isActive('/admin/newsletter') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
               {role === 'admin' && (
                 <>
                   <div className="pt-4 pb-2">
@@ -594,6 +608,7 @@ export default function Admin() {
           <Route path="/team" element={<ManageTeam />} />
           <Route path="/tasks" element={<ManageTasks />} />
           <Route path="/blog" element={<ManageBlog />} />
+          <Route path="/newsletter" element={<ManageNewsletter />} />
           {role === 'admin' && (
             <>
               <Route path="/users" element={<ManageUsers />} />
@@ -944,7 +959,7 @@ function Dashboard() {
 function ManageServices() {
   const [services, setServices] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
-  const [newService, setNewService] = useState({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600' });
+  const [newService, setNewService] = useState({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting' });
 
   useEffect(() => {
     const q = query(collection(db, 'services'), orderBy('createdAt', 'desc'));
@@ -961,11 +976,12 @@ function ManageServices() {
     try {
       await addDoc(collection(db, 'services'), {
         ...newService,
+        category: newService.category || 'Consulting',
         createdAt: serverTimestamp()
       });
       toast.success('Service added');
       setIsAdding(false);
-      setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600' });
+      setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting' });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'services');
     }
@@ -1055,7 +1071,7 @@ function ManageServices() {
                 required 
                 className="bg-muted/50 border-border"
               />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Input 
                   placeholder="Icon Name (Lucide)" 
                   value={newService.iconName} 
@@ -1070,6 +1086,14 @@ function ManageServices() {
                   required 
                   className="bg-muted/50 border-border"
                 />
+                <select
+                  value={newService.category}
+                  onChange={e => setNewService({...newService, category: e.target.value})}
+                  className="flex h-10 w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="Consulting">Consulting Services</option>
+                  <option value="Entertainment">Entertainment Services</option>
+                </select>
               </div>
               <Button type="submit" className="w-full bg-orange-600 text-white">Save Service</Button>
             </form>
@@ -1083,7 +1107,12 @@ function ManageServices() {
             {services.map((service) => (
               <div key={service.id} className="flex items-center justify-between p-4">
                 <div>
-                  <p className="font-medium text-foreground">{service.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-foreground">{service.title}</p>
+                    <span className="text-[10px] uppercase font-bold bg-muted text-muted-foreground px-2 py-0.5 rounded tracking-wider">
+                      {service.category || 'Consulting'}
+                    </span>
+                  </div>
                   <p className="text-sm text-muted-foreground truncate max-w-md">{service.description}</p>
                 </div>
                 <div className="flex space-x-2">
@@ -4603,5 +4632,296 @@ function TaskCard({ task, onUpdateStatus, onDelete, priorityColor }: { task: any
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ManageNewsletter() {
+  const [subscribers, setSubscribers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+
+  useEffect(() => {
+    const q = query(collection(db, 'newsletter'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: any[] = [];
+      snapshot.forEach((doc) => {
+        items.push({ id: doc.id, ...doc.data() });
+      });
+      setSubscribers(items);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'newsletter');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddSubscriber = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmail.trim()) return;
+
+    const email = newEmail.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error('Invalid email address format.');
+      return;
+    }
+
+    // Check if duplicate in local state first
+    if (subscribers.some(sub => sub.email === email)) {
+      toast.error('This email is already in the mailing list.');
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, 'newsletter'), {
+        email,
+        createdAt: serverTimestamp(),
+        active: true
+      });
+      toast.success('Subscriber added successfully.');
+      setNewEmail('');
+      setIsAdding(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'newsletter');
+    }
+  };
+
+  const toggleSubscriberActive = async (id: string, currentStatus: boolean) => {
+    try {
+      const docRef = doc(db, 'newsletter', id);
+      await updateDoc(docRef, { active: !currentStatus });
+      toast.success(`Subscriber ${!currentStatus ? 'activated' : 'deactivated'} successfully.`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `newsletter/${id}`);
+    }
+  };
+
+  const handleDeleteSubscriber = async (id: string) => {
+    if (!window.confirm('Are you sure you want to permanently delete this subscriber?')) return;
+    try {
+      await deleteDoc(doc(db, 'newsletter', id));
+      toast.success('Subscriber deleted.');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `newsletter/${id}`);
+    }
+  };
+
+  const copyAllEmails = () => {
+    const activeEmails = subscribers
+      .filter(sub => sub.active !== false)
+      .map(sub => sub.email)
+      .join(', ');
+
+    if (!activeEmails) {
+      toast.error('No active subscriber emails to copy.');
+      return;
+    }
+
+    navigator.clipboard.writeText(activeEmails).then(() => {
+      toast.success('All active emails copied to clipboard!');
+    }).catch(() => {
+      toast.error('Failed to copy to clipboard.');
+    });
+  };
+
+  const exportToCSV = () => {
+    if (subscribers.length === 0) {
+      toast.error('No subscribers to export.');
+      return;
+    }
+
+    const headers = ['Email', 'Status', 'Subscription Date'];
+    const rows = subscribers.map(sub => [
+      sub.email,
+      sub.active !== false ? 'Active' : 'Unsubscribed/Inactive',
+      sub.createdAt?.toDate ? sub.createdAt.toDate().toISOString() : 'N/A'
+    ]);
+
+    const csvContent = 
+      'data:text/csv;charset=utf-8,' + 
+      [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'newsletter_subscribers.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Spreadsheet exported successfully!');
+  };
+
+  const filteredSubscribers = subscribers.filter(sub => 
+    sub.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const activeCount = subscribers.filter(s => s.active !== false).length;
+  const inactiveCount = subscribers.length - activeCount;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Newsletter Mailing List</h1>
+          <p className="text-muted-foreground mt-1">Manage website newsletter subscribers and export email pools.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button 
+            onClick={() => setIsAdding(!isAdding)} 
+            className="bg-orange-600 text-white cursor-pointer hover:bg-orange-700"
+            id="admin-btn-toggle-add-subscriber"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Subscriber
+          </Button>
+          <Button 
+            onClick={copyAllEmails} 
+            variant="outline" 
+            className="border-orange-600/20 text-orange-600 hover:bg-orange-650 cursor-pointer"
+            id="admin-btn-copy-emails"
+          >
+            <Mail className="mr-2 h-4 w-4" />
+            Copy Email Pool
+          </Button>
+          <Button 
+            onClick={exportToCSV} 
+            variant="outline"
+            className="border-border hover:bg-muted cursor-pointer"
+            id="admin-btn-export-subscribers"
+          >
+            <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
+            Export CSV
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-card border-border/50">
+          <CardHeader className="py-4">
+            <CardDescription className="text-xs font-mono uppercase tracking-wider">Total Pool</CardDescription>
+            <CardTitle className="text-2xl font-black text-foreground">{subscribers.length}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="bg-card border-border/50">
+          <CardHeader className="py-4">
+            <CardDescription className="text-xs font-mono uppercase tracking-wider text-emerald-600">Active Subscribers</CardDescription>
+            <CardTitle className="text-2xl font-black text-emerald-600">{activeCount}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="bg-card border-border/50">
+          <CardHeader className="py-4">
+            <CardDescription className="text-xs font-mono uppercase tracking-wider text-red-500">Deactivated or Inactive</CardDescription>
+            <CardTitle className="text-2xl font-black text-red-500">{inactiveCount}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
+      {isAdding && (
+        <Card className="border-orange-600/30 bg-muted/20">
+          <CardHeader>
+            <CardTitle className="text-lg">Subscribe New Email Manually</CardTitle>
+            <CardDescription>Enter a customer's email to enroll them into Grefas' newsletter pool.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAddSubscriber} className="flex gap-2 max-w-md" id="admin-manual-subscribe-form">
+              <Input
+                type="email"
+                placeholder="subscriber@example.com"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                required
+                className="bg-card"
+                id="admin-manual-subscriber-email"
+              />
+              <Button type="submit" className="bg-orange-600 text-white cursor-pointer">Subscribe</Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="bg-card border-border/50">
+        <CardHeader className="border-b border-border py-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <CardTitle className="text-lg font-bold">Mailing List Subscribers</CardTitle>
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 border-border bg-muted/40"
+                id="admin-newsletter-search"
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex justify-center items-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
+            </div>
+          ) : filteredSubscribers.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              {searchQuery ? 'No subscribers match your search term.' : 'No newsletter signups listed yet.'}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground">
+                    <th className="p-4">Email Address</th>
+                    <th className="p-4">Subscription Date</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredSubscribers.map((sub) => (
+                    <tr key={sub.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="p-4 font-medium text-foreground">{sub.email}</td>
+                      <td className="p-4 text-sm text-muted-foreground">
+                        {sub.createdAt?.toDate 
+                          ? sub.createdAt.toDate().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+                          : 'N/A'}
+                      </td>
+                      <td className="p-4">
+                        <button
+                          onClick={() => toggleSubscriberActive(sub.id, sub.active !== false)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold cursor-pointer transition ${
+                            sub.active !== false
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400'
+                          }`}
+                          id={`admin-btn-toggle-${sub.id}`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${sub.active !== false ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                          {sub.active !== false ? 'Active' : 'Deactivated'}
+                        </button>
+                      </td>
+                      <td className="p-4 text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteSubscriber(sub.id)}
+                          className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
+                          id={`admin-btn-delete-${sub.id}`}
+                          title="Delete subscriber"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

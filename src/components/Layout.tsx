@@ -8,9 +8,12 @@ import { safeGetLocalStorage, safeSetLocalStorage, safeGetSessionStorage, safeSe
 import Chat from './Chat';
 import NotificationCenter from './NotificationCenter';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
-import { doc, onSnapshot, getDoc, setDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, setDoc, increment, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { useLanguage, LANGUAGES } from '@/lib/LanguageContext';
+import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Send } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -55,6 +58,40 @@ export default function Layout({ children }: LayoutProps) {
       }
     }
   }, []);
+
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [submittingNewsletter, setSubmittingNewsletter] = useState(false);
+
+  const handleSubscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newsletterEmail || !newsletterEmail.trim()) {
+      toast.error('Please enter a valid email address.');
+      return;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newsletterEmail.trim())) {
+      toast.error('Please enter a valid email address.');
+      return;
+    }
+
+    setSubmittingNewsletter(true);
+    try {
+      const email = newsletterEmail.trim().toLowerCase();
+      await addDoc(collection(db, 'newsletter'), {
+        email,
+        createdAt: serverTimestamp(),
+        active: true,
+      });
+      toast.success('Thank you for subscribing to our newsletter!');
+      setNewsletterEmail('');
+    } catch (error) {
+      console.error('Subscription error:', error);
+      toast.error('An error occurred. Please try again later.');
+    } finally {
+      setSubmittingNewsletter(false);
+    }
+  };
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (authenticatedUser) => {
@@ -305,7 +342,7 @@ export default function Layout({ children }: LayoutProps) {
       <footer className="border-t border-border bg-card py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
-            <div className="col-span-1 md:col-span-2">
+            <div className="col-span-1">
               <Link to="/" className="flex items-center space-x-2">
                 {settings?.logoUrl ? (
                   <img src={settings.logoUrl} alt="Logo" className="h-12 w-auto rounded" referrerPolicy="no-referrer" />
@@ -315,7 +352,7 @@ export default function Layout({ children }: LayoutProps) {
                   </span>
                 )}
               </Link>
-              <p className="mt-4 max-w-xs text-muted-foreground">
+              <p className="mt-4 max-w-xs text-muted-foreground text-sm">
                 {t('footer.description')}
               </p>
               <div className="mt-6 flex space-x-4">
@@ -387,12 +424,43 @@ export default function Layout({ children }: LayoutProps) {
               <ul className="mt-4 space-y-2">
                 {navLinks.map((link) => (
                   <li key={link.name}>
-                    <Link to={link.href} className="text-sm text-muted-foreground hover:text-orange-600">
+                    <Link to={link.href} className="text-sm text-muted-foreground hover:text-orange-600" id={`footer-link-${link.name.toLowerCase().replace(/\s+/g, '-')}`}>
                       {link.name}
                     </Link>
                   </li>
                 ))}
               </ul>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">Newsletter</h3>
+              <p className="mt-4 text-sm text-muted-foreground">
+                Subscribe to receive our latest updates, articles, and exclusive business & event offers direct to your inbox.
+              </p>
+              <form onSubmit={handleSubscribe} className="mt-4 flex flex-col space-y-2" id="newsletter-signup-form">
+                <div className="relative">
+                  <Input
+                    type="email"
+                    placeholder="Enter your email"
+                    value={newsletterEmail}
+                    onChange={(e) => setNewsletterEmail(e.target.value)}
+                    required
+                    className="w-full bg-muted/40 border-border/80 text-sm focus-visible:ring-orange-500 pr-10"
+                    id="newsletter-email-input"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submittingNewsletter}
+                    className="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded bg-orange-600 text-white hover:bg-orange-700 transition disabled:opacity-50 cursor-pointer"
+                    id="newsletter-subscribe-button"
+                    title="Subscribe"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </div>
+                <span className="text-[10px] text-muted-foreground/80 font-mono">
+                  No spam. Unsubscribe at any time.
+                </span>
+              </form>
             </div>
           </div>
           <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">

@@ -9,6 +9,7 @@
         "description": { "type": "string", "description": "Detailed description of the service" },
         "iconName": { "type": "string", "description": "Lucide icon name" },
         "color": { "type": "string", "description": "Tailwind color classes for the icon background" },
+        "category": { "type": "string", "description": "The category of this service, such as Consulting or Entertainment" },
         "order": { "type": "number", "description": "Display order" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -110,6 +111,17 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "summary", "content", "category", "date", "image", "author"]
+    },
+    "NewsletterSubscriber": {
+      "title": "Newsletter Subscriber",
+      "description": "A subscribed email for the mailing list.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["email", "createdAt"]
     },
     "Booking": {
       "title": "Booking",
@@ -236,6 +248,10 @@
     "/blogs/{blogId}": {
       "schema": "BlogPost",
       "description": "Collection of blog posts"
+    },
+    "/newsletter/{subscriberId}": {
+      "schema": "NewsletterSubscriber",
+      "description": "Collection of newsletter subscriptions"
     }
   }
 }
