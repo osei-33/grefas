@@ -43,6 +43,62 @@ const isAdminEmail = (email: string | null) => {
   return hardcodedAdmins.includes(email) || envAdmins.includes(email);
 };
 
+function AdminDeleteModal({ 
+  title = "Confirm Deletion", 
+  message, 
+  onConfirm, 
+  onCancel 
+}: { 
+  title?: string; 
+  message: string; 
+  onConfirm: () => void | Promise<void>; 
+  onCancel: () => void; 
+}) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const handleConfirm = async () => {
+    setIsDeleting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in">
+      <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+        <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
+          <Trash2 className="h-5 w-5 text-red-500 animate-bounce" /> {title}
+        </h3>
+        <p className="text-xs text-muted-foreground leading-relaxed mb-6">
+          {message}
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="text-xs font-semibold"
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm" 
+            onClick={handleConfirm}
+            disabled={isDeleting}
+            className="text-xs font-semibold flex items-center gap-1"
+          >
+            {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            Yes, Delete It
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Admin() {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -960,6 +1016,7 @@ function ManageServices() {
   const [services, setServices] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [newService, setNewService] = useState({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting' });
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'services'), orderBy('createdAt', 'desc'));
@@ -1031,13 +1088,19 @@ function ManageServices() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this service?')) return;
+  const handleDelete = (id: string) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
     try {
-      await deleteDoc(doc(db, 'services', id));
+      await deleteDoc(doc(db, 'services', deleteId));
       toast.success('Service deleted');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `services/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `services/${deleteId}`);
+    } finally {
+      setDeleteId(null);
     }
   };
 
@@ -1126,6 +1189,15 @@ function ManageServices() {
           </div>
         </CardContent>
       </Card>
+
+      {deleteId && (
+        <AdminDeleteModal
+          title="Delete Service"
+          message="Are you sure you want to delete this service? This action is completely permanent and cannot be undone."
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1137,6 +1209,7 @@ function ManageTeam() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [newMember, setNewMember] = useState({
     name: '',
     role: '',
@@ -1455,13 +1528,19 @@ function ManageTeam() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this specialist profile?')) return;
+  const handleDelete = (id: string) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
     try {
-      await deleteDoc(doc(db, 'team_members', id));
+      await deleteDoc(doc(db, 'team_members', deleteId));
       toast.success('Specialist profile deleted');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `team_members/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `team_members/${deleteId}`);
+    } finally {
+      setDeleteId(null);
     }
   };
 
@@ -1798,6 +1877,15 @@ function ManageTeam() {
           </div>
         </CardContent>
       </Card>
+
+      {deleteId && (
+        <AdminDeleteModal
+          title="Delete Specialist"
+          message="Are you sure you want to delete this specialist profile? This action is completely permanent and cannot be undone."
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1811,6 +1899,7 @@ function ManageGallery() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationPrompt, setGenerationPrompt] = useState('');
   const [uploadMode, setUploadMode] = useState<'upload' | 'ai'>('upload');
+  const [deleteData, setDeleteData] = useState<{ id: string; url?: string; thumbnailUrl?: string } | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
@@ -1977,8 +2066,13 @@ function ManageGallery() {
     }
   };
 
-  const handleDelete = async (id: string, url?: string, thumbnailUrl?: string) => {
-    if (!confirm('Are you sure you want to delete this item?')) return;
+  const handleDelete = (id: string, url?: string, thumbnailUrl?: string) => {
+    setDeleteData({ id, url, thumbnailUrl });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteData) return;
+    const { id, url, thumbnailUrl } = deleteData;
     try {
       await deleteDoc(doc(db, 'gallery', id));
       
@@ -2004,6 +2098,8 @@ function ManageGallery() {
       toast.success('Item deleted');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `gallery/${id}`);
+    } finally {
+      setDeleteData(null);
     }
   };
 
@@ -2233,6 +2329,15 @@ function ManageGallery() {
         ))}
         {items.length === 0 && <p className="col-span-full py-8 text-center text-muted-foreground">No media found.</p>}
       </div>
+
+      {deleteData && (
+        <AdminDeleteModal
+          title="Delete Gallery Item"
+          message="Are you sure you want to delete this media item? This action is completely permanent and cannot be undone."
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteData(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2241,6 +2346,7 @@ function ManagePortfolio() {
   const [items, setItems] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [newItem, setNewItem] = useState({ title: '', description: '', imageUrl: '', category: 'Consulting' });
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'portfolio'), orderBy('createdAt', 'desc'));
@@ -2267,13 +2373,19 @@ function ManagePortfolio() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) return;
+  const handleDelete = (id: string) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
     try {
-      await deleteDoc(doc(db, 'portfolio', id));
+      await deleteDoc(doc(db, 'portfolio', deleteId));
       toast.success('Project deleted');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `portfolio/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `portfolio/${deleteId}`);
+    } finally {
+      setDeleteId(null);
     }
   };
 
@@ -2350,6 +2462,15 @@ function ManagePortfolio() {
         ))}
         {items.length === 0 && <p className="py-8 text-center text-muted-foreground">No projects found.</p>}
       </div>
+
+      {deleteId && (
+        <AdminDeleteModal
+          title="Delete Portfolio Project"
+          message="Are you sure you want to delete this project? This action is completely permanent and cannot be undone."
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2629,6 +2750,7 @@ function ManageBookings() {
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [deleteConfig, setDeleteConfig] = useState<{ message: string; action: () => Promise<void> } | null>(null);
 
   const handleExportCSV = () => {
     if (filteredBookings.length === 0) {
@@ -3103,18 +3225,22 @@ function ManageBookings() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this booking?')) return;
-    setDeletingId(id);
-    try {
-      await deleteDoc(doc(db, 'bookings', id));
-      setSelectedIds(prev => prev.filter(item => item !== id));
-      toast.success('Booking deleted');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `bookings/${id}`);
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (id: string) => {
+    setDeleteConfig({
+      message: 'Are you sure you want to delete this booking request? This action is completely permanent and cannot be undone.',
+      action: async () => {
+        setDeletingId(id);
+        try {
+          await deleteDoc(doc(db, 'bookings', id));
+          setSelectedIds(prev => prev.filter(item => item !== id));
+          toast.success('Booking deleted');
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, `bookings/${id}`);
+        } finally {
+          setDeletingId(null);
+        }
+      }
+    });
   };
 
   const handleToggleSelect = (id: string) => {
@@ -3154,47 +3280,53 @@ function ManageBookings() {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Are you sure you want to delete the ${selectedIds.length} selected booking(s)?`)) return;
-
-    setIsBulkDeleting(true);
-    let successCount = 0;
-    try {
-      await Promise.all(selectedIds.map(async (id) => {
-        await deleteDoc(doc(db, 'bookings', id));
-        successCount++;
-      }));
-      toast.success(`Successfully deleted ${successCount} booking(s).`);
-      setSelectedIds([]);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `bookings (bulk)`);
-    } finally {
-      setIsBulkDeleting(false);
-    }
+    setDeleteConfig({
+      message: `Are you sure you want to delete the ${selectedIds.length} selected booking(s)? This action is permanent and cannot be undone.`,
+      action: async () => {
+        setIsBulkDeleting(true);
+        let successCount = 0;
+        try {
+          await Promise.all(selectedIds.map(async (id) => {
+            await deleteDoc(doc(db, 'bookings', id));
+            successCount++;
+          }));
+          toast.success(`Successfully deleted ${successCount} booking(s).`);
+          setSelectedIds([]);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, `bookings (bulk)`);
+        } finally {
+          setIsBulkDeleting(false);
+        }
+      }
+    });
   };
 
-  const handleDeleteAll = async () => {
+  const handleDeleteAll = () => {
     if (bookings.length === 0) {
       toast.error('No bookings to delete.');
       return;
     }
-    if (!confirm(`Are you sure you want to delete ALL ${bookings.length} booking request(s)? This action is completely irreversible!`)) return;
-
-    setIsBulkDeleting(true);
-    let successCount = 0;
-    try {
-      await Promise.all(bookings.map(async (b) => {
-        await deleteDoc(doc(db, 'bookings', b.id));
-        successCount++;
-      }));
-      toast.success(`Successfully deleted all ${successCount} booking(s).`);
-      setSelectedIds([]);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `bookings (all)`);
-    } finally {
-      setIsBulkDeleting(false);
-    }
+    setDeleteConfig({
+      message: `Are you sure you want to delete ALL ${bookings.length} booking request(s)? This action is completely irreversible!`,
+      action: async () => {
+        setIsBulkDeleting(true);
+        let successCount = 0;
+        try {
+          await Promise.all(bookings.map(async (b) => {
+            await deleteDoc(doc(db, 'bookings', b.id));
+            successCount++;
+          }));
+          toast.success(`Successfully deleted all ${successCount} booking(s).`);
+          setSelectedIds([]);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, `bookings (all)`);
+        } finally {
+          setIsBulkDeleting(false);
+        }
+      }
+    });
   };
 
   if (loading) return <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto" />;
@@ -3763,6 +3895,18 @@ function ManageBookings() {
           </div>
         </div>
       )}
+
+      {deleteConfig && (
+        <AdminDeleteModal
+          title="Confirm Deletion"
+          message={deleteConfig.message}
+          onConfirm={async () => {
+            await deleteConfig.action();
+            setDeleteConfig(null);
+          }}
+          onCancel={() => setDeleteConfig(null)}
+        />
+      )}
     </div>
   );
 }
@@ -3772,6 +3916,7 @@ function ManageUsers() {
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', role: 'editor' });
+  const [deleteUid, setDeleteUid] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'users'));
@@ -3826,13 +3971,19 @@ function ManageUsers() {
     }
   };
 
-  const handleDeleteUser = async (uid: string) => {
-    if (!confirm('Are you sure? This will remove their admin/editor access.')) return;
+  const handleDeleteUser = (uid: string) => {
+    setDeleteUid(uid);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteUid) return;
     try {
-      await deleteDoc(doc(db, 'users', uid));
+      await deleteDoc(doc(db, 'users', deleteUid));
       toast.success('User removed');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `users/${uid}`);
+      handleFirestoreError(error, OperationType.DELETE, `users/${deleteUid}`);
+    } finally {
+      setDeleteUid(null);
     }
   };
 
@@ -3925,6 +4076,15 @@ function ManageUsers() {
           4. You can then change their role from "Guest" to "Editor" or "Admin".
         </p>
       </div>
+
+      {deleteUid && (
+        <AdminDeleteModal
+          title="Delete Authorized User"
+          message="Are you sure you want to remove this user? This will instantly revoke their admin or editor access levels."
+          onConfirm={confirmDeleteUser}
+          onCancel={() => setDeleteUid(null)}
+        />
+      )}
     </div>
   );
 }
@@ -4378,6 +4538,7 @@ function ManageTasks() {
     dueDate: ''
   });
   const [loading, setLoading] = useState(true);
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
@@ -4416,13 +4577,19 @@ function ManageTasks() {
     }
   };
 
-  const handleDeleteTask = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this task?')) return;
+  const handleDeleteTask = (id: string) => {
+    setDeleteTaskId(id);
+  };
+
+  const confirmDeleteTask = async () => {
+    if (!deleteTaskId) return;
     try {
-      await deleteDoc(doc(db, 'tasks', id));
+      await deleteDoc(doc(db, 'tasks', deleteTaskId));
       toast.success('Task deleted');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `tasks/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `tasks/${deleteTaskId}`);
+    } finally {
+      setDeleteTaskId(null);
     }
   };
 
@@ -4571,6 +4738,15 @@ function ManageTasks() {
           </div>
         </div>
       )}
+
+      {deleteTaskId && (
+        <AdminDeleteModal
+          title="Delete Task"
+          message="Are you sure you want to delete this task? This action is completely permanent and cannot be undone."
+          onConfirm={confirmDeleteTask}
+          onCancel={() => setDeleteTaskId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -4641,6 +4817,7 @@ function ManageNewsletter() {
   const [searchQuery, setSearchQuery] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const [deleteSubscriberId, setDeleteSubscriberId] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'newsletter'), orderBy('createdAt', 'desc'));
@@ -4700,13 +4877,19 @@ function ManageNewsletter() {
     }
   };
 
-  const handleDeleteSubscriber = async (id: string) => {
-    if (!window.confirm('Are you sure you want to permanently delete this subscriber?')) return;
+  const handleDeleteSubscriber = (id: string) => {
+    setDeleteSubscriberId(id);
+  };
+
+  const confirmDeleteSubscriber = async () => {
+    if (!deleteSubscriberId) return;
     try {
-      await deleteDoc(doc(db, 'newsletter', id));
+      await deleteDoc(doc(db, 'newsletter', deleteSubscriberId));
       toast.success('Subscriber deleted.');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `newsletter/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `newsletter/${deleteSubscriberId}`);
+    } finally {
+      setDeleteSubscriberId(null);
     }
   };
 
@@ -4922,6 +5105,15 @@ function ManageNewsletter() {
           )}
         </CardContent>
       </Card>
+
+      {deleteSubscriberId && (
+        <AdminDeleteModal
+          title="Delete Subscriber"
+          message="Are you sure you want to delete this subscriber? They will no longer receive any email newsletters or updates."
+          onConfirm={confirmDeleteSubscriber}
+          onCancel={() => setDeleteSubscriberId(null)}
+        />
+      )}
     </div>
   );
 }

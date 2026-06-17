@@ -263,6 +263,7 @@ export default function Gallery() {
   const [newComment, setNewComment] = useState('');
   const [guestName, setGuestName] = useState(() => safeGetLocalStorage('grefas_guest_name'));
   const [activeTab, setActiveTab] = useState('all');
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (authenticatedUser) => {
@@ -431,11 +432,13 @@ export default function Gallery() {
     }
   };
 
-  const handleDelete = async (item: any) => {
-    if (!window.confirm('Are you sure you want to delete this gallery item? This action cannot be undone.')) {
-      return;
-    }
+  const handleDelete = (item: any) => {
+    setDeleteConfirmItem(item);
+  };
 
+  const confirmDelete = async () => {
+    if (!deleteConfirmItem) return;
+    const item = deleteConfirmItem;
     try {
       // Delete Firestore doc
       await deleteDoc(doc(db, 'gallery', item.id));
@@ -466,6 +469,8 @@ export default function Gallery() {
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `gallery/${item.id}`);
       toast.error('Failed to delete item');
+    } finally {
+      setDeleteConfirmItem(null);
     }
   };
 
@@ -968,6 +973,38 @@ export default function Gallery() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Custom Delete Confirmation Modal */}
+      {deleteConfirmItem && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-500" /> Confirm Immediate Deletion
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-6">
+              Are you sure you want to delete this gallery item? This action is completely permanent and cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setDeleteConfirmItem(null)}
+                className="text-xs font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={confirmDelete}
+                className="text-xs font-semibold"
+              >
+                Yes, Delete It
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

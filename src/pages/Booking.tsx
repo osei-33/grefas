@@ -17,12 +17,36 @@ import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import { showBrowserNotification } from '@/lib/utils';
 
+const convertAccraTimeToUserTimezone = (accraTimeStr: string, targetTimezone: string) => {
+  try {
+    const [hours, minutes] = accraTimeStr.split(':').map(Number);
+    const now = new Date();
+    const accraUtcDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes));
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: targetTimezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    return formatter.format(accraUtcDate);
+  } catch (e) {
+    return accraTimeStr;
+  }
+};
+
 export default function Booking() {
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [bookedDates, setBookedDates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [timezone, setTimezone] = useState<string>(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Accra';
+    } catch (e) {
+      return 'Africa/Accra';
+    }
+  });
   const [formData, setFormData] = useState({
     userName: '',
     userEmail: '',
@@ -298,6 +322,7 @@ export default function Booking() {
         ...formData,
         orderNumber: newOrderNumber,
         date: dateStr,
+        clientTimezone: timezone,
         userId: user?.uid || 'anonymous',
         status: 'pending',
         createdAt: serverTimestamp()
@@ -589,25 +614,58 @@ export default function Booking() {
                         </div>
                         
                         {date ? (
-                          <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                          <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 rounded-xl border border-border bg-muted/20">
+                              <div className="space-y-0.5">
+                                <span className="text-xs font-bold text-foreground">Timezone Customizer</span>
+                                <p className="text-[10px] text-muted-foreground">Display consultation hours in your precise regional zone.</p>
+                              </div>
+                              <select
+                                className="h-9 text-xs rounded-lg border border-border bg-card px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-orange-600 font-semibold max-w-full sm:max-w-[200px]"
+                                value={timezone}
+                                onChange={(e) => setTimezone(e.target.value)}
+                              >
+                                <option value="Africa/Accra">Accra (GMT / UTC+0)</option>
+                                <option value="America/New_York">New York (Eastern / ET)</option>
+                                <option value="America/Chicago">Chicago (Central / CT)</option>
+                                <option value="America/Denver">Denver (Mountain / MT)</option>
+                                <option value="America/Los_Angeles">Los Angeles (Pacific / PT)</option>
+                                <option value="Europe/London">London (GMT/BST / UTC+1)</option>
+                                <option value="Europe/Paris">Paris (CET / UTC+1)</option>
+                                <option value="Asia/Dubai">Dubai (GST / UTC+4)</option>
+                                <option value="Asia/Tokyo">Tokyo (JST / UTC+9)</option>
+                                <option value="Australia/Sydney">Sydney (AEST / UTC+10)</option>
+                                <option value="UTC">Universal Time (UTC)</option>
+                              </select>
+                            </div>
+
                             <label className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                               <Clock className="h-4 w-4 text-orange-600" /> Select Availability Slot
                             </label>
+                            
                             <div className="grid grid-cols-2 min-[420px]:grid-cols-3 sm:grid-cols-4 gap-2">
-                              {timeSlots.map(t => (
-                                <button
-                                  key={t}
-                                  type="button"
-                                  onClick={() => setFormData({ ...formData, time: t })}
-                                  className={`rounded-xl border px-3 py-2.5 text-xs font-bold tracking-wide transition-all ${
-                                    formData.time === t
-                                      ? 'bg-orange-600 border-orange-600 text-white shadow-md'
-                                      : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
-                                  }`}
-                                >
-                                  {t}
-                                </button>
-                              ))}
+                              {timeSlots.map(t => {
+                                const hasTzone = timezone !== 'Africa/Accra';
+                                return (
+                                  <button
+                                    key={t}
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, time: t })}
+                                    className={`rounded-xl border p-2.5 text-xs font-bold tracking-wide transition-all ${
+                                      formData.time === t
+                                        ? 'bg-orange-600 border-orange-600 text-white shadow-md'
+                                        : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                                    }`}
+                                  >
+                                    <div className="font-mono text-sm">{t}</div>
+                                    {hasTzone && (
+                                      <div className={`text-[9px] mt-0.5 font-normal ${formData.time === t ? 'text-orange-200' : 'text-muted-foreground/80'}`}>
+                                        {convertAccraTimeToUserTimezone(t, timezone)}
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
                         ) : (
@@ -786,8 +844,13 @@ export default function Booking() {
                               <p className="text-foreground font-extrabold flex items-center gap-1.5 mt-1">
                                 <CalendarIcon className="h-4.5 w-4.5 text-orange-600" /> {date ? format(date, 'PPPP') : ''}
                               </p>
-                              <p className="text-muted-foreground font-bold flex items-center gap-1.5 mt-1 text-xs pl-6">
-                                <Clock className="h-3.5 w-3.5 text-orange-600" /> {formData.time} (UTC Local Time)
+                              <p className="text-muted-foreground font-bold flex flex-col gap-0.5 mt-1 text-xs pl-6">
+                                <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-orange-600" /> {formData.time} (UTC / Accra)</span>
+                                {timezone !== 'Africa/Accra' && (
+                                  <span className="text-orange-600 font-extrabold pl-5">
+                                    → {convertAccraTimeToUserTimezone(formData.time, timezone)} ({timezone})
+                                  </span>
+                                )}
                               </p>
                             </div>
                             <div>

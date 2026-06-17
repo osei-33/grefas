@@ -103,6 +103,7 @@ export default function ManageBlog() {
   const [isAdding, setIsAdding] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -246,18 +247,23 @@ export default function ManageBlog() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this blog post? This action cannot be undone.")) return;
+  const handleDelete = (id: string) => {
+    setDeleteConfirmId(id);
+  };
 
+  const confirmDelete = async () => {
+    if (!deleteConfirmId) return;
     try {
-      await deleteDoc(doc(db, 'blogs', id));
+      await deleteDoc(doc(db, 'blogs', deleteConfirmId));
       toast.success("Blog post deleted successfully!");
-      if (editingPostId === id) {
+      if (editingPostId === deleteConfirmId) {
         setEditingPostId(null);
       }
     } catch (error) {
       console.error("Error deleting blog post:", error);
-      handleFirestoreError(error, OperationType.DELETE, `blogs/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `blogs/${deleteConfirmId}`);
+    } finally {
+      setDeleteConfirmId(null);
     }
   };
 
@@ -591,6 +597,38 @@ export default function ManageBlog() {
         </div>
 
       </div>
+
+      {/* Delete Confirmation Popup */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-500" /> Confirm Immediate Deletion
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-6">
+              Are you sure you want to delete this blog post? This action is completely permanent and cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setDeleteConfirmId(null)}
+                className="text-xs font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={confirmDelete}
+                className="text-xs font-semibold"
+              >
+                Yes, Delete It
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

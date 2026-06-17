@@ -212,6 +212,73 @@ export default function Chat() {
     }
   }, [isOpen]);
 
+const chatFAQs = [
+  {
+    question: "💼 What services do you offer?",
+    answer: "Grefas Consult & Entertainment offers high-quality Corporate Strategy Advisory, Strategic Brand Scaling, and live entertainment showmanship. We help with planning events, corporate consultations, and creative show design!"
+  },
+  {
+    question: "📅 Why a 5-booking limit?",
+    answer: "We cap bookings at 5 per day to ensure dedicated attention to every single client, delivering exhaustive reviews and zero rush/compromises."
+  },
+  {
+    question: "💰 Is there a booking request fee?",
+    answer: "No, making requests on our calendar and scheduling your primary strategy alignment is completely free. Dedicated setups, custom workshops, and live stage designs are discussed and finalized during the consultation."
+  },
+  {
+    question: "🤝 Can I pick a preferred specialist?",
+    answer: "Yes, you can request a preferred specialist. Check out our 'Team' page, copy their name or click 'Message', or choose them during the Booking flow to pre-assign them."
+  },
+  {
+    question: "📍 Where is Grefas located?",
+    answer: "Our consulting desk and production coordination offices are situated in Nyinahin-Ashanti, Ghana, serving clients locally and globally with elite digital strategy."
+  }
+];
+
+  const handleFaqClick = async (faq: typeof chatFAQs[0]) => {
+    let chatId = user?.uid;
+    if (!chatId) {
+      chatId = safeGetLocalStorage('grefas_chat_id');
+    }
+    if (!chatId) return;
+
+    try {
+      // 1. Send the question as a user message
+      await addDoc(collection(db, 'chat'), {
+        text: faq.question,
+        userId: user?.uid || 'anonymous',
+        userName: user?.displayName || user?.email?.split('@')[0] || 'Guest',
+        chatId: chatId,
+        timestamp: serverTimestamp(),
+        isFromStaff: false
+      });
+
+      // 2. Trigger automated typing feel and response
+      setIsAutoTyping(true);
+      setTimeout(async () => {
+        try {
+          await addDoc(collection(db, 'chat'), {
+            text: faq.answer,
+            userId: 'grefas_auto_reply',
+            userName: 'Support Assistant (Automated)',
+            chatId: chatId,
+            timestamp: serverTimestamp(),
+            isFromStaff: true,
+            isAutoReply: true
+          });
+        } catch (err) {
+          console.error("Auto-reply send failure:", err);
+        } finally {
+          setIsAutoTyping(false);
+        }
+      }, 1000);
+
+    } catch (e) {
+      console.error("Failed to process FAQ click:", e);
+      toast.error("Failed to send message");
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() && !selectedImage) return;
@@ -488,6 +555,21 @@ export default function Chat() {
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Quick-Buttons / FAQ Chips */}
+            <div className="flex gap-2 overflow-x-auto px-4 py-2.5 bg-muted/25 border-t border-border scrollbar-none shrink-0 animate-in fade-in" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              {chatFAQs.map((faq, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleFaqClick(faq)}
+                  disabled={isAutoTyping || isUploading}
+                  className="whitespace-nowrap shrink-0 text-xs font-bold px-3 py-1.5 rounded-full bg-background hover:bg-orange-50 dark:hover:bg-orange-950/20 border border-border hover:border-orange-500/50 text-muted-foreground hover:text-orange-600 transition-all cursor-pointer active:scale-95 disabled:opacity-55 disabled:pointer-events-none"
+                >
+                  {faq.question}
+                </button>
+              ))}
             </div>
 
             {/* Image Upload Thumbnail Preview Panel */}
