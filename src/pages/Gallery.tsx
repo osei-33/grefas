@@ -297,7 +297,7 @@ const MediaViewer = ({ item }: { item: any }) => {
             setHasError(false);
           }}
           onError={() => {
-            console.error('HTML5 video stream error fallback occurred or was unsupported by the browser');
+            console.warn('HTML5 video stream error fallback occurred or was unsupported by the browser');
             setIsLoading(false);
             setHasError(true);
           }}
