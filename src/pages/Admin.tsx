@@ -2066,9 +2066,53 @@ function ManageGallery() {
         setNewItem(prev => ({ ...prev, type: 'image' }));
       }
 
-      // Upload main file with correct contentType
+      // If it's a video, attempt our cloud H.264/MP4 transcoding pipeline first!
+      if (isVideo) {
+        toast.loading('Running video transcoding pipeline...', { id: 'transcode-upload' });
+        try {
+          const formData = new FormData();
+          formData.append("video", file);
+
+          const response = await fetch("/api/upload-gallery-video", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              setNewItem(prev => ({
+                ...prev,
+                type: 'video',
+                url: data.url,
+                thumbnail: data.thumbnail || prev.thumbnail,
+              }));
+              toast.dismiss('transcode-upload');
+              toast.success('H.264 MP4 Transcoded video deployed successfully!');
+              setIsUploading(false);
+              return; // Complete upload pipeline successfully!
+            }
+          } else {
+            const errData = await response.json().catch(() => ({}));
+            if (errData.error === "transcoding_missing_credentials") {
+              toast.dismiss('transcode-upload');
+              toast.info('Cloudinary transcoding not active. Uploading raw file instead.');
+            } else {
+              throw new Error(errData.message || 'Transcoding server error');
+            }
+          }
+        } catch (transcodeErr) {
+          console.warn('Cloud transcoding pipeline skipped or failed:', transcodeErr);
+          toast.dismiss('transcode-upload');
+        }
+      }
+
+      // Upload main file to Firebase Storage with correct contentType (Dynamic/Fallback path)
       const storageRef = ref(storage, `gallery/${Date.now()}_${cleanFileName}`);
-      const fileMime = finalFile.type || file.type || (isVideo ? 'video/mp4' : 'image/jpeg');
+      let fileMime = finalFile.type || file.type || (isVideo ? 'video/mp4' : 'image/jpeg');
+      if (isVideo) {
+        fileMime = 'video/mp4';
+      }
       const uploadTask = uploadBytesResumable(storageRef, finalFile, { contentType: fileMime });
 
       uploadTask.on('state_changed', 

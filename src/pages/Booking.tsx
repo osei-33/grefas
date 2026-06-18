@@ -16,6 +16,7 @@ import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDo
 import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import { showBrowserNotification } from '@/lib/utils';
+import AppointmentCountdown from '@/components/AppointmentCountdown';
 
 const convertAccraTimeToUserTimezone = (accraTimeStr: string, targetTimezone: string) => {
   try {
@@ -1159,6 +1160,18 @@ export default function Booking() {
                         </div>
                       </div>
 
+                      {/* Dynamic Appointment Countdown */}
+                      {statusSearchResult.status !== 'cancelled' && statusSearchResult.date && statusSearchResult.time && (
+                        <div className="px-6 pt-6 bg-card">
+                          <AppointmentCountdown 
+                            dateStr={statusSearchResult.date} 
+                            timeStr={statusSearchResult.time} 
+                            title="Time remaining until scheduled appointment"
+                            theme="orange"
+                          />
+                        </div>
+                      )}
+
                       {/* Details Grid */}
                       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-card text-foreground">
                         <div className="space-y-4">
@@ -1341,6 +1354,15 @@ export default function Booking() {
             <p className="text-[10px] text-muted-foreground text-center uppercase tracking-widest font-bold">
               Please save this number for reference
             </p>
+
+            {date && formData.time && (
+              <AppointmentCountdown 
+                dateStr={format(date, 'yyyy-MM-dd')}
+                timeStr={formData.time}
+                title="Time remaining until appointment"
+                theme="light"
+              />
+            )}
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button 

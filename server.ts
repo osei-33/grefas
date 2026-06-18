@@ -6,6 +6,8 @@ import twilio from "twilio";
 import dotenv from "dotenv";
 import compression from "compression";
 import fs from "fs";
+import { v2 as cloudinary } from "cloudinary";
+import multer from "multer";
 
 // Node version check
 const nodeVersion = process.versions.node.split(".")[0];
@@ -16,6 +18,18 @@ if (parseInt(nodeVersion) < 20) {
 }
 
 dotenv.config();
+
+// Initialize Cloudinary
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+  console.log("Cloudinary transcoding configuration loaded.");
+} else {
+  console.warn("Cloudinary credentials not detected. Video transcoding will fallback to standard streams.");
+}
 
 // Path resolution that works in both dev (tsx) and prod (bundled cjs)
 const distPath = path.resolve(process.cwd(), "dist");
@@ -36,6 +50,92 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Configure multer for file memory storage
+  const memoryUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 105 * 1024 * 1024 }, // 105 MB
+  });
+
+  // Video transcoding & upload API
+  app.post("/api/upload-gallery-video", memoryUpload.single("video"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file provided" });
+      }
+
+      console.log(`Video upload requested: ${req.file.originalname} (${req.file.size} bytes)`);
+
+      if (req.file.size > 100 * 1024 * 1024) {
+        return res.status(400).json({ error: "File exceeds the maximum 100MB size limit." });
+      }
+
+      const isCloudinaryConfigured = !!(
+        process.env.CLOUDINARY_CLOUD_NAME &&
+        process.env.CLOUDINARY_API_KEY &&
+        process.env.CLOUDINARY_API_SECRET
+      );
+
+      if (!isCloudinaryConfigured) {
+        console.warn("Cloudinary is not configured. Aborting transcoding flow.");
+        return res.status(412).json({
+          error: "transcoding_missing_credentials",
+          message: "Video transcoding requires Cloudinary configuration. Please set the environment variables.",
+        });
+      }
+
+      // Stream upload to Cloudinary
+      const result: any = await new Promise((resolve, reject) => {
+        const cloudStream = cloudinary.uploader.upload_stream(
+          {
+            resource_type: "video",
+            folder: "grefas_gallery_videos",
+            // Forces standard, highly compatible browser formats: H.264 AAC (.mp4)
+            format: "mp4",
+            transformation: [
+              { video_codec: "h264", quality: "auto" },
+              { fetch_format: "mp4" }
+            ],
+            eager: [
+              // Eagerly pre-generate high quality thumbnail poster
+              { format: "jpg", start_offset: "1", width: 852, height: 480, crop: "fill" }
+            ],
+            eager_async: false
+          },
+          (err, response) => {
+            if (err) return reject(err);
+            resolve(response);
+          }
+        );
+        cloudStream.end(req.file!.buffer);
+      });
+
+      console.log("Video transcoded and uploaded successfully:", result.secure_url);
+
+      let posterUrl = "";
+      if (result.eager && result.eager.length > 0) {
+        posterUrl = result.eager[0].secure_url;
+      } else {
+        posterUrl = result.secure_url.replace(/\.[^/.]+$/, ".jpg");
+      }
+
+      return res.json({
+        success: true,
+        url: result.secure_url,
+        thumbnail: posterUrl,
+        provider: "cloudinary",
+        publicId: result.public_id,
+        duration: result.duration
+      });
+
+    } catch (err: any) {
+      console.error("Transcoding pipeline caught an exception:", err);
+      return res.status(500).json({
+        error: "transcoding_failed",
+        message: err.message || "Failed to process and transcode video file."
+      });
+    }
   });
 
   // API Routes

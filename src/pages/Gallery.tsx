@@ -44,6 +44,7 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
 const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string; title: string }) => {
   const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [localThumb, setLocalThumb] = useState<string | null>(thumbnail || null);
 
   // Helper to extract YouTube video ID
   const getYoutubeId = (urlStr: string) => {
@@ -64,6 +65,62 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
   };
 
   const vimeoId = getVimeoId(url);
+
+  useEffect(() => {
+    if (localThumb || youtubeId || vimeoId) return;
+
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.crossOrigin = 'anonymous';
+    video.src = url;
+
+    const timeoutId = setTimeout(() => {
+      try {
+        video.src = '';
+      } catch (e) {}
+    }, 6000);
+
+    video.onloadedmetadata = () => {
+      video.currentTime = 0.1;
+    };
+
+    video.onseeked = () => {
+      clearTimeout(timeoutId);
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 480;
+        canvas.height = video.videoHeight || 270;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          setLocalThumb(dataUrl);
+        }
+      } catch (e) {
+        console.warn('Dynamic thumbnail extraction failure:', e);
+      } finally {
+        try {
+          video.src = '';
+        } catch (e) {}
+      }
+    };
+
+    video.onerror = () => {
+      clearTimeout(timeoutId);
+      try {
+        video.src = '';
+      } catch (e) {}
+    };
+
+    return () => {
+      clearTimeout(timeoutId);
+      try {
+        video.src = '';
+      } catch (e) {}
+    };
+  }, [url, localThumb, youtubeId, vimeoId]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -100,7 +157,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
     return (
       <div className="relative w-full aspect-video bg-black overflow-hidden flex items-center justify-center">
         <img
-          src={thumbnail || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80"}
+          src={localThumb || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80"}
           alt={title}
           className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
           referrerPolicy="no-referrer"
@@ -123,9 +180,9 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Absolute image overlay as the video cover */}
-      {thumbnail ? (
+      {localThumb ? (
         <img
-          src={thumbnail}
+          src={localThumb}
           alt={title}
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 z-10 ${
             isHovered ? 'opacity-0 pointer-events-none' : 'opacity-100'
@@ -147,7 +204,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
       <video
         ref={videoRef}
         src={url}
-        preload="none"
+        preload="metadata"
         muted
         loop
         playsInline
@@ -257,37 +314,25 @@ const MediaViewer = ({ item }: { item: any }) => {
 
   // Direct storage / MP4 video with native HTML5 controller and robust fallback
   return (
-    <div className="w-full h-full relative bg-black flex items-center justify-center p-4">
-      {isLoading && !hasError && (
+    <div className="w-full h-full relative bg-black flex flex-col items-center justify-center p-4">
+      {isLoading && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 animate-fade-in">
           <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
           <span className="text-white/50 text-xs font-bold uppercase tracking-widest mt-2">Preparing Video Clip...</span>
         </div>
       )}
 
-      {hasError ? (
-        <div className="flex flex-col items-center justify-center p-8 text-center max-w-md bg-neutral-900/90 rounded-2xl border border-white/10 shadow-2xl z-20">
-          <AlertCircle className="h-14 w-14 text-orange-500 mb-4 animate-bounce-slow" />
-          <h4 className="text-lg font-bold text-white mb-2 tracking-tight">Format Navigation Unavailable</h4>
-          <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
-            This video format is premium or unsupported natively by your web browser's direct streaming. Feel free to download this video clip instantly below.
-          </p>
-          <a
-            href={item.url}
-            download
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 text-white text-sm font-bold rounded-xl shadow-lg transition-all duration-300"
-          >
-            <Download className="h-4 w-4" />
-            Download Video Component
-          </a>
-        </div>
-      ) : (
+      <div className="relative w-full max-h-[75vh] flex items-center justify-center">
         <video
-          src={item.url}
           poster={item.thumbnail}
           controls
           autoPlay
           playsInline
+          preload="metadata"
+          onLoadedData={() => {
+            setIsLoading(false);
+            setHasError(false);
+          }}
           onCanPlay={() => {
             setIsLoading(false);
             setHasError(false);
@@ -297,12 +342,39 @@ const MediaViewer = ({ item }: { item: any }) => {
             setHasError(false);
           }}
           onError={() => {
-            console.warn('HTML5 video stream error fallback occurred or was unsupported by the browser');
+            console.warn('HTML5 video loading notice: dynamic stream error or non-fatal codec query.');
             setIsLoading(false);
             setHasError(true);
           }}
-          className="max-h-full max-w-full aspect-video object-contain rounded-md"
-        />
+          className="max-h-[70vh] max-w-full aspect-video object-contain rounded-xl shadow-2xl border border-white/5 bg-zinc-950"
+        >
+          <source src={item.url} type="video/mp4" />
+          <source src={item.url} type="video/quicktime" />
+          <source src={item.url} />
+          Your browser does not support the video tag.
+        </video>
+      </div>
+
+      {hasError && (
+        <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 text-left w-full max-w-2xl bg-neutral-900/90 rounded-xl border border-white/10 shadow-lg z-20 animate-fade-in backdrop-blur-sm">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-xs font-bold text-white tracking-tight">Format or Codec Compatibility</h4>
+              <p className="text-[11px] text-zinc-400 mt-0.5 leading-relaxed">
+                If the video player stays blank or lacks audio, your device may not natively stream this specific codec.
+              </p>
+            </div>
+          </div>
+          <a
+            href={item.url}
+            download
+            className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 text-white text-xs font-black rounded-lg shadow-md transition-all duration-300 whitespace-nowrap"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download Video
+          </a>
+        </div>
       )}
     </div>
   );
