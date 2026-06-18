@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, arrayUnion, arrayRemove, increment, deleteDoc, getDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
-import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2, Download, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
+import { Loader2, Play, X, Heart, MessageSquare, Share2, Send, Trash2, Download, ChevronLeft, ChevronRight, Maximize2, Minimize2, AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -118,23 +118,45 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
   // Direct MP4 video preview with hover support
   return (
     <div 
-      className="relative w-full aspect-video bg-black overflow-hidden"
+      className="relative w-full aspect-video bg-black overflow-hidden cursor-pointer"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {/* Absolute image overlay as the video cover */}
+      {thumbnail ? (
+        <img
+          src={thumbnail}
+          alt={title}
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 z-10 ${
+            isHovered ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}
+          referrerPolicy="no-referrer"
+          loading="lazy"
+        />
+      ) : (
+        /* Fallback dark cover placeholder if no thumbnail exists */
+        <div 
+          className={`absolute inset-0 w-full h-full bg-zinc-900 flex items-center justify-center transition-opacity duration-300 z-10 ${
+            isHovered ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}
+        >
+          <div className="text-zinc-600 text-xs font-semibold uppercase tracking-wider">Video Clip</div>
+        </div>
+      )}
+
       <video
         ref={videoRef}
         src={url}
-        poster={thumbnail}
-        preload="metadata"
+        preload="none"
         muted
         loop
         playsInline
-        className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
+        className="w-full h-full object-cover"
       />
+      
       {!isHovered && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-          <div className="rounded-full bg-white/20 p-2 text-white backdrop-blur-md">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors z-20">
+          <div className="rounded-full bg-orange-600/90 p-3 text-white shadow-xl shadow-orange-600/20 backdrop-blur-sm transform transition-transform duration-300 group-hover:scale-115">
             <Play className="h-6 w-6 fill-white text-white" />
           </div>
         </div>
@@ -145,9 +167,11 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
 
 const MediaViewer = ({ item }: { item: any }) => {
   const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     setIsLoading(true);
+    setHasError(false);
   }, [item?.id]);
 
   if (!item) return null;
@@ -231,25 +255,55 @@ const MediaViewer = ({ item }: { item: any }) => {
     );
   }
 
-  // Direct storage / MP4 video with native HTML5 controller
+  // Direct storage / MP4 video with native HTML5 controller and robust fallback
   return (
-    <div className="w-full h-full relative bg-black flex items-center justify-center">
-      {isLoading && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40">
+    <div className="w-full h-full relative bg-black flex items-center justify-center p-4">
+      {isLoading && !hasError && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 animate-fade-in">
           <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
-          <span className="text-white/50 text-xs font-bold uppercase tracking-widest mt-2">Preparing Video...</span>
+          <span className="text-white/50 text-xs font-bold uppercase tracking-widest mt-2">Preparing Video Clip...</span>
         </div>
       )}
-      <video
-        src={item.url}
-        poster={item.thumbnail}
-        controls
-        autoPlay
-        playsInline
-        onCanPlay={() => setIsLoading(false)}
-        onLoadStart={() => setIsLoading(true)}
-        className="max-h-full max-w-full aspect-video object-contain"
-      />
+
+      {hasError ? (
+        <div className="flex flex-col items-center justify-center p-8 text-center max-w-md bg-neutral-900/90 rounded-2xl border border-white/10 shadow-2xl z-20">
+          <AlertCircle className="h-14 w-14 text-orange-500 mb-4 animate-bounce-slow" />
+          <h4 className="text-lg font-bold text-white mb-2 tracking-tight">Format Navigation Unavailable</h4>
+          <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
+            This video format is premium or unsupported natively by your web browser's direct streaming. Feel free to download this video clip instantly below.
+          </p>
+          <a
+            href={item.url}
+            download
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 text-white text-sm font-bold rounded-xl shadow-lg transition-all duration-300"
+          >
+            <Download className="h-4 w-4" />
+            Download Video Component
+          </a>
+        </div>
+      ) : (
+        <video
+          src={item.url}
+          poster={item.thumbnail}
+          controls
+          autoPlay
+          playsInline
+          onCanPlay={() => {
+            setIsLoading(false);
+            setHasError(false);
+          }}
+          onLoadStart={() => {
+            setIsLoading(true);
+            setHasError(false);
+          }}
+          onError={() => {
+            console.error('HTML5 video stream error fallback occurred or was unsupported by the browser');
+            setIsLoading(false);
+            setHasError(true);
+          }}
+          className="max-h-full max-w-full aspect-video object-contain rounded-md"
+        />
+      )}
     </div>
   );
 };

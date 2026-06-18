@@ -9,7 +9,7 @@ import { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp,
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { toast } from 'sonner';
-import { safeGetLocalStorage, safeSetLocalStorage } from '@/lib/utils';
+import { safeGetLocalStorage, safeSetLocalStorage, compressImage, blobToBase64 } from '@/lib/utils';
 
 const formatMessageTime = (timestamp: any) => {
   if (!timestamp) return 'Just now';
@@ -57,26 +57,43 @@ export default function Chat() {
   const [imageCaption, setImageCaption] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
+    const isImg = file.type.startsWith('image/') || /\.(heic|heif|avif|webp|png|jpe?g|gif|bmp|tiff)$/i.test(file.name);
+    if (!isImg) {
       toast.error('Only image uploads are welcomed.');
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size must be less than 5MB.');
-      return;
-    }
+    try {
+      toast.loading('Optimizing image...', { id: 'chat-compress' });
+      // Compress to max 1000x1000 size and 0.75 quality for chat messages (extra small, extra fast)
+      const compressed = await compressImage(file, 1000, 1000, 0.75);
+      toast.success('Ready to send!', { id: 'chat-compress' });
 
-    setSelectedImage(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+      // Reconstruct File so name is preserved
+      const readyFile = compressed instanceof File 
+        ? compressed 
+        : new File([compressed], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' });
+
+      setSelectedImage(readyFile);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(readyFile);
+    } catch (err) {
+      console.warn('Image select/compression failed, using raw file:', err);
+      toast.dismiss('chat-compress');
+      setSelectedImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const resetSelectedImage = () => {
@@ -303,9 +320,20 @@ const chatFAQs = [
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
               setUploadProgress(Math.round(progress));
             },
-            (error) => {
-              console.error('Upload failed:', error);
-              reject(error);
+            async (error) => {
+              console.warn('Chat upload failed, trying local Base64 optimized fallback:', error);
+              try {
+                const base64Url = await blobToBase64(selectedImage);
+                if (base64Url) {
+                  imageUrl = base64Url;
+                  resolve();
+                } else {
+                  reject(error);
+                }
+              } catch (fallbackError) {
+                console.error("Chat local fallback failed:", fallbackError);
+                reject(error);
+              }
             },
             async () => {
               imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
@@ -619,7 +647,7 @@ const chatFAQs = [
                 <input
                   type="file"
                   ref={fileInputRef}
-                  accept="image/*"
+                  accept="image/*,.heic,.heif,.avif,.tiff,.bmp"
                   onChange={handleImageSelect}
                   className="hidden"
                   id="chat-file-upload"

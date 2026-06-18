@@ -14,6 +14,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { compressImage, blobToBase64 } from '@/lib/utils';
 import { 
   Plus, 
   Trash2, 
@@ -167,34 +168,72 @@ export default function ManageBlog() {
     setUploadProgress(null);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
-    const storageRef = ref(storage, `blogs/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    setUploadProgress(0);
 
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-        setUploadProgress(progress);
-      }, 
-      (error) => {
-        console.error("Upload error:", error);
-        toast.error("Failed to upload image.");
-        setIsUploading(false);
-        setUploadProgress(null);
-      }, 
-      () => {
-        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-          setImage(downloadURL);
-          toast.success("Image uploaded successfully!");
-          setIsUploading(false);
-          setUploadProgress(null);
-        });
-      }
-    );
+    let finalFile: Blob | File = file;
+    try {
+      toast.loading('Optimizing image format and compression...', { id: 'blog-compress' });
+      finalFile = await compressImage(file, 1200, 1200, 0.75);
+      toast.success('Optimized image generated instantly!', { id: 'blog-compress' });
+    } catch (compressErr) {
+      console.warn('Compression failed, using raw file input:', compressErr);
+      toast.dismiss('blog-compress');
+    }
+
+    try {
+      // Clean special characters from file name
+      const cleanName = file.name.replace(/\s+/g, "_");
+      const storageRef = ref(storage, `blogs/${Date.now()}_${cleanName}`);
+      const uploadTask = uploadBytesResumable(storageRef, finalFile);
+
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          setUploadProgress(progress);
+        }, 
+        async (error) => {
+          console.warn("Storage upload failed, trying local Base64 optimized fallback:", error);
+          try {
+            toast.loading("Applying highly-optimized local image fallback...", { id: 'blog-fallback' });
+            // Optimize extra small for direct firestore storage
+            const extraCompressed = await compressImage(file, 800, 800, 0.65);
+            const base64Url = await blobToBase64(extraCompressed);
+            if (base64Url) {
+              setImage(base64Url);
+              toast.dismiss('blog-fallback');
+              toast.success("Optimized locally! Image applied successfully.");
+            } else {
+              throw new Error("Base64 string was empty");
+            }
+          } catch (fallbackError) {
+            console.error("Local fallback failed:", fallbackError);
+            toast.dismiss('blog-fallback');
+            toast.error("Failed to upload image. Please try again.");
+          } finally {
+            setIsUploading(false);
+            setUploadProgress(null);
+          }
+        }, 
+        () => {
+          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+            setImage(downloadURL);
+            toast.success("Image uploaded successfully!");
+            setIsUploading(false);
+            setUploadProgress(null);
+          });
+        }
+      );
+    } catch (error) {
+      console.error("Upload preparation failed:", error);
+      setIsUploading(false);
+      setUploadProgress(null);
+      toast.error("Could not start upload task.");
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -423,7 +462,7 @@ export default function ManageBlog() {
                     <div className="relative">
                       <input 
                         type="file" 
-                        accept="image/*" 
+                        accept="image/*,.heic,.heif,.avif,.tiff,.bmp" 
                         id="blog-image-picker" 
                         className="hidden" 
                         onChange={handleImageUpload}

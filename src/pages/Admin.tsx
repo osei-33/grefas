@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
+import { compressImage, blobToBase64 } from '@/lib/utils';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
@@ -1280,21 +1281,6 @@ function ManageTeam() {
     });
   };
 
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          resolve(reader.result);
-        } else {
-          resolve('');
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  };
-
   const handleImageUpload = async (file: File) => {
     if (!file) return;
 
@@ -1681,7 +1667,7 @@ function ManageTeam() {
                         type="file" 
                         id="team-image-device-upload" 
                         className="hidden" 
-                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        accept="image/*,.heic,.heif,.avif,.tiff,.bmp"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) handleImageUpload(file);
@@ -1728,7 +1714,7 @@ function ManageTeam() {
                         <div className="space-y-2 py-2">
                           <Camera className="h-8 w-8 text-zinc-400 mx-auto" />
                           <p className="text-sm font-medium text-foreground">Drag & drop profile picture, or click to browse</p>
-                          <p className="text-xs text-muted-foreground">Supports JPG, PNG, WEBP, GIF (Max 5MB)</p>
+                          <p className="text-xs text-muted-foreground font-medium">Supports HEIC, AVIF, JPEG, PNG, WEBP, BMP (Max 25MB)</p>
                         </div>
                       )}
                     </div>
@@ -1959,33 +1945,58 @@ function ManageGallery() {
   };
 
   const generateVideoThumbnail = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const video = document.createElement('video');
       video.preload = 'metadata';
       video.muted = true;
       video.playsInline = true;
       video.src = URL.createObjectURL(file);
       
+      const timeoutId = setTimeout(() => {
+        console.warn('Video thumbnail generation timed out (5s limit reached). Using background cover placeholder.');
+        try {
+          URL.revokeObjectURL(video.src);
+        } catch (e) {}
+        resolve('');
+      }, 5000);
+
       video.onloadedmetadata = () => {
-        video.currentTime = 1; // Seek to 1 second
+        video.currentTime = Math.min(1, video.duration > 0 ? video.duration / 2 : 1);
       };
 
       video.onseeked = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
-          URL.revokeObjectURL(video.src);
-          resolve(thumbnailUrl);
-        } else {
-          reject('Could not get canvas context');
+        clearTimeout(timeoutId);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 360;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
+            URL.revokeObjectURL(video.src);
+            resolve(thumbnailUrl);
+          } else {
+            URL.revokeObjectURL(video.src);
+            resolve('');
+          }
+        } catch (err) {
+          console.warn('Canvas frame extraction failed:', err);
+          try {
+            URL.revokeObjectURL(video.src);
+          } catch (e) {}
+          resolve('');
         }
       };
 
-      video.onerror = (e) => reject(e);
+      video.onerror = () => {
+        clearTimeout(timeoutId);
+        console.warn('Video element errored during thumbnail extraction.');
+        try {
+          URL.revokeObjectURL(video.src);
+        } catch (e) {}
+        resolve('');
+      };
     });
   };
 
@@ -1993,10 +2004,10 @@ function ManageGallery() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check file size (35MB limit as requested)
-    const MAX_SIZE = 35 * 1024 * 1024;
+    // Check file size (Increase from 35MB to 100MB as requested for all formats)
+    const MAX_SIZE = 100 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
-      toast.error('File is too large. Maximum size allowed is 35MB.');
+      toast.error('File is too large. Maximum size allowed is 100MB.');
       return;
     }
 
@@ -2004,42 +2015,98 @@ function ManageGallery() {
     setUploadProgress(0);
 
     try {
-      // If it's a video, try to generate a thumbnail
-      if (file.type.startsWith('video/')) {
+      let finalFile: Blob | File = file;
+
+      // Clean special characters from file name
+      const cleanFileName = file.name.replace(/\s+/g, "_");
+
+      // Verify if it's an image format (including custom formats)
+      const isImage = file.type.startsWith('image/') || /\.(heic|heif|avif|webp|png|jpe?g|gif|bmp|tiff)$/i.test(file.name);
+      
+      if (isImage) {
+        toast.loading('Optimizing image format & dimensions for fast load...', { id: 'gallery-compress' });
         try {
-          const thumbnailDataUrl = await generateVideoThumbnail(file);
-          // Upload thumbnail first
-          const thumbRef = ref(storage, `gallery/thumbnails/${Date.now()}_thumb.jpg`);
-          // Convert dataURL to blob
-          const response = await fetch(thumbnailDataUrl);
-          const blob = await response.blob();
-          await uploadBytesResumable(thumbRef, blob);
-          const thumbUrl = await getDownloadURL(thumbRef);
-          setNewItem(prev => ({ ...prev, thumbnail: thumbUrl }));
-        } catch (error) {
-          console.warn('Failed to generate thumbnail, you may need to provide one manually:', error);
+          finalFile = await compressImage(file, 1200, 1200, 0.75);
+          toast.success('Image optimized successfully for instant viewing!', { id: 'gallery-compress' });
+        } catch (compressionErr) {
+          console.warn('Image optimization skipped, uploading raw file:', compressionErr);
+          toast.dismiss('gallery-compress');
         }
       }
 
-      // Upload main file
-      const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      // If it's a video, try to generate a thumbnail
+      const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|flv|3gp|wmv|m4v)$/i.test(file.name);
+      if (isVideo) {
+        try {
+          const thumbnailDataUrl = await generateVideoThumbnail(file);
+          if (thumbnailDataUrl) {
+            // Upload thumbnail first
+            const thumbRef = ref(storage, `gallery/thumbnails/${Date.now()}_thumb.jpg`);
+            // Convert dataURL to blob
+            const response = await fetch(thumbnailDataUrl);
+            const blob = await response.blob();
+            
+            try {
+              await uploadBytesResumable(thumbRef, blob, { contentType: 'image/jpeg' });
+              const thumbUrl = await getDownloadURL(thumbRef);
+              setNewItem(prev => ({ ...prev, type: 'video', thumbnail: thumbUrl }));
+            } catch (storageErr) {
+              console.warn('Thumbnail storage upload failed, falling back to local base64 thumbnail:', storageErr);
+              setNewItem(prev => ({ ...prev, type: 'video', thumbnail: thumbnailDataUrl }));
+            }
+          } else {
+            console.warn('No custom video thumbnail could be extracted. Setting video type without thumbnail.');
+            setNewItem(prev => ({ ...prev, type: 'video' }));
+          }
+        } catch (error) {
+          console.warn('Failed to generate thumbnail, you may need to provide one manually:', error);
+          setNewItem(prev => ({ ...prev, type: 'video' }));
+        }
+      } else {
+        setNewItem(prev => ({ ...prev, type: 'image' }));
+      }
+
+      // Upload main file with correct contentType
+      const storageRef = ref(storage, `gallery/${Date.now()}_${cleanFileName}`);
+      const fileMime = finalFile.type || file.type || (isVideo ? 'video/mp4' : 'image/jpeg');
+      const uploadTask = uploadBytesResumable(storageRef, finalFile, { contentType: fileMime });
 
       uploadTask.on('state_changed', 
         (snapshot) => {
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           setUploadProgress(Math.round(progress));
         }, 
-        (error) => {
-          console.error('Upload failed:', error);
-          toast.error('Upload failed');
+        async (error) => {
+          console.warn('Upload to Firebase Storage failed, trying local Base64 optimized fallback:', error);
+          const isImg = file.type.startsWith('image/') || /\.(heic|heif|avif|webp|png|jpe?g|gif|bmp|tiff)$/i.test(file.name);
+          if (isImg) {
+            try {
+              toast.loading('Applying robust local layout fallback...', { id: 'gallery-fallback' });
+              // Compress to 800x800, quality 0.65 so that it is super small (< 50KB) and saves perfectly in Firestore
+              const extraCompressed = await compressImage(file, 800, 800, 0.65);
+              const base64Url = await blobToBase64(extraCompressed);
+              if (base64Url) {
+                setNewItem(prev => ({ ...prev, type: 'image', url: base64Url }));
+                toast.dismiss('gallery-fallback');
+                toast.success('Media optimized & attached locally successfully!');
+              } else {
+                throw new Error('Base64 conversion resulted in empty string');
+              }
+            } catch (fallbackError) {
+              console.error('Local fallback failed:', fallbackError);
+              toast.dismiss('gallery-fallback');
+              toast.error('Upload failed. Please try again.');
+            }
+          } else {
+            toast.error('Upload failed: ' + error.message);
+          }
           setIsUploading(false);
         }, 
         async () => {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           setNewItem(prev => ({ ...prev, url: downloadURL }));
           setIsUploading(false);
-          toast.success('File uploaded successfully');
+          toast.success('Media file uploaded successfully');
         }
       );
     } catch (error) {
@@ -2197,15 +2264,15 @@ function ManageGallery() {
               ) : (
                 <>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Upload from Local Disk (Max 35MB)</label>
+                    <label className="text-sm font-medium text-foreground">Upload from Local Disk (Max 100MB)</label>
                     <div className="space-y-2">
                       <div className="flex items-center gap-4">
                         <Input 
                           type="file" 
-                          accept={newItem.type === 'image' ? "image/*" : "video/*"}
+                          accept={newItem.type === 'image' ? "image/*,.heic,.heif,.avif,.tiff,.bmp" : "video/*,.mov,.avi,.mkv,.webm,.flv,.3gp,.wmv,.m4v,.mp4"}
                           onChange={handleFileUpload}
                           disabled={isUploading}
-                          className="cursor-pointer bg-muted/50 border-border"
+                          className="cursor-pointer bg-muted/50 border-border z-10"
                         />
                         {isUploading && (
                           <div className="flex items-center gap-2">
@@ -2223,7 +2290,7 @@ function ManageGallery() {
                         </div>
                       )}
                     </div>
-                    <p className="text-[10px] text-muted-foreground italic">Note: Large files are uploaded to secure cloud storage. Videos up to 35MB are supported.</p>
+                    <p className="text-[10px] text-muted-foreground italic">Note: Files are optimized on-the-fly inside the browser before upload. Photos and video formats up to 100MB are supported natively.</p>
                   </div>
 
                   <Input 
@@ -2488,7 +2555,9 @@ function ManageSettings() {
     tiktok: '',
     logoUrl: '',
     isAgentOnline: true,
-    autoReplyMessage: 'Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible.'
+    autoReplyMessage: 'Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible.',
+    isMaintenanceMode: false,
+    maintenanceMessage: 'Our website/portal is currently undergoing scheduled platform updates and alignments. We will be back online shortly!'
   });
   const [loading, setLoading] = useState(true);
 
@@ -2508,7 +2577,9 @@ function ManageSettings() {
           tiktok: data.tiktok || '',
           logoUrl: data.logoUrl || '',
           isAgentOnline: data.isAgentOnline !== false,
-          autoReplyMessage: data.autoReplyMessage || 'Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible.'
+          autoReplyMessage: data.autoReplyMessage || 'Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible.',
+          isMaintenanceMode: data.isMaintenanceMode === true,
+          maintenanceMessage: data.maintenanceMessage || 'Our website/portal is currently undergoing scheduled platform updates and alignments. We will be back online shortly!'
         });
       }
       setLoading(false);
@@ -2698,6 +2769,51 @@ function ManageSettings() {
                   />
                   <p className="text-[11px] text-muted-foreground italic">
                     This message will automatically trigger in a client's chat screen after they send a message while representatives are away or offline.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Maintenance Mode Settings Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                <Wrench className="h-5 w-5 text-orange-600 animate-spin-slow" /> Maintenance Mode Config
+              </h3>
+              <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-sm text-foreground">Activate Maintenance Mode</p>
+                    <p className="text-xs text-muted-foreground">When active, public visitors will be redirected to a custom under-construction screen.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${settings.isMaintenanceMode === true ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400' : 'bg-green-100 text-green-700 dark:bg-green-950/20 dark:text-green-400'}`}>
+                      {settings.isMaintenanceMode === true ? '● Maintenance Active' : '○ Website Online'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isMaintenanceMode: settings.isMaintenanceMode === true ? false : true })}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${settings.isMaintenanceMode === true ? 'bg-orange-600' : 'bg-zinc-300 dark:bg-zinc-700'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settings.isMaintenanceMode === true ? 'translate-x-5' : 'translate-x-0'}`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2 text-foreground">
+                    Custom Maintenance Message
+                  </label>
+                  <Textarea
+                    value={settings.maintenanceMessage}
+                    onChange={(e) => setSettings({ ...settings, maintenanceMessage: e.target.value })}
+                    placeholder="Enter the message that visitors will see when the site is in maintenance mode..."
+                    rows={3}
+                    className="bg-background border-border"
+                  />
+                  <p className="text-[11px] text-muted-foreground italic">
+                    This custom message will display in real time on the website's overlay screen, informing clients about maintenance activities.
                   </p>
                 </div>
               </div>
@@ -4142,26 +4258,41 @@ function ManageChat() {
   const [imageCaption, setImageCaption] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
+    const isImg = file.type.startsWith('image/') || /\.(heic|heif|avif|webp|png|jpe?g|gif|bmp|tiff)$/i.test(file.name);
+    if (!isImg) {
       toast.error('Only image uploads are welcomed.');
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Image size must be less than 5MB.');
-      return;
-    }
+    try {
+      toast.loading('Optimizing image...', { id: 'admin-chat-compress' });
+      const compressed = await compressImage(file, 1000, 1000, 0.75);
+      toast.success('Ready to send!', { id: 'admin-chat-compress' });
 
-    setSelectedImage(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+      const readyFile = compressed instanceof File 
+        ? compressed 
+        : new File([compressed], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' });
+
+      setSelectedImage(readyFile);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(readyFile);
+    } catch (err) {
+      console.warn('Image select/compression failed, using raw file:', err);
+      toast.dismiss('admin-chat-compress');
+      setSelectedImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const resetSelectedImage = () => {
@@ -4288,9 +4419,20 @@ function ManageChat() {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
               setUploadProgress(Math.round(progress));
             },
-            (error) => {
-              console.error('Upload failed:', error);
-              reject(error);
+            async (error) => {
+              console.warn('Admin chat upload failed, trying local Base64 optimized fallback:', error);
+              try {
+                const base64Url = await blobToBase64(selectedImage);
+                if (base64Url) {
+                  imageUrl = base64Url;
+                  resolve();
+                } else {
+                  reject(error);
+                }
+              } catch (fallbackError) {
+                console.error("Admin chat local fallback failed:", fallbackError);
+                reject(error);
+              }
             },
             async () => {
               imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
@@ -4481,7 +4623,7 @@ function ManageChat() {
                 <input
                   type="file"
                   ref={fileInputRef}
-                  accept="image/*"
+                  accept="image/*,.heic,.heif,.avif,.tiff,.bmp"
                   onChange={handleImageSelect}
                   className="hidden"
                   id="admin-chat-file-upload"

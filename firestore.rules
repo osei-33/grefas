@@ -149,12 +149,14 @@ service cloud.firestore {
 
     match /services/{serviceId} {
       allow read: if true;
-      allow write: if isStaff() && isValidService(request.resource.data);
+      allow create, update: if isStaff() && isValidService(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /blogs/{blogId} {
       allow read: if true;
-      allow write: if isStaff() && isValidBlogPost(request.resource.data);
+      allow create, update: if isStaff() && isValidBlogPost(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /newsletter/{subscriberId} {
@@ -227,7 +229,8 @@ service cloud.firestore {
     
     match /team_members/{memberId} {
       allow read: if true;
-      allow write: if isStaff() && isValidTeamMember(request.resource.data);
+      allow create, update: if isStaff() && isValidTeamMember(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /messages/{messageId} {

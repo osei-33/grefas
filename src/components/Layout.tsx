@@ -1,7 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown, ExternalLink, Navigation } from 'lucide-react';
+import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown, ExternalLink, Navigation, Wrench, Clock, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { safeGetLocalStorage, safeSetLocalStorage, safeGetSessionStorage, safeSetSessionStorage } from '@/lib/utils';
@@ -165,10 +165,153 @@ export default function Layout({ children }: LayoutProps) {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const isAdminRoute = location.pathname.startsWith('/admin');
+  const isMaintenanceActive = settings?.isMaintenanceMode === true;
+  const showMaintenancePage = isMaintenanceActive && !isAdmin && !isAdminRoute;
+
+  if (showMaintenancePage) {
+    return (
+      <div className="min-h-screen bg-background font-sans text-foreground transition-colors duration-300 flex flex-col justify-between">
+        {/* Simple Header */}
+        <header className="p-6 border-b border-border/40 backdrop-blur-md sticky top-0 bg-background/55 z-50">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              {settings?.logoUrl ? (
+                <img src={settings.logoUrl} alt="Logo" className="h-9 w-auto rounded animate-pulse" referrerPolicy="no-referrer" />
+              ) : (
+                <span className="text-xl font-bold tracking-tighter text-foreground">
+                  GREFAS<span className="text-orange-600">.</span>
+                </span>
+              )}
+            </div>
+            
+            {/* Theme & support quick links */}
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+                className="text-muted-foreground hover:text-foreground h-9 w-9 rounded-xl"
+              >
+                {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              </Button>
+              {user ? (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => auth.signOut()}
+                  className="text-xs font-semibold rounded-xl border-border/80 text-muted-foreground hover:text-foreground"
+                >
+                  {t('nav.signOut')}
+                </Button>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  asChild
+                  className="text-xs font-semibold rounded-xl border-orange-500/30 text-orange-600 hover:text-orange-700 hover:bg-orange-600/10"
+                >
+                  <Link to="/admin">{t('nav.admin')}</Link>
+                </Button>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* Center content */}
+        <main className="flex-1 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="max-w-md w-full bg-card/40 border border-border/85 rounded-2xl p-6 sm:p-8 text-center shadow-2xl backdrop-blur-xs space-y-6"
+          >
+            <div className="mx-auto h-16 w-16 rounded-2xl bg-orange-500/10 dark:bg-orange-500/5 flex items-center justify-center border border-orange-500/20 text-orange-600 animate-bounce">
+              <Wrench className="h-8 w-8 text-orange-600" />
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+                Temporary Maintenance
+              </h1>
+              <p className="text-xs font-bold text-orange-600/90 dark:text-orange-500/95 tracking-wide uppercase font-mono bg-orange-500/5 py-1 px-3.5 rounded-full w-max mx-auto border border-orange-500/10">
+                Enhancing Your Experience
+              </p>
+            </div>
+
+            <div className="text-sm text-muted-foreground leading-relaxed bg-muted/20 p-4 rounded-xl border border-border/40 text-left">
+              <p className="font-semibold text-xs mb-1.5 flex items-center gap-1.5 text-foreground uppercase tracking-wider">
+                <Clock className="h-4 w-4 text-orange-600" /> Host message:
+              </p>
+              <p className="text-xs leading-relaxed text-muted-foreground/90">
+                {settings?.maintenanceMessage || "Our website is currently undergoing scheduled platform updates and database alignments. We will be back online shortly with improved speed and services!"}
+              </p>
+            </div>
+
+            <div className="border-t border-border/40 my-2 pt-6">
+              <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest mb-4">
+                Need urgent assistance?
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2.5 justify-center">
+                <Button 
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl border-border/80 text-xs font-semibold hover:bg-muted"
+                >
+                  <a href={`mailto:${settings?.email || 'info@grefasconsultandentertainment.com'}?subject=Urgent%20Inquiry`}>
+                    <Mail className="h-3.5 w-3.5 mr-1.5 text-orange-600" /> Email Us
+                  </a>
+                </Button>
+                {settings?.phone && (
+                  <Button 
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl border-border/80 text-xs font-semibold hover:bg-muted"
+                  >
+                    <a href={`https://wa.me/${settings.phone.replace(/\D/g, '')}?text=${encodeURIComponent("Hello Grefas! The site is on maintenance, but I had an urgent inquiry.")}`} target="_blank" rel="noopener noreferrer">
+                      <MessageCircle className="h-3.5 w-3.5 mr-1.5 text-[#25D366] fill-[#25D366]/15" /> WhatsApp Support
+                    </a>
+                  </Button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </main>
+
+        {/* Footer */}
+        <footer className="py-6 border-t border-border/40 text-center text-xs text-muted-foreground">
+          <div className="max-w-7xl mx-auto px-4">
+            <p>© {new Date().getFullYear()} Grefas Consult & Entertainment. All rights reserved.</p>
+            <p className="mt-1 opacity-75">Thank you for your patience and understanding.</p>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background font-sans text-foreground transition-colors duration-300">
+      {/* Maintenance Mode active preview banner for Admins */}
+      {isMaintenanceActive && isAdmin && !isAdminRoute && (
+        <div className="fixed top-0 left-0 right-0 h-9 bg-orange-600 dark:bg-orange-700 text-white text-center text-[10px] sm:text-xs font-extrabold flex items-center justify-center gap-2 tracking-wide font-mono z-[9999] shadow-md px-3">
+          <Wrench className="h-3.5 w-3.5 animate-spin shrink-0" />
+          <span className="truncate">MAINTENANCE ACTIVE FOR VISITORS. ADMIN PREVIEW ACTIVE.</span>
+          <Link 
+            to="/admin/settings" 
+            className="underline hover:text-orange-100 ml-2 font-bold shrink-0 flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded text-[10px]"
+          >
+            Manage <ExternalLink className="h-2.5 w-2.5" />
+          </Link>
+        </div>
+      )}
+
       {/* Navigation */}
-      <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
+      <nav 
+        className="fixed z-50 w-full border-b border-border bg-background/80 backdrop-blur-md transition-all duration-300"
+        style={{ top: isMaintenanceActive && isAdmin && !isAdminRoute ? '36px' : '0px' }}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center space-x-2">
             {settings?.logoUrl ? (
@@ -334,7 +477,12 @@ export default function Layout({ children }: LayoutProps) {
         )}
       </nav>
 
-      <main className="pt-16">{children}</main>
+      <main 
+        className="transition-all duration-300"
+        style={{ paddingTop: isMaintenanceActive && isAdmin && !isAdminRoute ? '100px' : '64px' }}
+      >
+        {children}
+      </main>
 
       <Chat />
 
