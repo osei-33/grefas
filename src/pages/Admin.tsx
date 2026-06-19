@@ -3233,7 +3233,12 @@ function ManageBookings() {
           phone: booking.userPhone,
           userName: booking.userName,
           serviceTitle: booking.serviceTitle || 'General Consultation',
-          date: booking.time ? `${booking.date} at ${booking.time}` : booking.date
+          date: booking.date,
+          time: booking.time,
+          orderNumber: booking.orderNumber,
+          teamMemberName: booking.teamMemberName,
+          notes: booking.notes,
+          serviceDescription: booking.serviceDescription || booking.description || ''
         })
       });
       
@@ -3303,7 +3308,12 @@ function ManageBookings() {
                   phone: bookingData.userPhone,
                   userName: bookingData.userName,
                   serviceTitle: bookingData.serviceTitle || 'General Consultation',
-                  date: bookingData.time ? `${bookingData.date} at ${bookingData.time}` : bookingData.date
+                  date: bookingData.date,
+                  time: bookingData.time,
+                  orderNumber: bookingData.orderNumber,
+                  teamMemberName: bookingData.teamMemberName,
+                  notes: bookingData.notes,
+                  serviceDescription: bookingData.serviceDescription || bookingData.description || ''
                 })
               });
               

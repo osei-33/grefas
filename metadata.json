@@ -1,7 +1,7 @@
 {
   "name": "Grefas Consult & Entertainment",
   "description": "A professional platform for consulting and entertainment services with a built-in admin dashboard, appointment booking with order numbers, and internal task management.",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

@@ -42,9 +42,12 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
 };
 
 const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string; title: string }) => {
+  const secureUrl = (url || "").replace(/^http:/, "https:");
+  const secureThumbnail = (thumbnail || "").replace(/^http:/, "https:");
+
   const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [localThumb, setLocalThumb] = useState<string | null>(thumbnail || null);
+  const [localThumb, setLocalThumb] = useState<string | null>(secureThumbnail || null);
 
   // Helper to extract YouTube video ID
   const getYoutubeId = (urlStr: string) => {
@@ -54,7 +57,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
     return (match && match[2].length === 11) ? match[2] : null;
   };
 
-  const youtubeId = getYoutubeId(url);
+  const youtubeId = getYoutubeId(secureUrl);
 
   // Helper to extract Vimeo ID
   const getVimeoId = (urlStr: string) => {
@@ -64,7 +67,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
     return match ? match[1] : null;
   };
 
-  const vimeoId = getVimeoId(url);
+  const vimeoId = getVimeoId(secureUrl);
 
   useEffect(() => {
     if (localThumb || youtubeId || vimeoId) return;
@@ -74,7 +77,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
     video.muted = true;
     video.playsInline = true;
     video.crossOrigin = 'anonymous';
-    video.src = url;
+    video.src = secureUrl;
 
     const timeoutId = setTimeout(() => {
       try {
@@ -120,7 +123,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
         video.src = '';
       } catch (e) {}
     };
-  }, [url, localThumb, youtubeId, vimeoId]);
+  }, [secureUrl, localThumb, youtubeId, vimeoId]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -203,7 +206,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
 
       <video
         ref={videoRef}
-        src={url}
+        src={secureUrl}
         preload="metadata"
         muted
         loop
@@ -225,10 +228,15 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
 const MediaViewer = ({ item }: { item: any }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     setIsLoading(true);
     setHasError(false);
+    // If the video is already loaded or playing in DOM, reset state
+    if (videoRef.current) {
+      videoRef.current.load();
+    }
   }, [item?.id]);
 
   if (!item) return null;
@@ -312,6 +320,10 @@ const MediaViewer = ({ item }: { item: any }) => {
     );
   }
 
+  // Strictly upgrade URL schemes to HTTPS to prevent Mixed Content blocking by modern web browsers
+  const videoUrl = (item.url || "").replace(/^http:/, "https:");
+  const posterUrl = (item.thumbnail || "").replace(/^http:/, "https:");
+
   // Direct storage / MP4 video with native HTML5 controller and robust fallback
   return (
     <div className="w-full h-full relative bg-black flex flex-col items-center justify-center p-4">
@@ -324,11 +336,18 @@ const MediaViewer = ({ item }: { item: any }) => {
 
       <div className="relative w-full max-h-[75vh] flex items-center justify-center">
         <video
-          poster={item.thumbnail}
+          ref={videoRef}
+          src={videoUrl}
+          poster={posterUrl}
           controls
           autoPlay
           playsInline
-          preload="metadata"
+          preload="auto"
+          crossOrigin="anonymous"
+          onLoadedMetadata={() => {
+            setIsLoading(false);
+            setHasError(false);
+          }}
           onLoadedData={() => {
             setIsLoading(false);
             setHasError(false);
@@ -337,20 +356,28 @@ const MediaViewer = ({ item }: { item: any }) => {
             setIsLoading(false);
             setHasError(false);
           }}
+          onPlay={() => {
+            setIsLoading(false);
+            setHasError(false);
+          }}
           onLoadStart={() => {
             setIsLoading(true);
             setHasError(false);
           }}
-          onError={() => {
-            console.warn('HTML5 video loading notice: dynamic stream error or non-fatal codec query.');
+          onError={(e) => {
+            const videoEl = videoRef.current;
+            // Native browsers can fire early non-fatal checks. If some metadata/bytes are loaded, it is fully playable.
+            if (videoEl && videoEl.readyState > 0) {
+              setIsLoading(false);
+              setHasError(false);
+              return;
+            }
+            console.warn('HTML5 video loading notice: dynamic stream error or non-fatal codec query.', e);
             setIsLoading(false);
             setHasError(true);
           }}
           className="max-h-[70vh] max-w-full aspect-video object-contain rounded-xl shadow-2xl border border-white/5 bg-zinc-950"
         >
-          <source src={item.url} type="video/mp4" />
-          <source src={item.url} type="video/quicktime" />
-          <source src={item.url} />
           Your browser does not support the video tag.
         </video>
       </div>
@@ -367,7 +394,7 @@ const MediaViewer = ({ item }: { item: any }) => {
             </div>
           </div>
           <a
-            href={item.url}
+            href={videoUrl}
             download
             className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-700 hover:to-amber-600 text-white text-xs font-black rounded-lg shadow-md transition-all duration-300 whitespace-nowrap"
           >

@@ -81,6 +81,112 @@ export default function Booking() {
   const [hasSearchedStatus, setHasSearchedStatus] = useState(false);
   const [clientBookings, setClientBookings] = useState<any[]>([]);
   const [loadingClientBookings, setLoadingClientBookings] = useState(false);
+  const [cachedBookings, setCachedBookings] = useState<any[]>([]);
+  const [lastCreatedBooking, setLastCreatedBooking] = useState<any>(null);
+
+  const loadCachedBookings = () => {
+    try {
+      const cached = localStorage.getItem('grefas_cached_bookings');
+      if (cached) {
+        setCachedBookings(JSON.parse(cached));
+      }
+    } catch (err) {
+      console.warn('Failed to load cached bookings from localStorage:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadCachedBookings();
+  }, []);
+
+  const cacheBooking = (booking: any) => {
+    if (!booking || !booking.orderNumber) return;
+    try {
+      const cached = localStorage.getItem('grefas_cached_bookings');
+      const list = cached ? JSON.parse(cached) : [];
+      const index = list.findIndex((item: any) => item.orderNumber === booking.orderNumber);
+      if (index > -1) {
+        list[index] = { ...list[index], ...booking, cachedAt: new Date().toISOString() };
+      } else {
+        list.push({ ...booking, cachedAt: new Date().toISOString() });
+      }
+      localStorage.setItem('grefas_cached_bookings', JSON.stringify(list));
+      loadCachedBookings();
+    } catch (err) {
+      console.warn('Could not cache booking:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (statusSearchResult && statusSearchResult.orderNumber) {
+      cacheBooking(statusSearchResult);
+    }
+  }, [statusSearchResult]);
+
+  const generateIcsFile = (booking: {
+    orderNumber: string;
+    date: string;
+    time: string;
+    serviceTitle: string;
+    teamMemberName?: string;
+    notes?: string;
+  }) => {
+    try {
+      const { orderNumber, date: dateStr, time: timeStr, serviceTitle, teamMemberName, notes } = booking;
+      if (!dateStr || !timeStr) {
+        toast.error("Required date or time parameters are missing.");
+        return;
+      }
+
+      const [year, month, day] = dateStr.split('-').map(Number);
+      const [hour, minute] = timeStr.split(':').map(Number);
+      
+      const pad = (n: number) => String(n).padStart(2, '0');
+      
+      const startStr = `${year}${pad(month)}${pad(day)}T${pad(hour)}${pad(minute)}00`;
+      const endHour = hour + 1;
+      const endStr = `${year}${pad(month)}${pad(day)}T${pad(endHour >= 24 ? 23 : endHour)}${pad(minute)}00`;
+      
+      const now = new Date();
+      const stampStr = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      
+      const cleanNotes = (notes || '').replace(/\r?\n/g, '\\n');
+      const desc = `Booking Confirmation Reference: #${orderNumber}\\nSpecialist: ${teamMemberName || 'Primary Available Specialist'}\\nNotes: ${cleanNotes}\\nSecure Reservation on Grefas Consult & Entertainment.`;
+      
+      const icsContent = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Grefas Consult & Entertainment//NONSGML Booking Confirmation//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'BEGIN:VEVENT',
+        `UID:booking-${orderNumber}@grefas.com`,
+        `DTSTAMP:${stampStr}`,
+        `DTSTART:${startStr}`,
+        `DTEND:${endStr}`,
+        `SUMMARY:${serviceTitle || 'Consultation Scheduling'} - Grefas`,
+        `DESCRIPTION:${desc}`,
+        'LOCATION:Grefas Consult & Entertainment Office Hub',
+        'STATUS:CONFIRMED',
+        'SEQUENCE:0',
+        'END:VEVENT',
+        'END:VCALENDAR'
+      ].join('\r\n');
+
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `booking_appointment_${orderNumber}.ics`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success("Calendar invite downloaded! Open and save in Google, Apple, or Outlook Calendars.");
+    } catch (err) {
+      console.error("Failed to generate .ics file:", err);
+      toast.error("Could not construct schedule invite card.");
+    }
+  };
 
   const [step, setStep] = useState(1);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -281,17 +387,31 @@ export default function Booking() {
       
       if (!querySnapshot.empty) {
         const docSnap = querySnapshot.docs[0];
-        setStatusSearchResult({ id: docSnap.id, ...docSnap.data() });
+        const resData = { id: docSnap.id, ...docSnap.data() };
+        setStatusSearchResult(resData);
         toast.success("Appointment found successfully!");
       } else {
-        toast.error("No appointment matches this order number");
+        // Fallback: Check local storage cache manually
+        const match = cachedBookings.find((item: any) => item.orderNumber === queryStr);
+        if (match) {
+          setStatusSearchResult({ ...match, isOfflineCacheCopy: true });
+          toast.success("Retrieved booking details from local device offline memory cache!");
+        } else {
+          toast.error("No appointment matches this order number");
+        }
       }
     } catch (error) {
-      console.error("Error looking up booking status:", error);
-      try {
-        handleFirestoreError(error, OperationType.GET, `bookings/query?orderNumber=${queryStr}`);
-      } catch (e) {
-        toast.error("Could not complete lookup. Please try again.");
+      console.warn("Firestore query failed (possibly offline). Checking local cache memory:", error);
+      const match = cachedBookings.find((item: any) => item.orderNumber === queryStr);
+      if (match) {
+        setStatusSearchResult({ ...match, isOfflineCacheCopy: true });
+        toast.success("Offline Mode: Retreived appointment details from your local safe cache!");
+      } else {
+        try {
+          handleFirestoreError(error, OperationType.GET, `bookings/query?orderNumber=${queryStr}`);
+        } catch (e) {
+          toast.error("Offline Error: Could not load booking status, and none exists in local cache.");
+        }
       }
     } finally {
       setIsSearchingStatus(false);
@@ -377,6 +497,45 @@ export default function Booking() {
         `Ref: ${newOrderNumber}. Your booking for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time} has been received!`,
         '/favicon.ico'
       );
+
+      // Cache newly created booking receipt to localStorage offline memory
+      const newBookingSnapshot = {
+        orderNumber: newOrderNumber,
+        date: dateStr,
+        time: formData.time,
+        serviceTitle: formData.serviceTitle || 'General Consultation',
+        teamMemberName: formData.teamMemberName || 'Primary Available Specialist',
+        userName: formData.userName,
+        userEmail: formData.userEmail,
+        userPhone: formData.userPhone,
+        notes: formData.notes,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
+      setLastCreatedBooking(newBookingSnapshot);
+      cacheBooking(newBookingSnapshot);
+
+      // Trigger automatic receipt & confirmation email via Resend API channel
+      try {
+        await fetch('/api/notify-confirmation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formData.userEmail,
+            phone: formData.userPhone,
+            userName: formData.userName,
+            serviceTitle: formData.serviceTitle || 'General Consultation',
+            date: dateStr,
+            time: formData.time,
+            orderNumber: newOrderNumber,
+            teamMemberName: formData.teamMemberName || 'Primary Available Specialist',
+            notes: formData.notes
+          })
+        });
+        console.log("Strategic appointment confirmation receipt dispatched successfully via Resend server gateway!");
+      } catch (emailErr) {
+        console.warn("Resend email post-booking dispatch warning (network offline or secret missing):", emailErr);
+      }
 
       setShowSuccessDialog(true);
       setDate(undefined);
@@ -1115,6 +1274,70 @@ export default function Booking() {
                   </div>
                 </form>
 
+                {/* Cached offline bookings list */}
+                {cachedBookings.length > 0 && (
+                  <div className="pt-4 border-t border-border/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-orange-600 animate-pulse" />
+                        Saved on this Device (Offline Access Caching)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm("Are you sure you want to clear your local device cache memory?")) {
+                            localStorage.removeItem('grefas_cached_bookings');
+                            setCachedBookings([]);
+                            toast.success("Device appointment storage memory cleared successfully.");
+                          }
+                        }}
+                        className="text-[10px] text-red-500 hover:text-red-700 font-bold uppercase tracking-wider cursor-pointer font-sans"
+                      >
+                        Clear Cache
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2.5 max-h-52 overflow-y-auto pr-1">
+                      {cachedBookings.map((b) => {
+                        const isSelected = statusSearchResult?.orderNumber === b.orderNumber;
+                        return (
+                          <div
+                            key={b.orderNumber}
+                            onClick={() => {
+                              setStatusSearchResult({ ...b, isOfflineCacheCopy: true });
+                              setHasSearchedStatus(true);
+                              setStatusSearchQuery(b.orderNumber || '');
+                            }}
+                            className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left ${
+                              isSelected
+                                ? 'bg-orange-600/[0.08] border-orange-600/50 shadow-xs'
+                                : 'bg-muted/30 hover:bg-muted/60 border-border/40'
+                            }`}
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-[10px] font-black text-orange-600 dark:text-orange-400 bg-orange-600/10 px-1.5 py-0.5 rounded">
+                                  #{b.orderNumber}
+                                </span>
+                                <span className="text-xs font-black text-foreground">
+                                  {b.serviceTitle || 'General Consultation'}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1 pt-0.5">
+                                <CalendarIcon className="h-3 w-3 text-orange-500" /> {b.date} @ {b.time} (UTC)
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 justify-between sm:justify-end">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+                                Cached Offline
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <AnimatePresence mode="wait">
                   {isSearchingStatus && (
                     <motion.div
@@ -1136,6 +1359,14 @@ export default function Booking() {
                       animate={{ opacity: 1, y: 0 }}
                       className="border border-border/80 rounded-2xl overflow-hidden shadow bg-muted/5 animate-in fade-in"
                     >
+                      {/* Offline Mode Banner */}
+                      {statusSearchResult.isOfflineCacheCopy && (
+                        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-3 text-xs text-amber-700 dark:text-amber-400 font-extrabold flex items-center gap-2">
+                          <AlertCircle className="h-4.5 w-4.5 text-amber-600 shrink-0" />
+                          <span>⚡ Device-Cached Offline Mode: Displaying saved details snapshot. No internet connection required.</span>
+                        </div>
+                      )}
+
                       {/* Booking Header Status Block */}
                       <div className="p-5 border-b border-border bg-muted/30 dark:bg-muted/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
@@ -1235,6 +1466,34 @@ export default function Booking() {
                             </p>
                           )}
                         </div>
+                      </div>
+
+                      {/* Calendar Invite Download & Print Receipt Buttons */}
+                      <div className="p-5 border-t border-border bg-card flex flex-col sm:flex-row gap-3">
+                        <Button
+                          type="button"
+                          onClick={() => generateIcsFile({
+                            orderNumber: statusSearchResult.orderNumber,
+                            date: statusSearchResult.date,
+                            time: statusSearchResult.time,
+                            serviceTitle: statusSearchResult.serviceTitle || 'General Consultation',
+                            teamMemberName: statusSearchResult.teamMemberName || 'Primary Available Specialist',
+                            notes: statusSearchResult.notes
+                          })}
+                          className="flex-1 bg-zinc-950 dark:bg-zinc-900 text-white font-extrabold flex items-center justify-center gap-2 text-xs py-4.5 rounded-xl transition-all hover:bg-zinc-800 active:scale-95 shadow-xs cursor-pointer"
+                        >
+                          <CalendarIcon className="h-4 w-4 text-orange-500" />
+                          <span>Add to Calendar (.ics)</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => window.print()}
+                          className="flex-1 border-border text-foreground font-extrabold flex items-center justify-center gap-2 text-xs py-4.5 rounded-xl hover:bg-muted"
+                        >
+                          <Printer className="h-4 w-4" />
+                          <span>Print Appointment Receipt</span>
+                        </Button>
                       </div>
                     </motion.div>
                   )}
@@ -1355,13 +1614,31 @@ export default function Booking() {
               Please save this number for reference
             </p>
 
-            {date && formData.time && (
-              <AppointmentCountdown 
-                dateStr={format(date, 'yyyy-MM-dd')}
-                timeStr={formData.time}
-                title="Time remaining until appointment"
-                theme="light"
-              />
+            {lastCreatedBooking && lastCreatedBooking.date && lastCreatedBooking.time && (
+              <div className="w-full space-y-4">
+                <AppointmentCountdown 
+                  dateStr={lastCreatedBooking.date}
+                  timeStr={lastCreatedBooking.time}
+                  title="Time remaining until appointment"
+                  theme="light"
+                />
+
+                <Button
+                  type="button"
+                  onClick={() => generateIcsFile({
+                    orderNumber: lastCreatedBooking.orderNumber,
+                    date: lastCreatedBooking.date,
+                    time: lastCreatedBooking.time,
+                    serviceTitle: lastCreatedBooking.serviceTitle,
+                    teamMemberName: lastCreatedBooking.teamMemberName,
+                    notes: lastCreatedBooking.notes
+                  })}
+                  className="w-full bg-zinc-950 dark:bg-zinc-900 text-white font-extrabold flex items-center justify-center gap-2 py-5 rounded-xl text-xs uppercase tracking-wider transition-all hover:bg-zinc-800 active:scale-95 shadow-sm cursor-pointer"
+                >
+                  <CalendarIcon className="h-4.5 w-4.5 text-orange-500" />
+                  <span>Add to Calendar (.ics)</span>
+                </Button>
+              </div>
             )}
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
