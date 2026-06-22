@@ -56,7 +56,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        ((request.auth.token != null && request.auth.token.keys().contains('email') && 
+        ((request.auth.token != null && 'email' in request.auth.token && 
           (request.auth.token.email == "serwaahlinda1995@gmail.com" || 
            request.auth.token.email == "asantegrice@gmail.com" || 
            request.auth.token.email == "asantegrifice@gmail.com" || 
@@ -238,6 +238,18 @@ service cloud.firestore {
       allow create: if request.resource.data.senderName is string && request.resource.data.senderName.size() > 0 &&
                     request.resource.data.senderEmail is string && request.resource.data.senderEmail.size() > 0 &&
                     request.resource.data.message is string && request.resource.data.message.size() > 0;
+      allow update, delete: if isStaff();
+    }
+
+    match /service_intakes/{intakeId} {
+      allow read: if isStaff();
+      allow create: if request.resource.data.fullName is string && request.resource.data.fullName.size() > 0 &&
+                    request.resource.data.dateOfBirth is string && request.resource.data.dateOfBirth.size() > 0 &&
+                    request.resource.data.age is number &&
+                    request.resource.data.contact is string && request.resource.data.contact.size() > 0 &&
+                    request.resource.data.address is string && request.resource.data.address.size() > 0 &&
+                    request.resource.data.whatsappNumber is string && request.resource.data.whatsappNumber.size() > 0 &&
+                    request.resource.data.emailAddress is string && request.resource.data.emailAddress.size() > 0;
       allow update, delete: if isStaff();
     }
     

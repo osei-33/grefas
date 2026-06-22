@@ -198,6 +198,22 @@
         "updatedAt": { "type": "string", "format": "date-time", "description": "Last increment timestamp" }
       },
       "required": ["date", "count"]
+    },
+    "ServiceIntake": {
+      "title": "Service Intake",
+      "description": "A client service intake registration containing structured demographic, age calculation, contact, and email information.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "dateOfBirth": { "type": "string" },
+        "age": { "type": "number" },
+        "contact": { "type": "string" },
+        "address": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "emailAddress": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "dateOfBirth", "age", "contact", "address", "whatsappNumber", "emailAddress"]
     }
   },
   "firestore": {
@@ -252,6 +268,10 @@
     "/newsletter/{subscriberId}": {
       "schema": "NewsletterSubscriber",
       "description": "Collection of newsletter subscriptions"
+    },
+    "/service_intakes/{intakeId}": {
+      "schema": "ServiceIntake",
+      "description": "Collection of service client intake registrations"
     }
   }
 }

@@ -497,6 +497,19 @@ export default function Admin() {
                 {isActive('/admin/services') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
+                to="/admin/intakes"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/intakes') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <FileText className={`h-4 w-4 ${isActive('/admin/intakes') ? 'text-orange-600' : ''}`} />
+                <span>Client Intakes</span>
+                {isActive('/admin/intakes') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+              <Link
                 to="/admin/gallery"
                 onClick={() => setIsSidebarOpen(false)}
                 className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -659,6 +672,7 @@ export default function Admin() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/services" element={<ManageServices />} />
+          <Route path="/intakes" element={<AdminServiceRequests />} />
           <Route path="/gallery" element={<ManageGallery />} />
           <Route path="/portfolio" element={<ManagePortfolio />} />
           <Route path="/bookings" element={<ManageBookings />} />
@@ -1009,6 +1023,229 @@ function Dashboard() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function AdminServiceRequests() {
+  const [intakes, setIntakes] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, 'service_intakes'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setIntakes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'service_intakes');
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'service_intakes', id));
+      toast.success('Service intake record deleted successfully.');
+      setDeleteId(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'service_intakes');
+    }
+  };
+
+  const exportIntakesToCSV = () => {
+    if (intakes.length === 0) {
+      toast.error('No intake records to export.');
+      return;
+    }
+
+    const headers = ['Full Name', 'Date of Birth', 'Age', 'Contact phone', 'WhatsApp number', 'Email address', 'Address/Residence', 'Registered At'];
+    const rows = intakes.map(item => [
+      item.fullName || '',
+      item.dateOfBirth || '',
+      item.age || 0,
+      item.contact || '',
+      item.whatsappNumber || '',
+      item.emailAddress || '',
+      item.address || '',
+      item.createdAt || ''
+    ]);
+
+    const csvContent = 
+      'data:text/csv;charset=utf-8,' + 
+      [headers.join(','), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'service_intake_registrations.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Spreadsheet exported successfully!');
+  };
+
+  const filteredIntakes = intakes.filter(item => {
+    const query = searchQuery.toLowerCase();
+    return (
+      (item.fullName || '').toLowerCase().includes(query) ||
+      (item.emailAddress || '').toLowerCase().includes(query) ||
+      (item.contact || '').toLowerCase().includes(query) ||
+      (item.whatsappNumber || '').toLowerCase().includes(query) ||
+      (item.address || '').toLowerCase().includes(query)
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <FileText className="h-6 w-6 text-orange-600" />
+            <span>Service Requests & Client Intakes</span>
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            Review and manage structured service form submissions and demographic intake details.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Button
+            onClick={exportIntakesToCSV}
+            size="sm"
+            variant="outline"
+            className="text-xs font-semibold flex items-center gap-1.5 h-9"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>Export CSV</span>
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by client name, email, phone or address..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 h-9 text-xs"
+          />
+        </div>
+        {searchQuery && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setSearchQuery('')}
+            className="text-xs h-9 px-3"
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-[250px] items-center justify-center border border-dashed rounded-lg bg-card/50">
+          <div className="text-center space-y-2">
+            <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto" />
+            <p className="text-xs text-muted-foreground">Loading service intakes...</p>
+          </div>
+        </div>
+      ) : filteredIntakes.length === 0 ? (
+        <div className="flex min-h-[250px] flex-col items-center justify-center text-center rounded-xl border border-dashed border-border p-8 bg-card bg-opacity-40">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/20 text-orange-600">
+            <FileText className="h-6 w-6" />
+          </div>
+          <h3 className="mt-4 text-sm font-semibold text-foreground">No Intakes Found</h3>
+          <p className="mt-2 text-xs text-muted-foreground max-w-sm">
+            {searchQuery ? "No client registrations match your keyword query. Try searching for a different name, residency, or contact number." : "Clients who register via the service consultation intake form will appear here dynamically."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredIntakes.map((item) => (
+            <Card key={item.id} className="border border-border/60 bg-card hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
+              <CardHeader className="pb-3 border-b border-border/40">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <CardTitle className="text-sm font-bold truncate max-w-[180px]" title={item.fullName}>
+                      {item.fullName}
+                    </CardTitle>
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 font-bold px-1.5 py-0.5 rounded font-mono">
+                        {item.age} Years Old
+                      </span>
+                      <span>•</span>
+                      <span>DOB: {item.dateOfBirth}</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDeleteId(item.id)}
+                    className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-3.5 text-xs">
+                {/* Contact phone */}
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Phone className="h-3.5 w-3.5 shrink-0 text-orange-600/70" />
+                  <a href={`tel:${item.contact}`} className="hover:text-foreground hover:underline transition-all">
+                    {item.contact}
+                  </a>
+                </div>
+
+                {/* WhatsApp */}
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <MessageCircle className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  <a 
+                    href={`https://wa.me/${item.whatsappNumber.replace(/[^0-9]/g, '')}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="hover:text-emerald-500 hover:underline inline-flex items-center gap-1 transition-all"
+                  >
+                    <span>{item.whatsappNumber}</span>
+                    <span className="text-[9px] font-bold text-emerald-500 uppercase bg-emerald-100 dark:bg-emerald-950/40 px-1 rounded">Text</span>
+                  </a>
+                </div>
+
+                {/* Email address */}
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Mail className="h-3.5 w-3.5 shrink-0 text-orange-600/70" />
+                  <a href={`mailto:${item.emailAddress}`} className="hover:text-foreground hover:underline transition-all truncate" title={item.emailAddress}>
+                    {item.emailAddress}
+                  </a>
+                </div>
+
+                {/* Address */}
+                <div className="flex items-start gap-2 text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-orange-600/70 mt-0.5" />
+                  <span className="line-clamp-2" title={item.address}>{item.address}</span>
+                </div>
+
+                {/* Creation date */}
+                <div className="pt-3 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                  <span>Registered:</span>
+                  <span>{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A'}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {deleteId && (
+        <AdminDeleteModal
+          title="Delete Intake Registration"
+          message="Are you sure you want to delete this consultation client intake record? This action is permanent and cannot be undone."
+          onConfirm={() => handleDelete(deleteId)}
+          onCancel={() => setDeleteId(null)}
+        />
+      )}
     </div>
   );
 }

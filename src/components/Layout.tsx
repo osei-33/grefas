@@ -27,7 +27,33 @@ export default function Layout({ children }: LayoutProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (safeGetLocalStorage('theme', 'light') as 'light' | 'dark');
   });
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false);
   const location = useLocation();
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      toast.success("Connection Connected!", {
+        description: "Back online! Syncing live consultations with Grefas Consult hub.",
+        duration: 4000
+      });
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      toast.info("Connectivity Notice", {
+        description: "Operating in seamless offline mode. Cached records are secured locally.",
+        duration: 5000
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -481,6 +507,12 @@ export default function Layout({ children }: LayoutProps) {
         className="transition-all duration-300"
         style={{ paddingTop: isMaintenanceActive && isAdmin && !isAdminRoute ? '100px' : '64px' }}
       >
+        {isOffline && (
+          <div className="bg-amber-600/10 border-b border-amber-600/10 dark:border-amber-400/10 px-4 py-2 text-center text-[11px] text-amber-700 dark:text-amber-400 font-extrabold tracking-wide uppercase flex items-center justify-center gap-1.5 animate-pulse">
+            <ShieldAlert className="h-4 w-4 shrink-0 text-amber-500 animate-spin" />
+            <span>Operational Mode: Offline cache loaded. Some resources may load when internet connects. Your local edits are safe!</span>
+          </div>
+        )}
         {children}
       </main>
 
