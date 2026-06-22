@@ -2249,12 +2249,23 @@ function ManageGallery() {
         clearTimeout(timeoutId);
         try {
           const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 360;
+          
+          // Downscale the extracted frame to a lightweight thumbnail sizing block (e.g. 400px width max)
+          const MAX_THUMB_WIDTH = 400;
+          let width = video.videoWidth || 640;
+          let height = video.videoHeight || 360;
+          if (width > MAX_THUMB_WIDTH) {
+            height = Math.round((height * MAX_THUMB_WIDTH) / width);
+            width = MAX_THUMB_WIDTH;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
+            // Compress heavily for safety, which is perfectly fine for thumbnails but saves massively on bytes
+            const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.5);
             URL.revokeObjectURL(video.src);
             resolve(thumbnailUrl);
           } else {
@@ -2444,8 +2455,75 @@ function ManageGallery() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let urlToSave = newItem.url;
+      let thumbnailToSave = newItem.thumbnail || '';
+
+      // Helper function to compress base64 image on demand to prevent storage errors
+      const compressBase64OnDemand = (base64Str: string, maxWidth = 800, maxHeight = 800, quality = 0.6): Promise<string> => {
+        return new Promise((resolve) => {
+          if (!base64Str.startsWith('data:image/')) {
+            resolve(base64Str);
+            return;
+          }
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const canvas = document.createElement("canvas");
+              let width = img.width;
+              let height = img.height;
+              if (width > height) {
+                if (width > maxWidth) {
+                  height = Math.round((height * maxWidth) / width);
+                  width = maxWidth;
+                }
+              } else {
+                if (height > maxHeight) {
+                  width = Math.round((width * maxHeight) / height);
+                  height = maxHeight;
+                }
+              }
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext("2d");
+              if (!ctx) {
+                resolve(base64Str);
+                return;
+              }
+              ctx.fillStyle = "#FFFFFF";
+              ctx.fillRect(0, 0, width, height);
+              ctx.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL("image/jpeg", quality));
+            } catch (err) {
+              resolve(base64Str);
+            }
+          };
+          img.onerror = () => resolve(base64Str);
+          img.src = base64Str;
+        });
+      };
+
+      // 1. If URL is a large base64 image, compress it down
+      if (urlToSave.startsWith('data:image/') && urlToSave.length > 500000) {
+        toast.info("Scaling down large attachment to fit within secure database limits...");
+        urlToSave = await compressBase64OnDemand(urlToSave, 720, 720, 0.55);
+      }
+
+      // 2. If thumbnail is a large base64 image, compress it down
+      if (thumbnailToSave.startsWith('data:image/') && thumbnailToSave.length > 250000) {
+        thumbnailToSave = await compressBase64OnDemand(thumbnailToSave, 320, 240, 0.4);
+      }
+
+      // 3. String length size check (max doc size in Firestore is 1,048,576 bytes)
+      const totalEstimatedBytes = urlToSave.length + thumbnailToSave.length;
+      if (totalEstimatedBytes > 950000) {
+        toast.error("The selected file is too large to fit in the database's offline fallback. Please try uploading with a smaller file size (< 700KB) or double check your internet connection.");
+        return;
+      }
+
       await addDoc(collection(db, 'gallery'), {
         ...newItem,
+        url: urlToSave,
+        thumbnail: thumbnailToSave,
         createdAt: serverTimestamp(),
         likes: [],
         comments: []

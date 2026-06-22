@@ -9,6 +9,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { useLanguage } from '@/lib/LanguageContext';
 import SEO from '@/components/SEO';
 import BlogSection from '@/components/BlogSection';
+import InteractiveGuide from '@/components/InteractiveGuide';
 
 import { AdSense } from '@/components/AdSense';
 
@@ -272,6 +273,13 @@ export default function Home() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Interactive Guide Video Animation simulation */}
+      <section className="bg-zinc-950 py-24 border-t border-zinc-900">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <InteractiveGuide />
         </div>
       </section>
 
