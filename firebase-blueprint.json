@@ -211,6 +211,9 @@
         "address": { "type": "string" },
         "whatsappNumber": { "type": "string" },
         "emailAddress": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "In Review", "Approved", "Rejected"], "description": "Dynamic candidate casting assessment status" },
+        "userId": { "type": "string", "description": "Authenticated user identifier" },
+        "userEmail": { "type": "string", "description": "Authenticated user email copy" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["fullName", "dateOfBirth", "age", "contact", "address", "whatsappNumber", "emailAddress"]

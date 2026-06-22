@@ -453,6 +453,145 @@ async function startServer() {
     res.json({ status: "ok", results });
   });
 
+  app.post("/api/notify-intake", async (req, res) => {
+    const { 
+      fullName, 
+      dateOfBirth, 
+      age, 
+      contact, 
+      address, 
+      whatsappNumber, 
+      emailAddress 
+    } = req.body;
+
+    if (!fullName || !emailAddress) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const results = { email: "skipped" };
+
+    if (resend) {
+      try {
+        // 1. Send warning/confirmation email to the applicant
+        await resend.emails.send({
+          from: "Grefas Casting <notifications@resend.dev>",
+          to: emailAddress,
+          subject: "Casting Registration Received - Grefas Entertainment",
+          html: `
+            <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+              <div style="background: linear-gradient(135deg, #18181b 0%, #27272a 100%); padding: 24px; text-align: center; border-bottom: 4px solid #ea580c;">
+                <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.025em;">GREFAS CASTING</h1>
+                <p style="color: #ffedd5; margin: 4px 0 0 0; font-size: 12px; text-transform: uppercase; tracking-wider; font-weight: 700;">Movie & Skit Production Intake</p>
+              </div>
+              <div style="padding: 32px;">
+                <h2 style="margin-top: 0; font-size: 20px; color: #111827; font-weight: 800;">Registration Received</h2>
+                <p>Hello <strong>${fullName}</strong>,</p>
+                <p>Thank you for submitting your Actor Casting & Skit Integration Form! Your profile has been logged successfully and is currently set to <strong>Pending</strong>.</p>
+                
+                <div style="background-color: #f9fafb; border: 1px solid #f3f4f6; padding: 20px; border-radius: 8px; margin: 24px 0;">
+                  <h3 style="margin-top: 0; font-size: 14px; color: #111827; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 12px; font-weight: 700;">Submitted Details</h3>
+                  <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a; width: 35%;"><strong>Age:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">${age} years old</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Contact SMS:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">${contact}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>WhatsApp:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">${whatsappNumber}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Address:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">${address}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Birth Date:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">${dateOfBirth}</td>
+                    </tr>
+                  </table>
+                </div>
+
+                <p><strong>Next Steps:</strong></p>
+                <ul style="padding-left: 20px; font-size: 13px; color: #4b5563; line-height: 1.6; margin: 8px 0;">
+                  <li>Our directors and casting division will review your details shortly.</li>
+                  <li>Our authorized officers will reach out to schedule an active video audition if selected.</li>
+                  <li>You can track your real-time status dynamically in the <strong>My Applications</strong> dashboard!</li>
+                </ul>
+
+                <p style="margin-top: 32px; font-size: 13px; color: #71717a;">Warm regards,<br>The Grefas Entertainment Team</p>
+              </div>
+            </div>
+          `
+        });
+
+        // 2. Alert admins
+        const adminReceipts = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"];
+        await resend.emails.send({
+          from: "Grefas Casting Alerts <notifications@resend.dev>",
+          to: adminReceipts,
+          subject: `[ALERT] New Casting Application - ${fullName}`,
+          html: `
+            <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #18181b; max-width: 600px; margin: 0 auto; border: 1px solid #e4e4e7; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+              <div style="background-color: #111827; padding: 24px; text-align: center; border-bottom: 4px solid #ea580c;">
+                <h1 style="color: white; margin: 0; font-size: 18px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;">New Casting Registration</h1>
+              </div>
+              <div style="padding: 32px;">
+                <p>Hello Admin,</p>
+                <p>A new talent has successfully submitted the Movie & Skit making Form. Here is a summary of the details:</p>
+                
+                <div style="background-color: #f4f4f5; padding: 20px; border-radius: 8px; margin: 24px 0; border: 1px solid #e4e4e7;">
+                  <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a; width: 35%;"><strong>Applicant Name:</strong></td>
+                      <td style="padding: 6px 0; font-weight: bold; color: #ea580c;">${fullName}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Email Address:</strong></td>
+                      <td style="padding: 6px 0; font-weight: 600;"><a href="mailto:${emailAddress}" style="color: #ea580c; text-decoration: none;">${emailAddress}</a></td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Contact Phone:</strong></td>
+                      <td style="padding: 6px 0; font-weight: 600;">${contact}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>WhatsApp Number:</strong></td>
+                      <td style="padding: 6px 0; font-weight: 600;">${whatsappNumber}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Residential Address:</strong></td>
+                      <td style="padding: 6px 0;">${address}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Age context:</strong></td>
+                      <td style="padding: 6px 0;">${age} years old (DOB: ${dateOfBirth})</td>
+                    </tr>
+                  </table>
+                </div>
+
+                <p style="font-size: 13px; color: #4b5563; line-height: 1.5;">You can change this applicant's status ('Pending', 'In Review', 'Approved') straight from the secure Administration board intakes section.</p>
+                <div style="text-align: center; margin-top: 24px;">
+                  <span style="display: inline-block; background-color: #ea580c; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: bold;">Grefas Management Desk</span>
+                </div>
+              </div>
+            </div>
+          `
+        });
+
+        results.email = "sent";
+      } catch (error) {
+        console.error("Casting registration notification breakdown error:", error);
+        results.email = "failed";
+      }
+    } else {
+      console.warn("RESEND_API_KEY is not configured in environment variables.");
+    }
+
+    res.json({ status: "ok", results });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

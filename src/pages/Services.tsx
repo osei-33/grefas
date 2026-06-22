@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import * as LucideIcons from 'lucide-react';
-import { db, handleFirestoreError, OperationType } from '@/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
@@ -19,6 +19,9 @@ export default function Services() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'All' | 'Consulting' | 'Entertainment'>('All');
   
+  const [currentStep, setCurrentStep] = useState(1);
+  const [draftInfo, setDraftInfo] = useState<{ savedAt: string; data: any } | null>(null);
+
   const [formData, setFormData] = useState({
     fullName: '',
     dateOfBirth: '',
@@ -26,7 +29,14 @@ export default function Services() {
     contact: '',
     address: '',
     whatsappNumber: '',
-    emailAddress: ''
+    emailAddress: '',
+    // Step 2: Project Requirements / Casting Specifications
+    roleType: 'Actor / Actress',
+    experienceLevel: 'Intermediate',
+    preferredGenres: [] as string[],
+    availability: 'Part-time',
+    portfolioLink: '',
+    bio: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [printableData, setPrintableData] = useState<any | null>(null);
@@ -35,6 +45,53 @@ export default function Services() {
   const [showSuccessState, setShowSuccessState] = useState(false);
   const [submittedName, setSubmittedName] = useState('');
   const [showPrintModal, setShowPrintModal] = useState(false);
+
+  // Check for saved draft on mount
+  useEffect(() => {
+    const savedDraft = localStorage.getItem('grefas_casting_draft');
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        setDraftInfo(parsed);
+      } catch (e) {
+        console.error('Error parsing draft:', e);
+      }
+    }
+  }, []);
+
+  const saveDraft = () => {
+    const draftPayload = {
+      savedAt: new Date().toISOString(),
+      data: formData
+    };
+    localStorage.setItem('grefas_casting_draft', JSON.stringify(draftPayload));
+    setDraftInfo(draftPayload);
+    toast.success('Progress saved as draft!', {
+      description: `Your draft has been securely stored in your browser. You can return to complete it later.`
+    });
+  };
+
+  const loadDraft = () => {
+    if (draftInfo) {
+      setFormData(draftInfo.data);
+      // Recalculate age if DOB exists
+      if (draftInfo.data.dateOfBirth) {
+        const calculatedAge = calculateAge(draftInfo.data.dateOfBirth);
+        setFormData(prev => ({
+          ...prev,
+          age: calculatedAge
+        }));
+      }
+      setDraftInfo(null);
+      toast.success('Draft loaded successfully!');
+    }
+  };
+
+  const discardDraft = () => {
+    localStorage.removeItem('grefas_casting_draft');
+    setDraftInfo(null);
+    toast.info('Draft discarded.');
+  };
 
   const calculateAge = (dobString: string): number => {
     if (!dobString) return 0;
@@ -139,13 +196,12 @@ export default function Services() {
     toast.success("Copied Contact number to WhatsApp field!");
   };
 
-  const printFilledForm = () => {
-    // Validate everything before printing filled
+  const handleNextStep = () => {
+    const step1Keys = ['fullName', 'dateOfBirth', 'contact', 'whatsappNumber', 'emailAddress', 'address'];
     const newErrors: Record<string, string> = {};
-    const keys = ['fullName', 'dateOfBirth', 'contact', 'whatsappNumber', 'emailAddress', 'address'];
     let hasErrors = false;
-    
-    keys.forEach(key => {
+
+    step1Keys.forEach(key => {
       const err = validateField(key, (formData as any)[key]);
       if (err) {
         newErrors[key] = err;
@@ -155,17 +211,384 @@ export default function Services() {
 
     if (hasErrors) {
       setErrors(newErrors);
-      toast.error('Please correctly fill out the form before printing, or select "Print Empty Form".');
+      toast.error('Details are incomplete or incorrect. Please fix the highlighted fields in step 1!');
       return;
     }
 
-    setPrintableData({ ...formData });
-    setShowPrintModal(true);
+    setCurrentStep(2);
+  };
+
+  const handleBackStep = () => {
+    setCurrentStep(1);
+  };
+
+  const runIframeSafePrint = (data: any | null) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('The print window was blocked by your browser. Please allow popups for Grefas Cinema!');
+      return;
+    }
+
+    const docBirth = data?.dateOfBirth ? new Date(data.dateOfBirth).toLocaleDateString() : '__________________';
+    const regDate = data?.createdAt ? new Date(data.createdAt).toLocaleString() : new Date().toLocaleString();
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Grefas Entertainment - Casting Intake Registry</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              padding: 40px;
+              color: black;
+              background-color: white;
+              max-width: 800px;
+              margin: 0 auto;
+              line-height: 1.5;
+            }
+            .border-box {
+              border: 3px solid #000;
+              padding: 30px;
+              border-radius: 6px;
+              min-height: 90vh;
+              display: flex;
+              justify-content: space-between;
+              flex-direction: column;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 4px solid #000;
+              padding-bottom: 15px;
+              margin-bottom: 25px;
+              position: relative;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 24px;
+              font-weight: 900;
+              letter-spacing: 2px;
+              text-transform: uppercase;
+            }
+            .header p {
+              margin: 5px 0 0 0;
+              font-size: 11px;
+              text-transform: uppercase;
+              font-weight: bold;
+              letter-spacing: 1px;
+              color: #333;
+            }
+            .meta-bar {
+              margin-top: 15px;
+              display: flex;
+              justify-content: space-between;
+              font-family: monospace;
+              font-size: 10px;
+              font-weight: bold;
+              border-top: 1px solid #ddd;
+              padding-top: 6px;
+            }
+            .registry-tag {
+              text-align: center;
+              background-color: #000;
+              color: #fff;
+              padding: 10px;
+              margin: 20px 0;
+              border-radius: 4px;
+            }
+            .registry-tag h2 {
+              margin: 0;
+              font-size: 14px;
+              font-weight: 950;
+              letter-spacing: 1px;
+              text-transform: uppercase;
+            }
+            .section {
+              margin-bottom: 25px;
+            }
+            .section-title {
+              font-size: 12px;
+              font-weight: 950;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              border-bottom: 2px solid #000;
+              padding-bottom: 3px;
+              margin-bottom: 12px;
+            }
+            .field-grid {
+              display: grid;
+              grid-template-cols: 1fr 1fr;
+              row-gap: 15px;
+              column-gap: 20px;
+              font-size: 13px;
+            }
+            .field-span-2 {
+              grid-column: span 2;
+            }
+            .field {
+              display: flex;
+              align-items: flex-end;
+              gap: 8px;
+            }
+            .field-label {
+              font-weight: 800;
+              text-transform: uppercase;
+              font-size: 10px;
+              color: #000;
+              white-space: nowrap;
+            }
+            .field-value {
+              flex-grow: 1;
+              border-bottom: 1px solid #444;
+              padding-bottom: 2px;
+              font-family: monospace;
+              padding-left: 5px;
+              min-height: 18px;
+            }
+            .field-value.highlight {
+              font-weight: bold;
+              font-size: 14px;
+            }
+            .score-grid {
+              display: grid;
+              grid-template-cols: repeat(4, 1fr);
+              gap: 10px;
+              text-align: center;
+              margin-top: 10px;
+            }
+            .score-card {
+              border: 2px solid #000;
+              padding: 8px;
+              background-color: #fafafa;
+              border-radius: 4px;
+            }
+            .score-label {
+              font-size: 8px;
+              font-weight: 900;
+              text-transform: uppercase;
+            }
+            .score-val {
+              font-family: monospace;
+              font-weight: bold;
+              font-size: 11px;
+              margin-top: 4px;
+            }
+            .remarks-box {
+              margin-top: 15px;
+              border: 2px solid #000;
+              padding: 12px;
+              background-color: #fafafa;
+              border-radius: 4px;
+              font-size: 11px;
+            }
+            .sign-off {
+              margin-top: auto;
+              border-top: 1px solid #eee;
+              padding-top: 15px;
+            }
+            .signatures-grid {
+              display: flex;
+              justify-content: space-between;
+              margin-top: 40px;
+              font-size: 11px;
+              font-weight: bold;
+              font-family: monospace;
+            }
+            .sig-line {
+              border-top: 2px solid #000;
+              width: 180px;
+              text-align: center;
+              padding-top: 5px;
+              text-transform: uppercase;
+              font-size: 9px;
+            }
+            .no-print-btn-bar {
+              background-color: #f1f5f9;
+              padding: 12px 20px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              display: flex;
+              justify-content: flex-end;
+            }
+            .print-btn {
+              background-color: #ea580c;
+              color: white;
+              border: none;
+              padding: 8px 16px;
+              font-weight: bold;
+              border-radius: 6px;
+              cursor: pointer;
+              font-size: 12px;
+              text-transform: uppercase;
+            }
+            @media print {
+              .no-print {
+                display: none !important;
+              }
+              body {
+                padding: 15px;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="no-print no-print-btn-bar">
+            <button class="print-btn" onclick="window.print()">Print Document</button>
+          </div>
+          <div class="border-box">
+            <div>
+              <div class="header">
+                <h1>GREFAS ENTERTAINMENT</h1>
+                <p>Theatre, Film Casting & Skit Making Auditions Register</p>
+                <div class="meta-bar">
+                  <span>REGION: ASHANTI, GHANA (KUMASI)</span>
+                  <span>TIME: ${regDate}</span>
+                </div>
+              </div>
+
+              <div class="registry-tag">
+                <h2>ACTOR CASTING & CREW INTAKE REGISTRY CARD</h2>
+              </div>
+
+              <!-- Segment 1 -->
+              <div class="section">
+                <div class="section-title">1. Personal Biodata & Demographics</div>
+                <div class="field-grid">
+                  <div class="field field-span-2">
+                    <span class="field-label">Legal/Screen Name:</span>
+                    <span class="field-value highlight">${data?.fullName || '____________________________________________________'}</span>
+                  </div>
+                  <div class="field">
+                    <span class="field-label">Birth Date:</span>
+                    <span class="field-value">${docBirth}</span>
+                  </div>
+                  <div class="field">
+                    <span class="field-label">Age Checked:</span>
+                    <span class="field-value">${data ? `${data.age} years old` : '________ years old'}</span>
+                  </div>
+                  <div class="field field-span-2">
+                    <span class="field-label">Residential Location:</span>
+                    <span class="field-value">${data?.address || '____________________________________________________'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Segment 2 -->
+              <div class="section">
+                <div class="section-title">2. Primary Communication Outlets</div>
+                <div class="field-grid">
+                  <div class="field">
+                    <span class="field-label">Contact Dial:</span>
+                    <span class="field-value">${data?.contact || '_______________________'}</span>
+                  </div>
+                  <div class="field">
+                    <span class="field-label">WhatsApp Number:</span>
+                    <span class="field-value">${data?.whatsappNumber || '_______________________'}</span>
+                  </div>
+                  <div class="field field-span-2">
+                    <span class="field-label font-bold">Email Address:</span>
+                    <span class="field-value">${data?.emailAddress || '____________________________________________________'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- New Requirements Segment -->
+              <div class="section">
+                <div class="section-title">3. Production Roles & Casting Details</div>
+                <div class="field-grid">
+                  <div class="field">
+                    <span class="field-label">Prescribed Role:</span>
+                    <span class="field-value font-bold">${data?.roleType || 'Actor / Actress'}</span>
+                  </div>
+                  <div class="field">
+                    <span class="field-label">Experience Stage:</span>
+                    <span class="field-value font-bold">${data?.experienceLevel || 'Intermediate'}</span>
+                  </div>
+                  <div class="field">
+                    <span class="field-label">Availability Schedule:</span>
+                    <span class="field-value">${data?.availability || 'Part-time'}</span>
+                  </div>
+                  <div class="field">
+                    <span class="field-label">Portfolio URL link:</span>
+                    <span class="field-value" style="font-size: 11px;">${data?.portfolioLink || 'N/A'}</span>
+                  </div>
+                  <div class="field field-span-2">
+                    <span class="field-label">Selected Genres:</span>
+                    <span class="field-value">${data?.preferredGenres && data.preferredGenres.length > 0 ? data.preferredGenres.join(', ') : 'Comedy, Drama'}</span>
+                  </div>
+                  <div class="field field-span-2">
+                    <span class="field-label">Short Talent Pitch:</span>
+                    <span class="field-value" style="font-size: 11px;">${data?.bio || 'Pending first audition review notes...'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Segment 4 -->
+              <div class="section">
+                <div class="section-title">4. Audition Scoring Matrix (Official Director Use Only)</div>
+                <div class="score-grid">
+                  <div class="score-card">
+                    <div class="score-label">Acting Range</div>
+                    <div class="score-val">A / B / C / D</div>
+                  </div>
+                  <div class="score-card">
+                    <div class="score-label">Voice / Clarity</div>
+                    <div class="score-val">A / B / C / D</div>
+                  </div>
+                  <div class="score-card">
+                    <div class="score-label">Camera GLAM</div>
+                    <div class="score-val">A / B / C / D</div>
+                  </div>
+                  <div class="score-card">
+                    <div class="score-label">Improvisation</div>
+                    <div class="score-val">A / B / C / D</div>
+                  </div>
+                </div>
+                <div class="remarks-box">
+                  <strong>AUDITION REGISTER SCREENING NOTES & REELS EVALENT:</strong>
+                  <div style="min-height: 40px; color: #555; margin-top: 6px; font-style: italic; font-size: 10px;">
+                    [Screen compliance markers, dialect notes, stage styling notes for skit or full series casting suitability]
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sign-off">
+              <p style="text-align: center; font-size: 9px; margin-bottom: 25px; line-height: 1.4;">
+                By signing, the talent verifies that self-submitted communication channels and credentials are fully correct and active.
+              </p>
+              <div class="signatures-grid">
+                <div>
+                  <div class="sig-line">Candidate Signature</div>
+                  <div style="text-align: center; font-size: 8px; color: #555; margin-top: 4px;">Date: ____ / ____ / ________</div>
+                </div>
+                <div>
+                  <div class="sig-line">Authorized Casting Representative</div>
+                  <div style="text-align: center; font-size: 8px; color: #555; margin-top: 4px;">Registration Stamp Frame</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 300);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    toast.success('Triggered safe printing in new tab!');
+  };
+
+  const printFilledForm = () => {
+    // Open print view instantly loaded with current form details
+    runIframeSafePrint({ ...formData });
   };
 
   const printEmptyForm = () => {
-    setPrintableData(null);
-    setShowPrintModal(true);
+    runIframeSafePrint(null);
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -193,10 +616,27 @@ export default function Services() {
     setSubmitting(true);
     try {
       const path = 'service_intakes';
-      await addDoc(collection(db, path), {
+      const intakeData = {
         ...formData,
+        userId: auth.currentUser?.uid || null,
+        userEmail: auth.currentUser?.email || null,
+        status: 'Pending',
         createdAt: new Date().toISOString()
-      });
+      };
+
+      await addDoc(collection(db, path), intakeData);
+
+      // Trigger server-side notifications via email proxy
+      try {
+        await fetch('/api/notify-intake', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(intakeData)
+        });
+      } catch (err) {
+        console.warn('Failed to send email notification:', err);
+      }
+
       toast.success('Movie & Skit Registration Logged!', {
         description: 'Thank you for registering. Our director or casting team will reach out via WhatsApp shortly!'
       });
@@ -210,9 +650,18 @@ export default function Services() {
         contact: '',
         address: '',
         whatsappNumber: '',
-        emailAddress: ''
+        emailAddress: '',
+        roleType: 'Actor / Actress',
+        experienceLevel: 'Intermediate',
+        preferredGenres: [] as string[],
+        availability: 'Part-time',
+        portfolioLink: '',
+        bio: ''
       });
       setErrors({});
+      setCurrentStep(1);
+      localStorage.removeItem('grefas_casting_draft');
+      setDraftInfo(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'service_intakes');
     } finally {
@@ -462,6 +911,42 @@ export default function Services() {
             </motion.div>
           ) : (
             <>
+              {/* SAVED DRAFT NOTICE BANNER */}
+              {draftInfo && (
+                <div className="mb-6 bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-orange-600 text-white p-2.5 rounded-xl">
+                      <LucideIcons.FileEdit className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-xs sm:text-sm text-foreground">Saved Form Progress Detected</h4>
+                      <p className="text-[11px] text-muted-foreground">
+                        Draft saved on {new Date(draftInfo.savedAt).toLocaleString()}. You can load your progress or clear this draft.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+                    <Button 
+                      onClick={loadDraft}
+                      size="sm"
+                      type="button"
+                      className="bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg text-xs h-8"
+                    >
+                      Restore Draft
+                    </Button>
+                    <Button 
+                      onClick={discardDraft}
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      className="text-muted-foreground hover:text-rose-500 text-xs font-bold h-8"
+                    >
+                      Discard
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className="text-center mb-6">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100 dark:bg-orange-950/20 text-orange-600 text-xs font-bold uppercase tracking-wider mb-2">
                   <LucideIcons.Sparkles className="h-3 w-3 animate-pulse" />
@@ -498,257 +983,490 @@ export default function Services() {
                 </div>
               </div>
 
-              <form onSubmit={handleFormSubmit} className="space-y-8">
-                {/* Section 1: Cast Details */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-border/60">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-600 text-white text-[10px] font-bold font-mono">
-                      1
-                    </span>
-                    <h3 className="text-xs font-black uppercase tracking-widest text-foreground">
-                      Artistic & Legal Demographics
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    {/* Full Name */}
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="fullName">
-                        <LucideIcons.User className="h-3.5 w-3.5 text-orange-600" />
-                        Full Name
-                      </label>
-                      <input
-                        type="text"
-                        id="fullName"
-                        name="fullName"
-                        required
-                        placeholder="Enter your screen or legal name"
-                        value={formData.fullName}
-                        onChange={(e) => handleInputChange('fullName', e.target.value)}
-                        className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground focus:border-orange-600 focus:ring-1 focus:ring-orange-600 outline-none transition-all duration-300 ${
-                          errors.fullName 
-                            ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
-                            : 'border-border/80 focus:border-orange-600 focus:ring-1'
-                        }`}
-                      />
-                      {errors.fullName && (
-                        <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
-                          <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
-                          <span>{errors.fullName}</span>
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Date of Birth */}
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="dateOfBirth">
-                        <LucideIcons.Calendar className="h-3.5 w-3.5 text-orange-600" />
-                        Date of Birth
-                      </label>
-                      <input
-                        type="date"
-                        id="dateOfBirth"
-                        name="dateOfBirth"
-                        required
-                        max={new Date().toISOString().split('T')[0]}
-                        value={formData.dateOfBirth}
-                        onChange={handleDobChange}
-                        className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm outline-none transition-all duration-300 [color-scheme:light] ${
-                          errors.dateOfBirth 
-                            ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
-                            : 'border-border/80 focus:border-orange-600 focus:ring-1'
-                        }`}
-                      />
-                      {errors.dateOfBirth && (
-                        <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
-                          <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
-                          <span>{errors.dateOfBirth}</span>
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Age (Calculated) */}
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="age">
-                        <LucideIcons.Calculator className="h-3.5 w-3.5 text-orange-600" />
-                        Calculated Age
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          id="age"
-                          name="age"
-                          readOnly
-                          placeholder="0"
-                          value={formData.age || ''}
-                          className="w-full rounded-lg border border-dashed border-border/80 bg-muted/50 px-4 py-2.5 text-sm text-muted-foreground font-mono shadow-sm outline-none cursor-not-allowed select-none"
-                        />
-                        <span className="absolute right-3 top-2.5 text-[9px] font-bold text-orange-600 uppercase bg-orange-100 dark:bg-orange-950/30 px-1.5 py-0.5 rounded font-mono">
-                          Auto
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground/80 italic">Calculated dynamically for booking roles</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 2: Channels */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-border/60">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-600 text-white text-[10px] font-bold font-mono">
-                      2
-                    </span>
-                    <h3 className="text-xs font-black uppercase tracking-widest text-foreground">
-                      Outreach & Contact Channels
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    {/* Contact Phone */}
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="contact">
-                        <LucideIcons.Phone className="h-3.5 w-3.5 text-orange-600" />
-                        Contact Number
-                      </label>
-                      <input
-                        type="tel"
-                        id="contact"
-                        name="contact"
-                        required
-                        placeholder="e.g. +233 24 123 4567"
-                        value={formData.contact}
-                        onChange={(e) => handleInputChange('contact', e.target.value)}
-                        className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground outline-none transition-all duration-300 ${
-                          errors.contact 
-                            ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
-                            : 'border-border/80 focus:border-orange-600 focus:ring-1'
-                        }`}
-                      />
-                      {errors.contact && (
-                        <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
-                          <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
-                          <span>{errors.contact}</span>
-                        </p>
-                      )}
-                    </div>
-
-                    {/* WhatsApp Number */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="whatsappNumber">
-                          <LucideIcons.MessageSquare className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
-                          WhatsApp Number
-                        </label>
-                        {formData.contact && (
-                          <button
-                            type="button"
-                            onClick={copyWhatsAppFromContact}
-                            className="text-[10px] text-emerald-600 dark:text-emerald-500 hover:underline hover:text-emerald-400 font-bold cursor-pointer transition-all animate-pulse"
-                          >
-                            Copy from Contact
-                          </button>
-                        )}
-                      </div>
-                      <input
-                        type="tel"
-                        id="whatsappNumber"
-                        name="whatsappNumber"
-                        required
-                        placeholder="e.g. +233 24 123 4567"
-                        value={formData.whatsappNumber}
-                        onChange={(e) => handleInputChange('whatsappNumber', e.target.value)}
-                        className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground outline-none transition-all duration-300 ${
-                          errors.whatsappNumber 
-                            ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
-                            : 'border-border/80 focus:border-orange-600 focus:ring-1'
-                        }`}
-                      />
-                      {errors.whatsappNumber && (
-                        <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
-                          <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
-                          <span>{errors.whatsappNumber}</span>
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Email Address */}
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="emailAddress">
-                        <LucideIcons.Mail className="h-3.5 w-3.5 text-orange-600" />
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        id="emailAddress"
-                        name="emailAddress"
-                        required
-                        placeholder="e.g. name@example.com"
-                        value={formData.emailAddress}
-                        onChange={(e) => handleInputChange('emailAddress', e.target.value)}
-                        className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground outline-none transition-all duration-300 ${
-                          errors.emailAddress 
-                            ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
-                            : 'border-border/80 focus:border-orange-600 focus:ring-1'
-                        }`}
-                      />
-                      {errors.emailAddress && (
-                        <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
-                          <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
-                          <span>{errors.emailAddress}</span>
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Address */}
-                    <div className="space-y-1 sm:col-span-2">
-                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="address">
-                        <LucideIcons.MapPin className="h-3.5 w-3.5 text-orange-600" />
-                        Address / Residence Location
-                      </label>
-                      <input
-                        type="text"
-                        id="address"
-                        name="address"
-                        required
-                        placeholder="e.g. Nyinahin Close, Kumasi, Ashanti Region"
-                        value={formData.address}
-                        onChange={(e) => handleInputChange('address', e.target.value)}
-                        className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground outline-none transition-all duration-300 ${
-                          errors.address 
-                            ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
-                            : 'border-border/80 focus:border-orange-600 focus:ring-1'
-                        }`}
-                      />
-                      {errors.address && (
-                        <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
-                          <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
-                          <span>{errors.address}</span>
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Submission and Second Row Printing Elements */}
-                <div className="pt-4 space-y-3">
-                  <Button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold h-12 rounded-xl shadow-md transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-sm"
-                  >
-                    {submitting ? (
-                      <>
-                        <LucideIcons.Loader2 className="h-5 w-5 animate-spin" />
-                        <span>Transmitting Media Intake...</span>
-                      </>
+              {/* HIGH-FIDELITY COLLAPSIBLE STEPPER HEADER */}
+              <div className="max-w-xl mx-auto mb-10">
+                <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-muted-foreground mb-3 px-1">
+                  <span className={`flex items-center gap-1.5 transition-all duration-300 ${currentStep === 1 ? 'text-orange-600 scale-105' : 'text-emerald-500'}`}>
+                    {currentStep === 1 ? (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-600 text-white font-mono text-[9px]">1</span>
                     ) : (
-                      <>
-                        <LucideIcons.Film className="h-5 w-5 animate-pulse" />
-                        <span>Submit Movie & Skit Registration</span>
-                      </>
+                      <LucideIcons.CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
                     )}
-                  </Button>
+                    <span>1. Personal Details</span>
+                  </span>
+                  <span className={`flex items-center gap-1.5 transition-all duration-300 ${currentStep === 2 ? 'text-orange-600 scale-105' : ''}`}>
+                    <span className={`flex h-5 w-5 items-center justify-center rounded-full font-mono text-[9px] ${currentStep === 2 ? 'bg-orange-600 text-white' : 'bg-muted text-muted-foreground'}`}>2</span>
+                    <span>2. Project Requirements</span>
+                  </span>
                 </div>
+                <div className="relative h-2.5 bg-muted rounded-full overflow-hidden border border-border/40">
+                  <div 
+                    className="absolute top-0 left-0 h-full bg-orange-600 transition-all duration-500 ease-out rounded-full"
+                    style={{ width: currentStep === 1 ? '50%' : '100%' }}
+                  />
+                </div>
+              </div>
+
+              <form onSubmit={handleFormSubmit} className="space-y-8">
+                {currentStep === 1 ? (
+                  /* STEP 1: PERSONAL DETAILS */
+                  <motion.div 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="space-y-6"
+                  >
+                    {/* Section 1: Cast Details */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 pb-1.5 border-b border-border/60">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-600 text-white text-[10px] font-bold font-mono">
+                          1
+                        </span>
+                        <h3 className="text-xs font-black uppercase tracking-widest text-foreground">
+                          Artistic & Legal Demographics
+                        </h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                        {/* Full Name */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="fullName">
+                            <LucideIcons.User className="h-3.5 w-3.5 text-orange-600" />
+                            Full Name
+                          </label>
+                          <input
+                            type="text"
+                            id="fullName"
+                            name="fullName"
+                            required
+                            placeholder="Enter your screen or legal name"
+                            value={formData.fullName}
+                            onChange={(e) => handleInputChange('fullName', e.target.value)}
+                            className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground focus:border-orange-600 focus:ring-1 focus:ring-orange-600 outline-none transition-all duration-300 ${
+                              errors.fullName 
+                                ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
+                                : 'border-border/80 focus:border-orange-600 focus:ring-1'
+                            }`}
+                          />
+                          {errors.fullName && (
+                            <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
+                              <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
+                              <span>{errors.fullName}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Date of Birth */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="dateOfBirth">
+                            <LucideIcons.Calendar className="h-3.5 w-3.5 text-orange-600" />
+                            Date of Birth
+                          </label>
+                          <input
+                            type="date"
+                            id="dateOfBirth"
+                            name="dateOfBirth"
+                            required
+                            max={new Date().toISOString().split('T')[0]}
+                            value={formData.dateOfBirth}
+                            onChange={handleDobChange}
+                            className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm outline-none transition-all duration-300 [color-scheme:light] ${
+                              errors.dateOfBirth 
+                                ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
+                                : 'border-border/80 focus:border-orange-600 focus:ring-1'
+                            }`}
+                          />
+                          {errors.dateOfBirth && (
+                            <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
+                              <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
+                              <span>{errors.dateOfBirth}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Age (Calculated) */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="age">
+                            <LucideIcons.Calculator className="h-3.5 w-3.5 text-orange-600" />
+                            Calculated Age
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              id="age"
+                              name="age"
+                              readOnly
+                              placeholder="0"
+                              value={formData.age || ''}
+                              className="w-full rounded-lg border border-dashed border-border/80 bg-muted/50 px-4 py-2.5 text-sm text-muted-foreground font-mono shadow-sm outline-none cursor-not-allowed select-none"
+                            />
+                            <span className="absolute right-3 top-2.5 text-[9px] font-bold text-orange-600 uppercase bg-orange-100 dark:bg-orange-950/30 px-1.5 py-0.5 rounded font-mono">
+                              Auto
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground/80 italic">Calculated dynamically for booking roles</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 2: Channels */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 pb-1.5 border-b border-border/60">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-600 text-white text-[10px] font-bold font-mono">
+                          2
+                        </span>
+                        <h3 className="text-xs font-black uppercase tracking-widest text-foreground">
+                          Outreach & Contact Channels
+                        </h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                        {/* Contact Phone */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="contact">
+                            <LucideIcons.Phone className="h-3.5 w-3.5 text-orange-600" />
+                            Contact Number
+                          </label>
+                          <input
+                            type="tel"
+                            id="contact"
+                            name="contact"
+                            required
+                            placeholder="e.g. +233 24 123 4567"
+                            value={formData.contact}
+                            onChange={(e) => handleInputChange('contact', e.target.value)}
+                            className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground outline-none transition-all duration-300 ${
+                              errors.contact 
+                                ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
+                                : 'border-border/80 focus:border-orange-600 focus:ring-1'
+                            }`}
+                          />
+                          {errors.contact && (
+                            <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
+                              <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
+                              <span>{errors.contact}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* WhatsApp Number */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="whatsappNumber">
+                              <LucideIcons.MessageSquare className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+                              WhatsApp Number
+                            </label>
+                            {formData.contact && (
+                              <button
+                                type="button"
+                                onClick={copyWhatsAppFromContact}
+                                className="text-[10px] text-emerald-600 dark:text-emerald-500 hover:underline hover:text-emerald-400 font-bold cursor-pointer transition-all animate-pulse"
+                              >
+                                Copy from Contact
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="tel"
+                            id="whatsappNumber"
+                            name="whatsappNumber"
+                            required
+                            placeholder="e.g. +233 24 123 4567"
+                            value={formData.whatsappNumber}
+                            onChange={(e) => handleInputChange('whatsappNumber', e.target.value)}
+                            className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground outline-none transition-all duration-300 ${
+                              errors.whatsappNumber 
+                                ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
+                                : 'border-border/80 focus:border-orange-600 focus:ring-1'
+                            }`}
+                          />
+                          {errors.whatsappNumber && (
+                            <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
+                              <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
+                              <span>{errors.whatsappNumber}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Email Address */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="emailAddress">
+                            <LucideIcons.Mail className="h-3.5 w-3.5 text-orange-600" />
+                            Email Address
+                          </label>
+                          <input
+                            type="email"
+                            id="emailAddress"
+                            name="emailAddress"
+                            required
+                            placeholder="e.g. name@example.com"
+                            value={formData.emailAddress}
+                            onChange={(e) => handleInputChange('emailAddress', e.target.value)}
+                            className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground outline-none transition-all duration-300 ${
+                              errors.emailAddress 
+                                ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
+                                : 'border-border/80 focus:border-orange-600 focus:ring-1'
+                            }`}
+                          />
+                          {errors.emailAddress && (
+                            <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
+                              <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
+                              <span>{errors.emailAddress}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Address */}
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="address">
+                            <LucideIcons.MapPin className="h-3.5 w-3.5 text-orange-600" />
+                            Address / Residence Location
+                          </label>
+                          <input
+                            type="text"
+                            id="address"
+                            name="address"
+                            required
+                            placeholder="e.g. Nyinahin Close, Kumasi, Ashanti Region"
+                            value={formData.address}
+                            onChange={(e) => handleInputChange('address', e.target.value)}
+                            className={`w-full rounded-lg border bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground outline-none transition-all duration-300 ${
+                              errors.address 
+                                ? 'border-rose-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 ring-rose-500 bg-rose-500/5' 
+                                : 'border-border/80 focus:border-orange-600 focus:ring-1'
+                            }`}
+                          />
+                          {errors.address && (
+                            <p className="text-[11px] text-rose-500 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
+                              <LucideIcons.AlertCircle className="h-3.5 w-3.5 flex-none" />
+                              <span>{errors.address}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step 1 Actions */}
+                    <div className="flex flex-wrap items-center gap-3 pt-6 border-t border-border/40">
+                      <Button
+                        type="button"
+                        onClick={saveDraft}
+                        variant="outline"
+                        className="border-dashed border-orange-600/40 text-orange-600 hover:bg-orange-600/5 hover:border-orange-600 font-bold h-11 px-4 rounded-xl flex items-center gap-1.5 bg-card"
+                      >
+                        <LucideIcons.Save className="h-4 w-4" />
+                        <span>Save as Draft</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleNextStep}
+                        className="ml-auto bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-6 rounded-xl flex items-center gap-1"
+                      >
+                        <span>Next: Project Requirements</span>
+                        <LucideIcons.ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  /* STEP 2: PROJECT REQUIREMENTS */
+                  <motion.div 
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="space-y-6"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 pb-1.5 border-b border-border/60">
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-600 text-white text-[10px] font-bold font-mono">
+                          3
+                        </span>
+                        <h3 className="text-xs font-black uppercase tracking-widest text-foreground">
+                          Casting Specifications & Interests
+                        </h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                        {/* Role type Selection */}
+                        <div className="space-y-2 sm:col-span-2">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <LucideIcons.Clapperboard className="h-3.5 w-3.5 text-orange-600" />
+                            Production Role Interest
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {['Actor / Actress', 'Skit Performer', 'Creative Writer', 'Crew / Technical'].map((role) => (
+                              <button
+                                key={role}
+                                type="button"
+                                onClick={() => handleInputChange('roleType', role)}
+                                className={`p-3.5 border rounded-xl text-center capitalize transition duration-300 font-bold cursor-pointer text-xs ${
+                                  formData.roleType === role
+                                    ? 'border-orange-600 bg-orange-600/5 text-orange-600 dark:text-orange-400 font-black shadow-xs'
+                                    : 'border-border/80 hover:bg-muted text-foreground'
+                                }`}
+                              >
+                                {role}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Experience Selector */}
+                        <div className="space-y-2 sm:col-span-2">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <LucideIcons.Award className="h-3.5 w-3.5 text-orange-600" />
+                            Experience Milestone
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {[
+                              { val: 'Beginner', title: 'Beginner / Fresh Talent', desc: 'Ready for initial screen training' },
+                              { val: 'Intermediate', title: 'Intermediate Talent', desc: 'Done minor sketches or background roles' },
+                              { val: 'Professional', title: 'Professional Screenplay', desc: 'Full screen credentials / portfolio' }
+                            ].map((exp) => (
+                              <button
+                                key={exp.val}
+                                type="button"
+                                onClick={() => handleInputChange('experienceLevel', exp.val)}
+                                className={`p-3.5 border rounded-xl text-left transition duration-300 cursor-pointer ${
+                                  formData.experienceLevel === exp.val
+                                    ? 'border-orange-600 bg-orange-600/5 text-orange-600 dark:text-orange-400 font-bold shadow-xs'
+                                    : 'border-border/80 hover:bg-muted text-foreground'
+                                }`}
+                              >
+                                <p className="font-bold text-xs">{exp.title}</p>
+                                <p className="text-[10px] text-muted-foreground mt-1 leading-snug">{exp.desc}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Availability Schedule */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="availability">
+                            <LucideIcons.Clock className="h-3.5 w-3.5 text-orange-600" />
+                            Casting Availability Schedule
+                          </label>
+                          <select
+                            id="availability"
+                            name="availability"
+                            value={formData.availability}
+                            onChange={(e) => handleInputChange('availability', e.target.value)}
+                            className="w-full rounded-lg border border-border/80 bg-background px-4 py-2.5 text-sm text-foreground shadow-sm focus:border-orange-600 focus:ring-1 focus:ring-orange-600 outline-none transition-all duration-300 cursor-pointer"
+                          >
+                            <option value="Part-time">Part-time / On-call Productions</option>
+                            <option value="Full-time">Full-time / Active Shooting</option>
+                            <option value="Weekends">Weekends & Commercials Only</option>
+                          </select>
+                        </div>
+
+                        {/* Portfolio link */}
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="portfolioLink">
+                            <LucideIcons.Link className="h-3.5 w-3.5 text-orange-600" />
+                            Portfolio Reel Link (YouTube/TikTok/Drive)
+                          </label>
+                          <input
+                            type="url"
+                            id="portfolioLink"
+                            name="portfolioLink"
+                            placeholder="e.g. https://youtube.com/my-reel-credentials"
+                            value={formData.portfolioLink}
+                            onChange={(e) => handleInputChange('portfolioLink', e.target.value)}
+                            className="w-full rounded-lg border border-border/80 bg-background px-4 py-2.5 text-sm text-foreground shadow-sm placeholder-muted-foreground focus:border-orange-600 focus:ring-1 focus:ring-orange-600 outline-none transition-all duration-300"
+                          />
+                          <p className="text-[10px] text-muted-foreground/80 italic">Optional but highly recommended for talent screening</p>
+                        </div>
+
+                        {/* Genres Selector */}
+                        <div className="space-y-2 sm:col-span-2">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <LucideIcons.Film className="h-3.5 w-3.5 text-orange-600" />
+                            Select Genres You Excel In
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {['Comedy Skits', 'Feature Films', 'Action / Combat', 'Drama', 'Cultural / Folk', 'TV Serials', 'Modeling / Ads', 'Romantic Comedy'].map((genre) => {
+                              const isChecked = formData.preferredGenres.includes(genre);
+                              return (
+                                <button
+                                  key={genre}
+                                  type="button"
+                                  onClick={() => {
+                                    const currentGenres = [...formData.preferredGenres];
+                                    if (isChecked) {
+                                      handleInputChange('preferredGenres', currentGenres.filter(g => g !== genre));
+                                    } else {
+                                      handleInputChange('preferredGenres', [...currentGenres, genre]);
+                                    }
+                                  }}
+                                  className={`p-3 border rounded-xl text-center transition duration-300 font-semibold cursor-pointer text-[11px] ${
+                                    isChecked
+                                      ? 'border-orange-600 bg-orange-600/5 text-orange-600 dark:text-orange-400 font-bold'
+                                      : 'border-border/80 hover:bg-muted text-foreground'
+                                  }`}
+                                >
+                                  {genre}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Bio Pitch Textarea */}
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5" htmlFor="bio">
+                            <LucideIcons.Sparkles className="h-4 w-4 text-orange-600 shrink-0" />
+                            Special Skills & Supporting Bio Pitch
+                          </label>
+                          <textarea
+                            id="bio"
+                            name="bio"
+                            rows={4}
+                            placeholder="Describe special talents (e.g., accent fluencies, comedic punch timing, martial arts stunts, facial modeling flexes, etc.)..."
+                            value={formData.bio}
+                            onChange={(e) => handleInputChange('bio', e.target.value)}
+                            className="w-full rounded-lg border border-border/80 bg-background px-4 py-3 text-sm text-foreground placeholder-muted-foreground focus:border-orange-600 focus:ring-1 focus:ring-orange-600 outline-none transition-all duration-300"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step 2 Actions */}
+                    <div className="flex flex-wrap items-center gap-3 pt-6 border-t border-border/40">
+                      <Button
+                        type="button"
+                        onClick={handleBackStep}
+                        variant="outline"
+                        className="border-border text-muted-foreground hover:bg-muted hover:text-foreground font-bold h-11 px-5 rounded-xl flex items-center gap-1 bg-card"
+                      >
+                        <LucideIcons.ArrowLeft className="h-4 w-4" />
+                        <span>Back</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={saveDraft}
+                        variant="outline"
+                        className="border-dashed border-orange-600/40 text-orange-600 hover:bg-orange-600/5 hover:border-orange-600 font-bold h-11 px-4 rounded-xl flex items-center gap-1.5 bg-card"
+                      >
+                        <LucideIcons.Save className="h-4 w-4" />
+                        <span>Save as Draft</span>
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={submitting}
+                        className="ml-auto bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-6 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {submitting ? (
+                          <>
+                            <LucideIcons.Loader2 className="h-5 w-5 animate-spin" />
+                            <span>Transmitting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <LucideIcons.Film className="h-5 w-5 animate-pulse" />
+                            <span>Submit Film Intake</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
               </form>
             </>
           )}

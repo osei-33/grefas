@@ -1232,6 +1232,50 @@ function AdminServiceRequests() {
                   <span>Registered:</span>
                   <span>{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A'}</span>
                 </div>
+
+                {/* Application Assessment Status */}
+                <div className="pt-3 border-t border-border/40 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5 text-orange-600" /> Assessment Status
+                    </span>
+                    <span className={`px-2 py-0.5 font-bold uppercase rounded-full text-[9px] ${
+                      item.status === 'Approved' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                      item.status === 'In Review' ? 'text-amber-800 bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400' :
+                      item.status === 'Rejected' ? 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400' :
+                      'bg-slate-100 text-slate-800 dark:bg-slate-950/40 dark:text-slate-400'
+                    }`}>
+                      {item.status || 'Pending'}
+                    </span>
+                  </div>
+                  
+                  {/* Status Selection Row */}
+                  <div className="flex flex-wrap items-center gap-1 pt-1">
+                    {['Pending', 'In Review', 'Approved', 'Rejected'].map((statusOption) => (
+                      <button
+                        key={statusOption}
+                        disabled={item.status === statusOption || (statusOption === 'Pending' && !item.status)}
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'service_intakes', item.id), {
+                              status: statusOption
+                            });
+                            toast.success(`Applicant status updated to "${statusOption}"`);
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.UPDATE, `service_intakes/${item.id}`);
+                          }
+                        }}
+                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition duration-200 cursor-pointer border ${
+                          item.status === statusOption || (statusOption === 'Pending' && !item.status)
+                            ? 'bg-orange-600 border-orange-600 text-white shadow-xs'
+                            : 'bg-muted/40 border-border hover:bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {statusOption}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ))}

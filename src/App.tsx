@@ -12,6 +12,7 @@ import Booking from './pages/Booking';
 import Contact from './pages/Contact';
 import Team from './pages/Team';
 import Admin from './pages/Admin';
+import MyApplications from './pages/MyApplications';
 import { Toaster } from 'sonner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LanguageProvider } from './lib/LanguageContext';
@@ -33,6 +34,7 @@ export default function App() {
                 <Route path="/team" element={<Team />} />
                 <Route path="/booking" element={<Booking />} />
                 <Route path="/contact" element={<Contact />} />
+                <Route path="/my-applications" element={<MyApplications />} />
                 <Route path="/admin/*" element={<Admin />} />
               </Routes>
             </Layout>

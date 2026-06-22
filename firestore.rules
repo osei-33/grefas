@@ -242,7 +242,7 @@ service cloud.firestore {
     }
 
     match /service_intakes/{intakeId} {
-      allow read: if isStaff();
+      allow read: if isStaff() || (isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.emailAddress == request.auth.token.email));
       allow create: if request.resource.data.fullName is string && request.resource.data.fullName.size() > 0 &&
                     request.resource.data.dateOfBirth is string && request.resource.data.dateOfBirth.size() > 0 &&
                     request.resource.data.age is number &&

@@ -185,6 +185,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: t('nav.team'), href: '/team' },
     { name: t('nav.booking'), href: '/booking' },
     { name: t('nav.contact'), href: '/contact' },
+    { name: t('nav.applications') || 'My Applications', href: '/my-applications' },
     { name: t('nav.admin'), href: '/admin' },
   ];
 
