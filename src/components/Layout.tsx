@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { safeGetLocalStorage, safeSetLocalStorage, safeGetSessionStorage, safeSetSessionStorage } from '@/lib/utils';
 import Chat from './Chat';
 import NotificationCenter from './NotificationCenter';
+import GlobalSearch from './GlobalSearch';
+import WhatsAppButton from './WhatsAppButton';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot, getDoc, setDoc, increment, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -340,15 +342,20 @@ export default function Layout({ children }: LayoutProps) {
         style={{ top: isMaintenanceActive && isAdmin && !isAdminRoute ? '36px' : '0px' }}
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center space-x-2">
-            {settings?.logoUrl ? (
-              <img src={settings.logoUrl} alt="Logo" className="h-10 w-auto rounded" referrerPolicy="no-referrer" />
-            ) : (
-              <span className="text-2xl font-bold tracking-tighter text-foreground">
-                GREFAS<span className="text-orange-600">.</span>
-              </span>
-            )}
-          </Link>
+          <div className="flex items-center space-x-4">
+            <Link to="/" className="flex items-center space-x-2 shrink-0">
+              {settings?.logoUrl ? (
+                <img src={settings.logoUrl} alt="Logo" className="h-10 w-auto rounded" referrerPolicy="no-referrer" />
+              ) : (
+                <span className="text-2xl font-bold tracking-tighter text-foreground">
+                  GREFAS<span className="text-orange-600">.</span>
+                </span>
+              )}
+            </Link>
+            <div className="hidden lg:block">
+              <GlobalSearch />
+            </div>
+          </div>
 
           {/* Desktop Nav */}
           <div className="hidden items-center space-x-8 md:flex">
@@ -421,19 +428,20 @@ export default function Layout({ children }: LayoutProps) {
           </div>
 
           {/* Mobile Menu Button */}
-          <div className="flex items-center space-x-4 md:hidden">
+          <div className="flex items-center space-x-3 md:hidden">
+            <GlobalSearch />
             <Button
               variant="ghost"
               size="icon"
               onClick={toggleTheme}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground shrink-0"
             >
               {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </Button>
             <NotificationCenter />
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="text-foreground"
+              className="text-foreground shrink-0"
             >
               {isMenuOpen ? <X /> : <Menu />}
             </button>
@@ -518,6 +526,7 @@ export default function Layout({ children }: LayoutProps) {
       </main>
 
       <Chat />
+      <WhatsAppButton phone={settings?.phone} />
 
       {/* Footer */}
       <footer className="border-t border-border bg-card py-12">

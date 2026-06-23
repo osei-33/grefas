@@ -53,6 +53,54 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Proxy download for images and videos to bypass browser CORS rules on external assets (such as Firebase Storage)
+  app.get("/api/proxy-download", async (req, res) => {
+    const assetUrl = req.query.url as string;
+    if (!assetUrl) {
+      return res.status(400).json({ error: "URL query parameter is required" });
+    }
+
+    try {
+      const response = await fetch(assetUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch media from remote URL: ${response.status} ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      
+      // Try to determine a friendly filename
+      let fileName = "grefas_download";
+      try {
+        const urlObj = new URL(assetUrl);
+        const pathname = urlObj.pathname;
+        const decodedName = decodeURIComponent(pathname.substring(pathname.lastIndexOf("/") + 1));
+        const cleanName = decodedName.substring(decodedName.lastIndexOf("/") + 1);
+        if (cleanName) {
+          fileName = cleanName;
+        }
+      } catch {
+        // use fallback filename
+      }
+
+      // Add appropriate extension if not present in clean name
+      if (!fileName.includes(".")) {
+        const ext = contentType.split("/")[1] || "bin";
+        fileName = `${fileName}.${ext}`;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.send(buffer);
+    } catch (err: any) {
+      console.error("Proxy download engine failure:", err);
+      res.status(500).json({ error: err.message || "Could not proxy download file" });
+    }
+  });
+
   // Configure multer for file memory storage
   const memoryUpload = multer({
     storage: multer.memoryStorage(),

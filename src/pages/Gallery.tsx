@@ -529,8 +529,12 @@ export default function Gallery() {
   const handleDownload = async (item: any) => {
     if (!item || !item.url) return;
     
+    // Check if it's a data URL
+    const isDataUrl = item.url.startsWith('data:');
+    
     // Check if it's a direct file or a hosted platform
-    const isDirectFile = item.url.includes('firebasestorage.googleapis.com') ||
+    const isDirectFile = isDataUrl ||
+                         item.url.includes('firebasestorage.googleapis.com') ||
                          item.url.match(/\.(jpeg|jpg|gif|png|webp|mp4|webm|ogg|mp3|wav)/i);
 
     if (!isDirectFile) {
@@ -542,14 +546,32 @@ export default function Gallery() {
     const toastId = toast.loading(`Preparing optimized download for "${item.title || 'media'}"...`);
     
     try {
-      const response = await fetch(item.url);
-      if (!response.ok) throw new Error('CORS or connectivity blockage');
-      
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
+      if (isDataUrl) {
+        // Base64 download
+        const link = document.createElement('a');
+        link.href = item.url;
+        
+        let extension = 'jpg';
+        const typeMatch = item.url.match(/data:image\/([a-zA-Z0-9+]+);base64/);
+        if (typeMatch) {
+          extension = typeMatch[1];
+          if (extension === 'jpeg') extension = 'jpg';
+        }
+        
+        const fileName = `${(item.title || 'grefas_media').toLowerCase().replace(/[^a-z0-9]+/g, '_')}.${extension}`;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success('Download started successfully!', { id: toastId });
+        return;
+      }
+
+      // Use the robust server side proxy to download the file directly, completely avoiding any CORS obstacles!
+      const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(item.url)}`;
       
       const link = document.createElement('a');
-      link.href = blobUrl;
+      link.href = proxyUrl;
       
       let extension = item.type === 'video' ? 'mp4' : 'jpg';
       const match = item.url.split('?')[0].match(/\.([a-zA-Z0-9]+)$/);
@@ -558,17 +580,14 @@ export default function Gallery() {
       }
       
       const fileName = `${(item.title || 'grefas_media').toLowerCase().replace(/[^a-z0-9]+/g, '_')}.${extension}`;
-      
       link.download = fileName;
       document.body.appendChild(link);
       link.click();
-      
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
       
       toast.success('Download started successfully!', { id: toastId });
     } catch (error) {
-      console.warn('Direct fetch download failed, falling back to direct tab access:', error);
+      console.warn('Proxy download request failed, falling back to direct tab access:', error);
       
       try {
         const link = document.createElement('a');
