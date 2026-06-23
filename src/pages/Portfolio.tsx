@@ -6,6 +6,7 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { Loader2, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 export default function Portfolio() {
   const [items, setItems] = useState<any[]>([]);
@@ -41,6 +42,7 @@ export default function Portfolio() {
         keywords="Grefas portfolio, event showcase Ghana, commercial consulting projects, entertainment showcase Ashanti"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <Breadcrumbs />
         <div className="text-center">
           <motion.h1
             initial={{ opacity: 0, y: 20 }}

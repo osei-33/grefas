@@ -9,6 +9,7 @@ import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
@@ -732,6 +733,7 @@ export default function Services() {
         keywords="Grefas services, business consulting Ghana, talent agency Nyinahin, event organization, artist manager Ghana"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <Breadcrumbs />
         <div className="text-center">
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
