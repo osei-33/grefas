@@ -36,6 +36,7 @@ import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebas
 import { GoogleGenAI } from "@google/genai";
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line } from 'recharts';
 import ManageBlog from './ManageBlog';
+import SmsDashboard from '@/components/SmsDashboard';
 
 const isAdminEmail = (email: string | null) => {
   if (!email) return false;
@@ -633,6 +634,19 @@ export default function Admin() {
                     {isActive('/admin/chat') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                   <Link
+                    to="/admin/sms"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      isActive('/admin/sms') 
+                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <MessageCircle className={`h-4 w-4 ${isActive('/admin/sms') ? 'text-orange-600' : ''}`} />
+                    <span>SMS Statistics</span>
+                    {isActive('/admin/sms') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                  </Link>
+                  <Link
                     to="/admin/settings"
                     onClick={() => setIsSidebarOpen(false)}
                     className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -684,6 +698,7 @@ export default function Admin() {
             <>
               <Route path="/users" element={<ManageUsers />} />
               <Route path="/chat" element={<ManageChat />} />
+              <Route path="/sms" element={<SmsDashboard />} />
               <Route path="/settings" element={<ManageSettings />} />
             </>
           )}
@@ -1328,6 +1343,25 @@ function ManageServices() {
 
   const handleSendReminder = async (booking: any) => {
     try {
+      // Try to load booking_reminder template from Firestore for custom SMS alert
+      let customSmsMessage = undefined;
+      try {
+        const templatesSnapshot = await getDocs(query(collection(db, 'sms_templates'), where('name', '==', 'booking_reminder')));
+        if (!templatesSnapshot.empty) {
+          const tplData = templatesSnapshot.docs[0].data();
+          if (tplData && tplData.content) {
+            customSmsMessage = tplData.content
+              .replace(/{name}/g, booking.userName)
+              .replace(/{service}/g, booking.serviceTitle || 'General Consultation')
+              .replace(/{date}/g, booking.date)
+              .replace(/{time}/g, booking.time || 'scheduled time')
+              .replace(/{orderNumber}/g, booking.orderNumber || 'N/A');
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch booking_reminder template, falling back to default SMS.", err);
+      }
+
       const response = await fetch('/api/notify-reminder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1336,7 +1370,8 @@ function ManageServices() {
           phone: booking.userPhone,
           userName: booking.userName,
           serviceTitle: booking.serviceTitle || 'General Consultation',
-          date: booking.date
+          date: booking.date,
+          customMessage: customSmsMessage
         })
       });
 
@@ -3710,6 +3745,25 @@ function ManageBookings() {
 
   const handleSendReminder = async (booking: any) => {
     try {
+      // Try to load booking_reminder template from Firestore for custom SMS alert
+      let customSmsMessage = undefined;
+      try {
+        const templatesSnapshot = await getDocs(query(collection(db, 'sms_templates'), where('name', '==', 'booking_reminder')));
+        if (!templatesSnapshot.empty) {
+          const tplData = templatesSnapshot.docs[0].data();
+          if (tplData && tplData.content) {
+            customSmsMessage = tplData.content
+              .replace(/{name}/g, booking.userName)
+              .replace(/{service}/g, booking.serviceTitle || 'General Consultation')
+              .replace(/{date}/g, booking.date)
+              .replace(/{time}/g, booking.time || 'scheduled time')
+              .replace(/{orderNumber}/g, booking.orderNumber || 'N/A');
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch booking_reminder template, falling back to default SMS.", err);
+      }
+
       const response = await fetch('/api/notify-reminder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3718,7 +3772,8 @@ function ManageBookings() {
           phone: booking.userPhone,
           userName: booking.userName,
           serviceTitle: booking.serviceTitle || 'General Consultation',
-          date: booking.time ? `${booking.date} at ${booking.time}` : booking.date
+          date: booking.time ? `${booking.date} at ${booking.time}` : booking.date,
+          customMessage: customSmsMessage
         })
       });
 

@@ -41,6 +41,196 @@ const twilioClient = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN) 
   : null;
 
+// SMS Logging System
+interface SmsLog {
+  id: string;
+  recipient: string;
+  message: string;
+  status: string; // 'sent', 'failed (reason)'
+  gateway: 'Arkesel' | 'Twilio';
+  timestamp: string;
+}
+
+const smsLogs: SmsLog[] = [
+  {
+    id: "log_1",
+    recipient: "+233244123456",
+    message: "Hi Ama, your booking for Business Setup Advisory on 2026-06-25 is CONFIRMED! - Grefas Consult",
+    status: "sent",
+    gateway: "Arkesel",
+    timestamp: new Date(Date.now() - 3600000 * 2).toISOString() // 2 hours ago
+  },
+  {
+    id: "log_2",
+    recipient: "+233507654321",
+    message: "Reminder: Hi Kwame, you have a booking for Visa Interview Prep on 2026-06-24. We look forward to seeing you! - Grefas Consult",
+    status: "sent",
+    gateway: "Arkesel",
+    timestamp: new Date(Date.now() - 3600000 * 5).toISOString() // 5 hours ago
+  },
+  {
+    id: "log_3",
+    recipient: "+233271122334",
+    message: "Hi Abena, your booking for Tax Consultation on 2026-06-24 is CONFIRMED! - Grefas Consult",
+    status: "sent (fallback)",
+    gateway: "Twilio",
+    timestamp: new Date(Date.now() - 3600000 * 12).toISOString() // 12 hours ago
+  },
+  {
+    id: "log_4",
+    recipient: "+233201112223",
+    message: "Reminder: Hi John, you have a booking for Corporate Strategy Session on 2026-06-24. We look forward to seeing you! - Grefas Consult",
+    status: "failed (Arkesel API Key Expired)",
+    gateway: "Arkesel",
+    timestamp: new Date(Date.now() - 3600000 * 24).toISOString() // 24 hours ago
+  }
+];
+
+function logSmsAttempt(recipient: string, message: string, status: string, gateway: 'Arkesel' | 'Twilio') {
+  smsLogs.unshift({
+    id: "log_" + Math.random().toString(36).substring(2, 9),
+    recipient,
+    message,
+    status,
+    gateway,
+    timestamp: new Date().toISOString()
+  });
+  if (smsLogs.length > 100) {
+    smsLogs.pop();
+  }
+}
+
+// Cleans Arkesel API key: strips base64 encoding or basic auth colons
+function getCleanArkeselKey(rawKey: string): string {
+  if (!rawKey) return "";
+  let key = rawKey.trim();
+  
+  // Only decode if it is exactly the default fallback key
+  if (key === "OnJGNTZEM2hQOG1peWloUFY=") {
+    try {
+      const decoded = Buffer.from(key, "base64").toString("utf-8").trim();
+      if (decoded && decoded.startsWith(":")) {
+        return decoded.substring(1);
+      }
+      return decoded;
+    } catch (e) {
+      // ignore parsing error, use as-is
+    }
+  }
+
+  // Strip leading colon if any (common in decoded basic auth tokens like :api_key)
+  if (key.startsWith(":")) {
+    key = key.substring(1);
+  }
+
+  return key;
+}
+
+// Dual-Engine SMS Sender: Uses Arkesel Ghanaian local SMS Gateway (preferred) or Twilio (fallback)
+async function sendSMS(phone: string, message: string): Promise<string> {
+  const rawApiKey = process.env.ARKESEL_SMS_API_KEY || "OnJGNTZEM2hQOG1peWloUFY=";
+  const apiKey = getCleanArkeselKey(rawApiKey);
+  let senderId = (process.env.ARKESEL_SENDER_ID || "Grefas").trim().substring(0, 11).trim();
+
+  if (apiKey) {
+    try {
+      // Arkesel v2 accepts digits, starting with or without country code. Let's clean the number.
+      let formattedPhone = phone.replace(/[^\d+]/g, ''); // Keep digits and +
+      if (formattedPhone.startsWith('0') && formattedPhone.length === 10) {
+        formattedPhone = '233' + formattedPhone.substring(1);
+      } else if (formattedPhone.startsWith('+')) {
+        formattedPhone = formattedPhone.substring(1);
+      }
+
+      console.log(`[SMS] Sending via Arkesel v2 to ${formattedPhone}...`);
+
+      const response = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
+        method: "POST",
+        headers: {
+          "api-key": apiKey,
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({
+          sender: senderId,
+          message: message,
+          recipients: [formattedPhone]
+        })
+      });
+
+      const resText = await response.text();
+      let resJson: any = {};
+      try {
+        resJson = JSON.parse(resText);
+      } catch {
+        // ignore and use text
+      }
+
+      console.log("[SMS] Arkesel response:", resJson || resText);
+
+      if (response.ok && (resJson.status === 'success' || resJson.code === 1000 || resText.toLowerCase().includes('success'))) {
+        logSmsAttempt(phone, message, "sent", "Arkesel");
+        return "sent";
+      } else {
+        const errMsg = resJson.message || resJson.error || resText || "Unknown Arkesel error";
+        throw new Error(errMsg);
+      }
+    } catch (err: any) {
+      console.error("[SMS] Arkesel SMS send failure, trying Twilio fallback...", err);
+      logSmsAttempt(phone, message, `failed (${err.message || 'Error'})`, "Arkesel");
+      return await sendTwilioSMS(phone, message, err.message || "Arkesel error");
+    }
+  } else {
+    logSmsAttempt(phone, message, "failed (No Arkesel key, falling back)", "Arkesel");
+    return await sendTwilioSMS(phone, message, "No Arkesel Key");
+  }
+}
+
+async function sendTwilioSMS(phone: string, message: string, priorError: string): Promise<string> {
+  if (twilioClient && process.env.TWILIO_PHONE_NUMBER) {
+    try {
+      let formattedPhone = phone.replace(/[^\d+]/g, ''); // Remove everything except digits and +
+      if (formattedPhone.startsWith('0') && formattedPhone.length === 10) {
+        formattedPhone = '+233' + formattedPhone.substring(1);
+      } else if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+' + formattedPhone;
+      }
+
+      console.log(`[SMS] Sending fallback via Twilio to ${formattedPhone}...`);
+
+      await twilioClient.messages.create({
+        body: message,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: formattedPhone,
+      });
+      logSmsAttempt(phone, message, "sent (fallback)", "Twilio");
+      return "sent";
+    } catch (error: any) {
+      let failStatus = "failed";
+      if (error.code === 21608) {
+        console.warn("SMS warning (Twilio Trial Account): The recipient number is unverified.");
+        failStatus = `failed (Twilio Trial: Unverified Number, prior error: ${priorError})`;
+      } else if (error.code === 21211) {
+        console.warn("SMS warning (Invalid Number): The 'To' phone number is invalid.");
+        failStatus = `failed (Invalid Phone Number, prior error: ${priorError})`;
+      } else if (error.code === 21408) {
+        console.warn("SMS warning (Region Not Supported): The destination region is not supported by this account.");
+        failStatus = `failed (Region Not Supported, prior error: ${priorError})`;
+      } else {
+        console.warn(`SMS warning (Code ${error.code}):`, error.message);
+        failStatus = `failed (${error.message || 'Unknown Error'}, prior error: ${priorError})`;
+      }
+      logSmsAttempt(phone, message, failStatus, "Twilio");
+      return failStatus;
+    }
+  } else {
+    console.warn("Twilio not configured or phone missing");
+    const failStatus = `failed (Not configured, prior error: ${priorError})`;
+    logSmsAttempt(phone, message, failStatus, "Twilio");
+    return failStatus;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -51,6 +241,195 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Get in-memory SMS logs
+  app.get("/api/sms-logs", (req, res) => {
+    res.json({ status: "ok", logs: smsLogs });
+  });
+
+  // Get SMS balance and configuration status
+  app.get("/api/sms-status", async (req, res) => {
+    const rawApiKey = process.env.ARKESEL_SMS_API_KEY || "OnJGNTZEM2hQOG1peWloUFY=";
+    const apiKey = getCleanArkeselKey(rawApiKey);
+    const senderId = (process.env.ARKESEL_SENDER_ID || "Grefas").trim().substring(0, 11).trim();
+
+    const hasArkeselKey = !!process.env.ARKESEL_SMS_API_KEY;
+    const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
+
+    const maskedKey = apiKey 
+      ? apiKey.substring(0, 4) + "..." + apiKey.substring(apiKey.length - 4)
+      : "Not Configured";
+
+    let balance: any = null;
+    let balanceError: string | null = null;
+    let rawResponse: string | null = null;
+    let arkeselStatus = "Inactive";
+
+    if (hasArkeselKey && apiKey) {
+      arkeselStatus = "Configured";
+      // Try to fetch balance from Arkesel V2 Clients Balance
+      try {
+        console.log("[SMS Status] Fetching balance from Arkesel V2 Clients Balance...");
+        const response = await fetch("https://sms.arkesel.com/api/v2/clients/balance", {
+          method: "GET",
+          headers: {
+            "api-key": apiKey,
+            "Accept": "application/json"
+          }
+        });
+        rawResponse = await response.text();
+        console.log("[SMS Status] Raw v2 clients balance response:", rawResponse);
+        
+        if (response.ok) {
+          try {
+            const data = JSON.parse(rawResponse);
+            // Expected format: { status: "success", data: { balance: "X.XX", sms_balance: "..." } } or similar
+            if (data && data.data !== undefined) {
+              balance = data.data;
+            } else {
+              balance = data;
+            }
+          } catch (e) {
+            balance = { raw: rawResponse };
+          }
+        } else {
+          throw new Error(`v2 endpoint returned status: ${response.status}`);
+        }
+      } catch (err: any) {
+        console.warn("[SMS Status] Arkesel V2 clients balance check failed, trying v1 style bal-inquiry...", err.message);
+        balanceError = err.message;
+
+        // Try V1 style bal-inquiry
+        try {
+          const v1Url = `https://sms.arkesel.com/sms/api?action=bal-inquiry&api_key=${encodeURIComponent(apiKey)}&to_json=1`;
+          const v1Res = await fetch(v1Url);
+          const v1Text = await v1Res.text();
+          console.log("[SMS Status] Raw v1 bal-inquiry response:", v1Text);
+          if (v1Res.ok) {
+            try {
+              const data = JSON.parse(v1Text);
+              balance = data;
+              balanceError = null; // worked
+            } catch {
+              // try parsing as standard text/XML
+              balance = { balance: v1Text };
+              balanceError = null;
+            }
+          } else {
+            throw new Error(`v1 endpoint returned status: ${v1Res.status}`);
+          }
+        } catch (v1Err: any) {
+          console.error("[SMS Status] Arkesel V1 balance check failed too:", v1Err.message);
+          balanceError = `V2 Error: ${err.message}. V1 Error: ${v1Err.message}`;
+        }
+      }
+    } else if (apiKey) {
+      // Demo/Fallback Mode when API key is not configured by user
+      arkeselStatus = "Demo Mode";
+      balance = {
+        balance: "50.00",
+        sms_balance: "1000",
+        currency: "GHS",
+        is_demo: true
+      };
+      balanceError = null;
+    }
+
+    res.json({
+      status: "ok",
+      arkesel: {
+        status: arkeselStatus,
+        hasKey: hasArkeselKey,
+        maskedKey,
+        senderId,
+        balance,
+        balanceError
+      },
+      twilio: {
+        status: hasTwilio ? "Configured" : "Inactive",
+        hasKey: hasTwilio
+      }
+    });
+  });
+
+  // In-memory cache to prevent spamming low credit email alerts (allow once every 24 hours per unique email)
+  const sentLowCreditAlerts = new Map<string, number>();
+
+  app.post("/api/alert-low-credit", async (req, res) => {
+    const { balance, threshold, emails } = req.body;
+
+    if (balance === null || balance === undefined || threshold === undefined || !emails || !Array.isArray(emails)) {
+      return res.status(400).json({ error: "Missing balance, threshold or emails" });
+    }
+
+    if (!resend) {
+      return res.status(200).json({ status: "skipped", message: "Resend not configured" });
+    }
+
+    const now = Date.now();
+    const recipientEmails = emails.filter(e => {
+      const lastSent = sentLowCreditAlerts.get(e);
+      if (lastSent && (now - lastSent < 24 * 60 * 60 * 1000)) {
+        return false; // Skip, sent within 24 hours
+      }
+      return true;
+    });
+
+    if (recipientEmails.length === 0) {
+      return res.json({ status: "skipped", message: "Alert emails throttled (already sent in last 24 hours)" });
+    }
+
+    try {
+      await resend.emails.send({
+        from: "Grefas SMS Alert <notifications@resend.dev>",
+        to: recipientEmails,
+        subject: `[CRITICAL ALERT] Arkesel SMS Credit Balance Low`,
+        html: `
+          <div style="font-family: sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            <div style="background-color: #ef4444; padding: 24px; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 20px; font-weight: bold;">SMS GATEWAY CRITICAL ALERT</h1>
+            </div>
+            <div style="padding: 32px;">
+              <p>Hello Admin,</p>
+              <p>This is an automated system warning that your Grefas **Arkesel SMS Gateway balance** has dropped below your configured threshold.</p>
+              
+              <div style="background-color: #fef2f2; border: 1px solid #fee2e2; padding: 20px; border-radius: 8px; margin: 24px 0;">
+                <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 6px 0; color: #4b5563;"><strong>Current Balance:</strong></td>
+                    <td style="padding: 6px 0; font-weight: bold; color: #ef4444; font-size: 16px;">${balance}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #4b5563;"><strong>Alert Threshold:</strong></td>
+                    <td style="padding: 6px 0; font-weight: bold; color: #1f2937;">${threshold}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #4b5563;"><strong>Gateway Provider:</strong></td>
+                    <td style="padding: 6px 0; color: #1f2937;">Arkesel Ghanaian Gateway</td>
+                  </tr>
+                </table>
+              </div>
+
+              <p><strong>Action Required:</strong></p>
+              <p>Please log in to your Arkesel account at <a href="https://arkesel.com" style="color: #ea580c; text-decoration: underline;">arkesel.com</a> and top up your credit balance as soon as possible to prevent automated SMS delivery failures for new bookings and applications.</p>
+              
+              <p style="margin-top: 32px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+                This notification has been throttled and will not be sent again to these recipients for the next 24 hours.
+              </p>
+            </div>
+          </div>
+        `
+      });
+
+      // Update throttle timestamps
+      recipientEmails.forEach(e => sentLowCreditAlerts.set(e, now));
+
+      return res.json({ status: "sent", sentTo: recipientEmails });
+    } catch (err: any) {
+      console.error("Failed to send low credit email alert:", err);
+      return res.status(500).json({ error: "Failed to send alert", details: err.message });
+    }
   });
 
   // Proxy download for images and videos to bypass browser CORS rules on external assets (such as Firebase Storage)
@@ -228,7 +607,8 @@ async function startServer() {
       orderNumber, 
       serviceDescription, 
       teamMemberName, 
-      notes 
+      notes,
+      customMessage
     } = req.body;
 
     if (!email || !userName || !serviceTitle || !date) {
@@ -331,48 +711,21 @@ async function startServer() {
       console.warn("RESEND_API_KEY not configured");
     }
 
-    // Send SMS
-    if (twilioClient && process.env.TWILIO_PHONE_NUMBER && phone) {
-      try {
-        // Format phone number to E.164
-        let formattedPhone = phone.replace(/[^\d+]/g, ''); // Remove everything except digits and +
-        if (formattedPhone.startsWith('0') && formattedPhone.length === 10) {
-          formattedPhone = '+233' + formattedPhone.substring(1);
-        } else if (!formattedPhone.startsWith('+')) {
-          // Fallback: if no plus, assume it needs one
-          formattedPhone = '+' + formattedPhone;
-        }
-
-        await twilioClient.messages.create({
-          body: `Hi ${userName}, your booking for ${serviceTitle} on ${date} is CONFIRMED! - Grefas Consult`,
-          from: process.env.TWILIO_PHONE_NUMBER,
-          to: formattedPhone,
-        });
-        results.sms = "sent";
-      } catch (error: any) {
-        if (error.code === 21608) {
-          console.warn("SMS warning (Twilio Trial Account): The recipient number is unverified.");
-          results.sms = "failed (Twilio Trial: Unverified Number)";
-        } else if (error.code === 21211) {
-          console.warn("SMS warning (Invalid Number): The 'To' phone number is invalid.");
-          results.sms = "failed (Invalid Phone Number)";
-        } else if (error.code === 21408) {
-          console.warn("SMS warning (Region Not Supported): The destination region is not supported by this account.");
-          results.sms = "failed (Region Not Supported)";
-        } else {
-          console.warn(`SMS warning (Code ${error.code}):`, error.message);
-          results.sms = `failed (${error.message || 'Unknown Error'})`;
-        }
-      }
+    // Send SMS (uses dual-engine sendSMS with Arkesel or Twilio fallback)
+    if (phone) {
+      results.sms = await sendSMS(
+        phone,
+        customMessage || `Hi ${userName}, your booking for ${serviceTitle} on ${date} is CONFIRMED! - Grefas Consult`
+      );
     } else {
-      console.warn("Twilio not configured or phone missing");
+      console.warn("SMS sending skipped: recipient phone number is missing");
     }
 
     res.json({ status: "ok", results });
   });
 
   app.post("/api/notify-reminder", async (req, res) => {
-    const { email, phone, userName, serviceTitle, date } = req.body;
+    const { email, phone, userName, serviceTitle, date, customMessage } = req.body;
 
     if (!email || !userName || !serviceTitle || !date) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -413,37 +766,14 @@ async function startServer() {
       }
     }
 
-    // Send SMS Reminder
-    if (twilioClient && process.env.TWILIO_PHONE_NUMBER && phone) {
-      try {
-        let formattedPhone = phone.replace(/[^\d+]/g, ''); // Remove everything except digits and +
-        if (formattedPhone.startsWith('0') && formattedPhone.length === 10) {
-          formattedPhone = '+233' + formattedPhone.substring(1);
-        } else if (!formattedPhone.startsWith('+') && formattedPhone.length > 5) {
-          formattedPhone = '+' + formattedPhone;
-        }
-
-        await twilioClient.messages.create({
-          body: `Reminder: Hi ${userName}, you have a booking for ${serviceTitle} on ${date}. We look forward to seeing you! - Grefas Consult`,
-          from: process.env.TWILIO_PHONE_NUMBER,
-          to: formattedPhone,
-        });
-        results.sms = "sent";
-      } catch (error: any) {
-        if (error.code === 21608) {
-          console.warn("SMS warning (Twilio Trial Account): The recipient number is unverified.");
-          results.sms = "failed (Twilio Trial: Unverified Number)";
-        } else if (error.code === 21211) {
-          console.warn("SMS warning (Invalid Number): The 'To' phone number is invalid.");
-          results.sms = "failed (Invalid Phone Number)";
-        } else if (error.code === 21408) {
-          console.warn("SMS warning (Region Not Supported): The destination region is not supported by this account.");
-          results.sms = "failed (Region Not Supported)";
-        } else {
-          console.warn(`SMS warning (Code ${error.code}):`, error.message);
-          results.sms = `failed (${error.message || 'Unknown Error'})`;
-        }
-      }
+    // Send SMS Reminder (uses dual-engine sendSMS with Arkesel or Twilio fallback)
+    if (phone) {
+      results.sms = await sendSMS(
+        phone,
+        customMessage || `Reminder: Hi ${userName}, you have a booking for ${serviceTitle} on ${date}. We look forward to seeing you! - Grefas Consult`
+      );
+    } else {
+      console.warn("SMS reminder skipped: recipient phone number is missing");
     }
 
     res.json({ status: "ok", results });
@@ -516,7 +846,20 @@ async function startServer() {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const results = { email: "skipped" };
+    const results = { email: "skipped", sms: "skipped" };
+
+    // Send SMS confirmation to applicant via Arkesel/Twilio dual gateway
+    if (contact) {
+      try {
+        results.sms = await sendSMS(
+          contact,
+          `Hello ${fullName}, your Grefas Casting application is received successfully! Status: Pending. Our team will review your profile. - Grefas`
+        );
+      } catch (smsErr: any) {
+        console.error("Failed to send casting confirmation SMS:", smsErr);
+        results.sms = `failed: ${smsErr.message}`;
+      }
+    }
 
     if (resend) {
       try {

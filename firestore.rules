@@ -252,6 +252,11 @@ service cloud.firestore {
                     request.resource.data.emailAddress is string && request.resource.data.emailAddress.size() > 0;
       allow update, delete: if isStaff();
     }
+
+    match /sms_templates/{templateId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
     
     match /test/connection {
       allow read: if true;

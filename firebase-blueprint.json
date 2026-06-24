@@ -217,9 +217,26 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["fullName", "dateOfBirth", "age", "contact", "address", "whatsappNumber", "emailAddress"]
+    },
+    "SmsTemplate": {
+      "title": "SMS Template",
+      "description": "Customizable SMS templates for bookings, applications, and announcements.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Template key name, e.g. booking_received" },
+        "title": { "type": "string", "description": "Human readable title" },
+        "content": { "type": "string", "description": "Message content with placeholders" },
+        "type": { "type": "string", "description": "Category: booking, casting, announcement" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "title", "content", "type"]
     }
   },
   "firestore": {
+    "/sms_templates/{templateId}": {
+      "schema": "SmsTemplate",
+      "description": "Collection of saved SMS templates"
+    },
     "/services/{serviceId}": {
       "schema": "Service",
       "description": "Collection of services"

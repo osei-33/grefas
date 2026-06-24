@@ -515,6 +515,25 @@ export default function Booking() {
       setLastCreatedBooking(newBookingSnapshot);
       cacheBooking(newBookingSnapshot);
 
+      // Try to load booking_confirmed template from Firestore for custom SMS alert
+      let customSmsMessage = undefined;
+      try {
+        const templatesSnapshot = await getDocs(query(collection(db, 'sms_templates'), where('name', '==', 'booking_confirmed')));
+        if (!templatesSnapshot.empty) {
+          const tplData = templatesSnapshot.docs[0].data();
+          if (tplData && tplData.content) {
+            customSmsMessage = tplData.content
+              .replace(/{name}/g, formData.userName)
+              .replace(/{service}/g, formData.serviceTitle || 'General Consultation')
+              .replace(/{date}/g, dateStr)
+              .replace(/{time}/g, formData.time)
+              .replace(/{orderNumber}/g, newOrderNumber);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch booking_confirmed template, falling back to default SMS.", err);
+      }
+
       // Trigger automatic receipt & confirmation email via Resend API channel
       try {
         await fetch('/api/notify-confirmation', {
@@ -529,7 +548,8 @@ export default function Booking() {
             time: formData.time,
             orderNumber: newOrderNumber,
             teamMemberName: formData.teamMemberName || 'Primary Available Specialist',
-            notes: formData.notes
+            notes: formData.notes,
+            customMessage: customSmsMessage
           })
         });
         console.log("Strategic appointment confirmation receipt dispatched successfully via Resend server gateway!");
