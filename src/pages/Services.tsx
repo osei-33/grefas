@@ -584,12 +584,13 @@ export default function Services() {
   };
 
   const printFilledForm = () => {
-    // Open print view instantly loaded with current form details
-    runIframeSafePrint({ ...formData });
+    setPrintableData({ ...formData });
+    setShowPrintModal(true);
   };
 
   const printEmptyForm = () => {
-    runIframeSafePrint(null);
+    setPrintableData(null);
+    setShowPrintModal(true);
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -1476,154 +1477,48 @@ export default function Services() {
       </div>
     </div>
 
-    {/* Elegant Printable Overlay (Pure-white High-contrast design visible ONLY in Print) */}
-    <div className="hidden print:block absolute inset-0 bg-white text-black p-10 font-sans min-h-screen">
-        <div className="max-w-4xl mx-auto border-4 border-black p-8 space-y-6 bg-white min-h-[95vh] flex flex-col justify-between">
-          <div>
-            {/* Header Letterhead */}
-            <div className="text-center border-b-4 border-black pb-4 relative">
-              <h1 className="text-2xl font-black uppercase tracking-widest text-center text-black">
-                GREFAS ENTERTAINMENT & PRODUCTIONS
-              </h1>
-              <p className="text-xs uppercase tracking-widest font-black mt-1 text-black/80">
-                Official Film Casting & Talent Management Division
-              </p>
-              <div className="mt-4 flex justify-between text-[10px] font-mono font-bold text-black border-t border-black/30 pt-2">
-                <span>INTAKE UNIT: ASHANTI REGION / KUMASI</span>
-                <span>REGISTRATION FORM ID: GEP-CAST-{Math.floor(100000 + Math.random() * 900000)}</span>
-              </div>
-            </div>
 
-            {/* Official Title Bar */}
-            <div className="text-center py-2.5 bg-black text-white px-4 my-6">
-              <h2 className="text-sm font-black uppercase tracking-widest">
-                OFFICIAL ACTOR CASTING & SKIT INTAKE REGISTRY
-              </h2>
-            </div>
-
-            {/* Section 1: Candidate Profile */}
-            <div className="space-y-4 my-6">
-              <h3 className="text-xs font-black uppercase tracking-widest border-b-2 border-black pb-1">
-                1. TALENT BIODATA COGNIZANCE
-              </h3>
-              <div className="grid grid-cols-2 gap-y-5 text-sm pt-2">
-                <div className="col-span-2">
-                  <span className="font-extrabold uppercase text-xs">Legal or Screen Name:</span>
-                  <span className="ml-2 border-b-2 border-black border-dotted pb-0.5 inline-block w-[78%] min-h-[22px] pl-3 font-mono font-bold text-base text-gray-900">
-                    {printableData ? printableData.fullName : '____________________________________________________'}
-                  </span>
-                </div>
-                <div>
-                  <span className="font-extrabold uppercase text-xs">Date of Birth:</span>
-                  <span className="ml-2 border-b-2 border-black border-dotted pb-0.5 inline-block w-[65%] min-h-[20px] pl-3 font-mono">
-                    {printableData ? printableData.dateOfBirth : '__________________________'}
-                  </span>
-                </div>
-                <div>
-                  <span className="font-extrabold uppercase text-xs">Verified Age:</span>
-                  <span className="ml-2 border-b-2 border-black border-dotted pb-0.5 inline-block w-[65%] min-h-[20px] pl-3 font-mono font-bold">
-                    {printableData ? `${printableData.age} years old` : '__________ years old'}
-                  </span>
-                </div>
-                <div className="col-span-2">
-                  <span className="font-extrabold uppercase text-xs text-nowrap">Residential Address:</span>
-                  <span className="ml-2 border-b-2 border-black border-dotted pb-0.5 inline-block w-[78%] min-h-[20px] pl-3 font-mono">
-                    {printableData ? printableData.address : '____________________________________________________'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Contact Vectors */}
-            <div className="space-y-4 my-8">
-              <h3 className="text-xs font-black uppercase tracking-widest border-b-2 border-black pb-1">
-                2. PRIMARY COMMUNICATION OUTREACH
-              </h3>
-              <div className="grid grid-cols-2 gap-y-5 text-sm pt-2">
-                <div>
-                  <span className="font-extrabold uppercase text-xs">Primary Dial:</span>
-                  <span className="ml-2 border-b-2 border-black border-dotted pb-0.5 inline-block w-[68%] min-h-[20px] pl-3 font-mono">
-                    {printableData ? printableData.contact : '__________________________'}
-                  </span>
-                </div>
-                <div>
-                  <span className="font-extrabold uppercase text-xs">WhatsApp Pointer:</span>
-                  <span className="ml-2 border-b-2 border-black border-dotted pb-0.5 inline-block w-[60%] min-h-[20px] pl-3 font-mono">
-                    {printableData ? printableData.whatsappNumber : '__________________________'}
-                  </span>
-                </div>
-                <div className="col-span-2">
-                  <span className="font-extrabold uppercase text-xs">Email Coordinate:</span>
-                  <span className="ml-2 border-b-2 border-black border-dotted pb-0.5 inline-block w-[78%] min-h-[20px] pl-3 font-mono">
-                    {printableData ? printableData.emailAddress : '____________________________________________________'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 3: Performance Assessment (For Casting Director Use Only) */}
-            <div className="space-y-4 my-8">
-              <h3 className="text-xs font-black uppercase tracking-widest border-b-2 border-black pb-1">
-                3. GREFAS AUDITION SCORE & VERDICT (DIRECTOR USE ONLY)
-              </h3>
-              <div className="grid grid-cols-4 gap-4 text-[10px] text-center pt-2">
-                <div className="border-2 border-black p-2.5 rounded bg-gray-50">
-                  <div className="font-black uppercase tracking-wider text-[9px] mb-1">ACTING RANGE</div>
-                  <div className="text-xs font-mono font-bold mt-2">A / B / C / D</div>
-                </div>
-                <div className="border-2 border-black p-2.5 rounded bg-gray-50">
-                  <div className="font-black uppercase tracking-wider text-[9px] mb-1">VOICE & DIALECT</div>
-                  <div className="text-xs font-mono font-bold mt-2">A / B / C / D</div>
-                </div>
-                <div className="border-2 border-black p-2.5 rounded bg-gray-50">
-                  <div className="font-black uppercase tracking-wider text-[9px] mb-1">CAMERA LOOKS</div>
-                  <div className="text-xs font-mono font-bold mt-2">A / B / C / D</div>
-                </div>
-                <div className="border-2 border-black p-2.5 rounded bg-gray-50">
-                  <div className="font-black uppercase tracking-wider text-[9px] mb-1">IMPROVISATION</div>
-                  <div className="text-xs font-mono font-bold mt-2">A / B / C / D</div>
-                </div>
-              </div>
-              <div className="text-xs space-y-2 mt-4 leading-relaxed bg-gray-50 border-2 border-slate-300 p-3 rounded">
-                <p className="font-black uppercase tracking-widest text-[10px]">CASTING DIRECTOR SPECIAL REMARKS / NOTES:</p>
-                <div className="min-h-[50px] p-1 text-black/50 text-[10px] italic font-mono">
-                  [Note physical casting suitability, comedic skit timing points, facial expressiveness, or role recommendations...]
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 4: Sign-off Commitment */}
-          <div className="space-y-5 pt-4 border-t-2 border-black/30 mt-auto">
-            <p className="text-[10px] text-black/90 leading-relaxed text-center font-bold">
-              By signing below, the talent attests that all self-reported credentials and contact pointers recorded in the Grefas Casting registration system are accurate. Complete recordings are safely stored behind database encryptions.
-            </p>
-            <div className="flex justify-between text-xs pt-4 font-mono font-bold">
-              <div className="w-1/2">
-                <div className="border-t-2 border-black w-[80%] pt-1 mt-6 text-center uppercase text-[10px]">
-                  Candidate Signature
-                </div>
-                <div className="text-[9px] text-black/60 text-center w-[80%] mt-1">
-                  Date: ____ / ____ / ________
-                </div>
-              </div>
-              <div className="w-1/2 flex flex-col items-end">
-                <div className="border-t-2 border-black w-[80%] pt-1 mt-6 text-center uppercase text-[10px]">
-                  Authorized Director
-                </div>
-                <div className="text-[9px] text-black/60 text-center w-[85%] mt-1">
-                  Grefas Verification Stamp
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Elegant Responsive Printable Preview Modal (Pure design visible on screen, hidden in print, handles all devices) */}
       <AnimatePresence>
         {showPrintModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto print:hidden">
+            <style>{`
+              @media print {
+                html, body {
+                  background: white !important;
+                  color: black !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  width: 100% !important;
+                  height: auto !important;
+                  min-height: 0 !important;
+                }
+                body * {
+                  visibility: hidden !important;
+                }
+                #print-preview-modal-document-sheet,
+                #print-preview-modal-document-sheet * {
+                  visibility: visible !important;
+                }
+                #print-preview-modal-document-sheet {
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  height: auto !important;
+                  min-height: 0 !important;
+                  border: none !important;
+                  box-shadow: none !important;
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  justify-content: space-between !important;
+                }
+              }
+            `}</style>
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}

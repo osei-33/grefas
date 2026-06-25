@@ -1275,6 +1275,22 @@ function AdminServiceRequests() {
                             await updateDoc(doc(db, 'service_intakes', item.id), {
                               status: statusOption
                             });
+
+                            // Send SMS notification via the backend
+                            try {
+                              await fetch('/api/notify-intake-status', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  fullName: item.fullName,
+                                  contact: item.contact,
+                                  status: statusOption
+                                })
+                              });
+                            } catch (smsErr) {
+                              console.warn('Failed to dispatch status update SMS:', smsErr);
+                            }
+
                             toast.success(`Applicant status updated to "${statusOption}"`);
                           } catch (err) {
                             handleFirestoreError(err, OperationType.UPDATE, `service_intakes/${item.id}`);

@@ -430,14 +430,14 @@ async function startServer() {
       customMessage
     } = req.body;
 
-    if (!email || !userName || !serviceTitle || !date) {
+    if (!userName || !serviceTitle || !date) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     const results = { email: "skipped", sms: "skipped" };
 
     // Send Email
-    if (resend) {
+    if (resend && email) {
       try {
         const displayDate = time ? `${date} at ${time}` : date;
         const displayOrder = orderNumber ? `#${orderNumber}` : 'Pending Confirmation';
@@ -651,6 +651,38 @@ async function startServer() {
     res.json({ status: "ok", results });
   });
 
+  app.post("/api/notify-intake-status", async (req, res) => {
+    const { fullName, contact, status } = req.body;
+
+    if (!fullName || !contact || !status) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const results = { sms: "skipped" };
+
+    if (contact) {
+      try {
+        let msg = "";
+        if (status === "Approved") {
+          msg = `Congratulations ${fullName}! Your Grefas Casting/Intake registration has been APPROVED. We will get in touch with you soon! - Grefas`;
+        } else if (status === "In Review") {
+          msg = `Hi ${fullName}, your Grefas Casting/Intake registration is now In Review. We are carefully evaluating your details! - Grefas`;
+        } else if (status === "Rejected") {
+          msg = `Hi ${fullName}, thank you for your interest. Unfortunately, your Grefas Casting/Intake application was not approved at this time. - Grefas`;
+        } else {
+          msg = `Hi ${fullName}, your Grefas Casting/Intake registration status has been updated to: ${status}. - Grefas`;
+        }
+
+        results.sms = await sendSMS(contact, msg);
+      } catch (smsErr: any) {
+        console.error("Failed to send status update SMS:", smsErr);
+        results.sms = `failed: ${smsErr.message}`;
+      }
+    }
+
+    res.json({ status: "ok", results });
+  });
+
   app.post("/api/notify-intake", async (req, res) => {
     const { 
       fullName, 
@@ -662,8 +694,8 @@ async function startServer() {
       emailAddress 
     } = req.body;
 
-    if (!fullName || !emailAddress) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (!fullName) {
+      return res.status(400).json({ error: "Missing required fields: fullName" });
     }
 
     const results = { email: "skipped", sms: "skipped" };
@@ -681,7 +713,7 @@ async function startServer() {
       }
     }
 
-    if (resend) {
+    if (resend && emailAddress) {
       try {
         // 1. Send warning/confirmation email to the applicant
         await resend.emails.send({
