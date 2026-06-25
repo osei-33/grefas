@@ -1389,12 +1389,7 @@ function ManageServices() {
       }
 
       if (result.results?.sms && result.results.sms.startsWith("failed")) {
-        let errorMsg = "Reminder sent via email, but SMS failed.";
-        if (result.results.sms.includes("Unverified Number")) {
-          errorMsg = "Reminder sent via email, but SMS failed because the recipient number is NOT verified in your Twilio Trial console.";
-        } else {
-          errorMsg = `Reminder sent via email, but SMS failed: ${result.results.sms}`;
-        }
+        const errorMsg = `Reminder sent via email, but SMS failed: ${result.results.sms}`;
         toast.warning(errorMsg, { duration: 8000 });
       } else {
         toast.success("Reminder sent successfully!");
@@ -3270,24 +3265,24 @@ function ManageSettings() {
             <AlertCircle className="h-5 w-5" /> SMS Notification Help
           </CardTitle>
           <CardDescription>
-            Important information about sending SMS notifications with a Twilio Trial account.
+            Information about sending SMS notifications via Arkesel.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-muted-foreground">
           <p>
-            You are currently using a <strong>Twilio Trial Account</strong>. Twilio restricts trial accounts from sending SMS messages to numbers that have not been manually verified.
+            This application uses the <strong>Arkesel SMS Gateway</strong> (preferred local provider in Ghana) to dispatch transactional SMS notifications.
           </p>
           <div className="bg-muted/50 p-4 rounded-lg space-y-2">
-            <p className="font-bold text-foreground">To fix "Unverified Number" errors:</p>
+            <p className="font-bold text-foreground">To configure SMS delivery:</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li>Log in to your <a href="https://www.twilio.com/console" target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">Twilio Console</a>.</li>
-              <li>Go to <strong>Phone Numbers &gt; Verified Caller IDs</strong>.</li>
-              <li>Add and verify the phone numbers you want to test with.</li>
-              <li>Alternatively, upgrade your Twilio account to remove this restriction.</li>
+              <li>Log in to your <a href="https://arkesel.com" target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">Arkesel Dashboard</a>.</li>
+              <li>Go to <strong>API Settings</strong> to obtain your API Key.</li>
+              <li>Register a customized <strong>Sender ID</strong> (such as Grefas) on Arkesel.</li>
+              <li>Add the credentials to your platform settings or environment variables.</li>
             </ol>
           </div>
           <p className="text-xs italic">
-            Note: Email notifications (via Resend) and in-app notifications are not affected by this restriction.
+            Note: Email notifications (via Resend) and in-app notifications are also fully active to keep customers informed.
           </p>
         </CardContent>
       </Card>
@@ -3650,10 +3645,7 @@ function ManageBookings() {
       }
 
       if (result.results?.sms && result.results.sms.startsWith("failed")) {
-        let errorMsg = "Booking confirmed, but SMS alert failed.";
-        if (result.results.sms.includes("Unverified Number")) {
-          errorMsg = "Booking confirmed, but SMS failed because the phone number is not verified in Twilio Console.";
-        }
+        const errorMsg = `Booking confirmed, but SMS alert failed: ${result.results.sms}`;
         toast.warning(errorMsg);
       }
     } catch (error) {
@@ -3719,13 +3711,9 @@ function ManageBookings() {
               }, { merge: true });
 
               if (result.results?.sms && result.results.sms.startsWith("failed")) {
-                let errorMsg = "Booking confirmed, but SMS failed.";
-                if (result.results.sms.includes("Unverified Number")) {
-                  errorMsg = "Booking confirmed, but SMS failed because the recipient number is NOT verified in your Twilio Trial console.";
-                } else if (result.results.sms.includes("Invalid Phone Number")) {
+                let errorMsg = `Booking confirmed, but SMS failed: ${result.results.sms}`;
+                if (result.results.sms.includes("Invalid Phone Number")) {
                   errorMsg = "Booking confirmed, but SMS failed due to an invalid phone number format.";
-                } else {
-                  errorMsg = `Booking confirmed, but SMS failed: ${result.results.sms}`;
                 }
                 
                 toast.warning(errorMsg, { duration: 8000 });
@@ -3791,12 +3779,7 @@ function ManageBookings() {
       }
 
       if (result.results?.sms && result.results.sms.startsWith("failed")) {
-        let errorMsg = "Reminder sent via email, but SMS failed.";
-        if (result.results.sms.includes("Unverified Number")) {
-          errorMsg = "Reminder sent via email, but SMS failed because the recipient number is NOT verified in your Twilio Trial console.";
-        } else {
-          errorMsg = `Reminder sent via email, but SMS failed: ${result.results.sms}`;
-        }
+        const errorMsg = `Reminder sent via email, but SMS failed: ${result.results.sms}`;
         toast.warning(errorMsg, { duration: 8000 });
       } else {
         toast.success("Reminder sent successfully!");

@@ -58,7 +58,7 @@ interface SmsLog {
   recipient: string;
   message: string;
   status: string;
-  gateway: 'Arkesel' | 'Twilio';
+  gateway: 'Arkesel';
   timestamp: string;
 }
 
@@ -71,10 +71,6 @@ interface SmsStatus {
     senderId: string;
     balance: any;
     balanceError: string | null;
-  };
-  twilio: {
-    status: string;
-    hasKey: boolean;
   };
 }
 
@@ -313,7 +309,7 @@ export default function SmsDashboard() {
       if (res.ok) {
         const data = await res.json();
         if (data.results && data.results.sms && !data.results.sms.startsWith('failed') && data.results.sms !== 'skipped') {
-          toast.success(`Verification SMS sent successfully via ${data.results.sms === 'sent' ? 'Arkesel Gateway' : 'Twilio Fallback'}!`);
+          toast.success('Verification SMS sent successfully via Arkesel Gateway!');
           setTestMessage('');
           setTimeout(() => fetchSmsData(true), 1500);
         } else {
@@ -578,7 +574,7 @@ export default function SmsDashboard() {
       </div>
 
       {/* Gateway Status Indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="max-w-xl">
         {/* Arkesel Gateway Card */}
         <Card className="bg-card border-border shadow-xs hover:border-orange-500/30 transition-all">
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
@@ -612,43 +608,6 @@ export default function SmsDashboard() {
             <div className="flex justify-between">
               <span className="text-muted-foreground">Gateway Base:</span>
               <span className="font-semibold text-foreground text-[10px]">sms.arkesel.com/api/v2</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Twilio Fallback Card */}
-        <Card className="bg-card border-border shadow-xs hover:border-blue-500/30 transition-all">
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                <Sparkles className="h-4 w-4 text-blue-600" /> Twilio International Fallback
-              </CardTitle>
-              <CardDescription className="text-xs font-medium text-muted-foreground mt-0.5">
-                Global fallback backup engine triggered automatically on Arkesel failure
-              </CardDescription>
-            </div>
-            {status?.twilio?.hasKey ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-500/10 text-blue-600 dark:bg-blue-500/20">
-                <ShieldCheck className="h-3 w-3" /> READY
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-500 dark:bg-amber-500/20">
-                <AlertCircle className="h-3 w-3" /> UNCONFIGURED
-              </span>
-            )}
-          </CardHeader>
-          <CardContent className="text-xs space-y-2 font-mono bg-muted/25 p-4 rounded-b-xl border-t border-border/40">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Account Status:</span>
-              <span className="font-semibold text-foreground">{status?.twilio?.status || 'Inactive'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Failover Mode:</span>
-              <span className="font-semibold text-green-600">Automatic Hot Fallback</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Region:</span>
-              <span className="font-semibold text-foreground">Global/Multi-region</span>
             </div>
           </CardContent>
         </Card>

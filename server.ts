@@ -2,12 +2,12 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { Resend } from "resend";
-import twilio from "twilio";
 import dotenv from "dotenv";
 import compression from "compression";
 import fs from "fs";
 import { v2 as cloudinary } from "cloudinary";
 import multer from "multer";
+import { sendArkeselSms, checkArkeselBalance } from "./src/lib/arkeselSms";
 
 // Node version check
 const nodeVersion = process.versions.node.split(".")[0];
@@ -37,9 +37,6 @@ const distPath = path.resolve(process.cwd(), "dist");
 const publicPath = path.resolve(process.cwd(), "public");
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-const twilioClient = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) 
-  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN) 
-  : null;
 
 // SMS Logging System
 interface SmsLog {
@@ -47,7 +44,7 @@ interface SmsLog {
   recipient: string;
   message: string;
   status: string; // 'sent', 'failed (reason)'
-  gateway: 'Arkesel' | 'Twilio';
+  gateway: 'Arkesel';
   timestamp: string;
 }
 
@@ -69,14 +66,6 @@ const smsLogs: SmsLog[] = [
     timestamp: new Date(Date.now() - 3600000 * 5).toISOString() // 5 hours ago
   },
   {
-    id: "log_3",
-    recipient: "+233271122334",
-    message: "Hi Abena, your booking for Tax Consultation on 2026-06-24 is CONFIRMED! - Grefas Consult",
-    status: "sent (fallback)",
-    gateway: "Twilio",
-    timestamp: new Date(Date.now() - 3600000 * 12).toISOString() // 12 hours ago
-  },
-  {
     id: "log_4",
     recipient: "+233201112223",
     message: "Reminder: Hi John, you have a booking for Corporate Strategy Session on 2026-06-24. We look forward to seeing you! - Grefas Consult",
@@ -86,7 +75,7 @@ const smsLogs: SmsLog[] = [
   }
 ];
 
-function logSmsAttempt(recipient: string, message: string, status: string, gateway: 'Arkesel' | 'Twilio') {
+function logSmsAttempt(recipient: string, message: string, status: string, gateway: 'Arkesel') {
   smsLogs.unshift({
     id: "log_" + Math.random().toString(36).substring(2, 9),
     recipient,
@@ -100,23 +89,10 @@ function logSmsAttempt(recipient: string, message: string, status: string, gatew
   }
 }
 
-// Cleans Arkesel API key: strips base64 encoding or basic auth colons
+// Cleans Arkesel API key: strips basic auth colons
 function getCleanArkeselKey(rawKey: string): string {
   if (!rawKey) return "";
   let key = rawKey.trim();
-  
-  // Only decode if it is exactly the default fallback key
-  if (key === "OnJGNTZEM2hQOG1peWloUFY=") {
-    try {
-      const decoded = Buffer.from(key, "base64").toString("utf-8").trim();
-      if (decoded && decoded.startsWith(":")) {
-        return decoded.substring(1);
-      }
-      return decoded;
-    } catch (e) {
-      // ignore parsing error, use as-is
-    }
-  }
 
   // Strip leading colon if any (common in decoded basic auth tokens like :api_key)
   if (key.startsWith(":")) {
@@ -126,109 +102,11 @@ function getCleanArkeselKey(rawKey: string): string {
   return key;
 }
 
-// Dual-Engine SMS Sender: Uses Arkesel Ghanaian local SMS Gateway (preferred) or Twilio (fallback)
+// SMS Sender: Uses Arkesel Ghanaian local SMS Gateway
 async function sendSMS(phone: string, message: string): Promise<string> {
-  const rawApiKey = process.env.ARKESEL_SMS_API_KEY || "OnJGNTZEM2hQOG1peWloUFY=";
-  const apiKey = getCleanArkeselKey(rawApiKey);
-  let senderId = (process.env.ARKESEL_SENDER_ID || "Grefas").trim().substring(0, 11).trim();
-
-  if (apiKey) {
-    try {
-      // Arkesel v2 accepts digits, starting with or without country code. Let's clean the number.
-      let formattedPhone = phone.replace(/[^\d+]/g, ''); // Keep digits and +
-      if (formattedPhone.startsWith('0') && formattedPhone.length === 10) {
-        formattedPhone = '233' + formattedPhone.substring(1);
-      } else if (formattedPhone.startsWith('+')) {
-        formattedPhone = formattedPhone.substring(1);
-      }
-
-      console.log(`[SMS] Sending via Arkesel v2 to ${formattedPhone}...`);
-
-      const response = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
-        method: "POST",
-        headers: {
-          "api-key": apiKey,
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify({
-          sender: senderId,
-          message: message,
-          recipients: [formattedPhone]
-        })
-      });
-
-      const resText = await response.text();
-      let resJson: any = {};
-      try {
-        resJson = JSON.parse(resText);
-      } catch {
-        // ignore and use text
-      }
-
-      console.log("[SMS] Arkesel response:", resJson || resText);
-
-      if (response.ok && (resJson.status === 'success' || resJson.code === 1000 || resText.toLowerCase().includes('success'))) {
-        logSmsAttempt(phone, message, "sent", "Arkesel");
-        return "sent";
-      } else {
-        const errMsg = resJson.message || resJson.error || resText || "Unknown Arkesel error";
-        throw new Error(errMsg);
-      }
-    } catch (err: any) {
-      console.error("[SMS] Arkesel SMS send failure, trying Twilio fallback...", err);
-      logSmsAttempt(phone, message, `failed (${err.message || 'Error'})`, "Arkesel");
-      return await sendTwilioSMS(phone, message, err.message || "Arkesel error");
-    }
-  } else {
-    logSmsAttempt(phone, message, "failed (No Arkesel key, falling back)", "Arkesel");
-    return await sendTwilioSMS(phone, message, "No Arkesel Key");
-  }
-}
-
-async function sendTwilioSMS(phone: string, message: string, priorError: string): Promise<string> {
-  if (twilioClient && process.env.TWILIO_PHONE_NUMBER) {
-    try {
-      let formattedPhone = phone.replace(/[^\d+]/g, ''); // Remove everything except digits and +
-      if (formattedPhone.startsWith('0') && formattedPhone.length === 10) {
-        formattedPhone = '+233' + formattedPhone.substring(1);
-      } else if (!formattedPhone.startsWith('+')) {
-        formattedPhone = '+' + formattedPhone;
-      }
-
-      console.log(`[SMS] Sending fallback via Twilio to ${formattedPhone}...`);
-
-      await twilioClient.messages.create({
-        body: message,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        to: formattedPhone,
-      });
-      logSmsAttempt(phone, message, "sent (fallback)", "Twilio");
-      return "sent";
-    } catch (error: any) {
-      let failStatus = "failed";
-      if (error.code === 21608) {
-        console.warn("SMS warning (Twilio Trial Account): The recipient number is unverified.");
-        failStatus = `failed (Twilio Trial: Unverified Number, prior error: ${priorError})`;
-      } else if (error.code === 21211) {
-        console.warn("SMS warning (Invalid Number): The 'To' phone number is invalid.");
-        failStatus = `failed (Invalid Phone Number, prior error: ${priorError})`;
-      } else if (error.code === 21408) {
-        console.warn("SMS warning (Region Not Supported): The destination region is not supported by this account.");
-        failStatus = `failed (Region Not Supported, prior error: ${priorError})`;
-      } else {
-        console.warn(`SMS warning (Code ${error.code}):`, error.message);
-        failStatus = `failed (${error.message || 'Unknown Error'}, prior error: ${priorError})`;
-      }
-      logSmsAttempt(phone, message, failStatus, "Twilio");
-      return failStatus;
-    }
-  } else {
-    console.warn("Twilio not configured or phone missing");
-    const failStatus = `failed (Not configured, prior error: ${priorError})`;
-    logSmsAttempt(phone, message, failStatus, "Twilio");
-    return failStatus;
-  }
+  const result = await sendArkeselSms(phone, message);
+  logSmsAttempt(phone, message, result.status, "Arkesel");
+  return result.status;
 }
 
 async function startServer() {
@@ -254,8 +132,7 @@ async function startServer() {
     const apiKey = getCleanArkeselKey(rawApiKey);
     const senderId = (process.env.ARKESEL_SENDER_ID || "Grefas").trim().substring(0, 11).trim();
 
-    const hasArkeselKey = !!process.env.ARKESEL_SMS_API_KEY;
-    const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
+    const hasArkeselKey = !!process.env.ARKESEL_SMS_API_KEY || apiKey === "OnJGNTZEM2hQOG1peWloUFY=";
 
     const maskedKey = apiKey 
       ? apiKey.substring(0, 4) + "..." + apiKey.substring(apiKey.length - 4)
@@ -263,67 +140,13 @@ async function startServer() {
 
     let balance: any = null;
     let balanceError: string | null = null;
-    let rawResponse: string | null = null;
     let arkeselStatus = "Inactive";
 
     if (hasArkeselKey && apiKey) {
-      arkeselStatus = "Configured";
-      // Try to fetch balance from Arkesel V2 Clients Balance
-      try {
-        console.log("[SMS Status] Fetching balance from Arkesel V2 Clients Balance...");
-        const response = await fetch("https://sms.arkesel.com/api/v2/clients/balance", {
-          method: "GET",
-          headers: {
-            "api-key": apiKey,
-            "Accept": "application/json"
-          }
-        });
-        rawResponse = await response.text();
-        console.log("[SMS Status] Raw v2 clients balance response:", rawResponse);
-        
-        if (response.ok) {
-          try {
-            const data = JSON.parse(rawResponse);
-            // Expected format: { status: "success", data: { balance: "X.XX", sms_balance: "..." } } or similar
-            if (data && data.data !== undefined) {
-              balance = data.data;
-            } else {
-              balance = data;
-            }
-          } catch (e) {
-            balance = { raw: rawResponse };
-          }
-        } else {
-          throw new Error(`v2 endpoint returned status: ${response.status}`);
-        }
-      } catch (err: any) {
-        console.warn("[SMS Status] Arkesel V2 clients balance check failed, trying v1 style bal-inquiry...", err.message);
-        balanceError = err.message;
-
-        // Try V1 style bal-inquiry
-        try {
-          const v1Url = `https://sms.arkesel.com/sms/api?action=bal-inquiry&api_key=${encodeURIComponent(apiKey)}&to_json=1`;
-          const v1Res = await fetch(v1Url);
-          const v1Text = await v1Res.text();
-          console.log("[SMS Status] Raw v1 bal-inquiry response:", v1Text);
-          if (v1Res.ok) {
-            try {
-              const data = JSON.parse(v1Text);
-              balance = data;
-              balanceError = null; // worked
-            } catch {
-              // try parsing as standard text/XML
-              balance = { balance: v1Text };
-              balanceError = null;
-            }
-          } else {
-            throw new Error(`v1 endpoint returned status: ${v1Res.status}`);
-          }
-        } catch (v1Err: any) {
-          console.error("[SMS Status] Arkesel V1 balance check failed too:", v1Err.message);
-          balanceError = `V2 Error: ${err.message}. V1 Error: ${v1Err.message}`;
-        }
-      }
+      const balanceResult = await checkArkeselBalance();
+      arkeselStatus = balanceResult.status;
+      balance = balanceResult.balance || null;
+      balanceError = balanceResult.error || null;
     } else if (apiKey) {
       // Demo/Fallback Mode when API key is not configured by user
       arkeselStatus = "Demo Mode";
@@ -345,10 +168,6 @@ async function startServer() {
         senderId,
         balance,
         balanceError
-      },
-      twilio: {
-        status: hasTwilio ? "Configured" : "Inactive",
-        hasKey: hasTwilio
       }
     });
   });
@@ -711,11 +530,12 @@ async function startServer() {
       console.warn("RESEND_API_KEY not configured");
     }
 
-    // Send SMS (uses dual-engine sendSMS with Arkesel or Twilio fallback)
+    // Send SMS (uses Arkesel SMS gateway)
     if (phone) {
+      const defaultSms = `Hi ${userName}, your booking ${orderNumber ? `(#${orderNumber}) ` : ''}for ${serviceTitle} on ${date} is CONFIRMED! - Grefas Consult`;
       results.sms = await sendSMS(
         phone,
-        customMessage || `Hi ${userName}, your booking for ${serviceTitle} on ${date} is CONFIRMED! - Grefas Consult`
+        customMessage || defaultSms
       );
     } else {
       console.warn("SMS sending skipped: recipient phone number is missing");
@@ -766,7 +586,7 @@ async function startServer() {
       }
     }
 
-    // Send SMS Reminder (uses dual-engine sendSMS with Arkesel or Twilio fallback)
+    // Send SMS Reminder (uses Arkesel SMS gateway)
     if (phone) {
       results.sms = await sendSMS(
         phone,
@@ -848,7 +668,7 @@ async function startServer() {
 
     const results = { email: "skipped", sms: "skipped" };
 
-    // Send SMS confirmation to applicant via Arkesel/Twilio dual gateway
+    // Send SMS confirmation to applicant via Arkesel SMS gateway
     if (contact) {
       try {
         results.sms = await sendSMS(
