@@ -230,9 +230,76 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "title", "content", "type"]
+    },
+    "OfficialLetter": {
+      "title": "Official Letter",
+      "description": "An official letter sent to an organisation, individual or institution with letterhead and watermark.",
+      "type": "object",
+      "properties": {
+        "recipientType": { "type": "string", "enum": ["organisation", "individual", "institution"] },
+        "recipientName": { "type": "string" },
+        "recipientAddress": { "type": "string" },
+        "date": { "type": "string" },
+        "subject": { "type": "string" },
+        "salutation": { "type": "string" },
+        "body": { "type": "string" },
+        "signatoryName": { "type": "string" },
+        "signatoryTitle": { "type": "string" },
+        "letterheadType": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recipientType", "recipientName", "recipientAddress", "date", "subject", "salutation", "body", "signatoryName", "signatoryTitle", "letterheadType", "createdAt"]
+    },
+    "NewsletterCampaign": {
+      "title": "Newsletter Campaign",
+      "description": "A sent newsletter campaign or email update broadcast to multiple clients.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "subject": { "type": "string" },
+        "preheader": { "type": "string" },
+        "body": { "type": "string" },
+        "templateType": { "type": "string" },
+        "recipientGroup": { "type": "string" },
+        "recipientCount": { "type": "number" },
+        "logoStyle": { "type": "string" },
+        "themeAccent": { "type": "string" },
+        "ctaEnabled": { "type": "boolean" },
+        "ctaText": { "type": "string" },
+        "ctaUrl": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "subject", "body", "recipientGroup", "recipientCount", "sentAt"]
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "A client testimonial or feedback",
+      "type": "object",
+      "properties": {
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "rating": { "type": "number" },
+        "text": { "type": "string" },
+        "approved": { "type": "boolean" },
+        "avatarUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorName", "text", "approved"]
     }
   },
   "firestore": {
+    "/testimonials/{testimonialId}": {
+      "schema": "Testimonial",
+      "description": "Collection of client testimonials"
+    },
+    "/newsletter_campaigns/{campaignId}": {
+      "schema": "NewsletterCampaign",
+      "description": "Collection of sent newsletter and email broadcast updates"
+    },
+    "/letters/{letterId}": {
+      "schema": "OfficialLetter",
+      "description": "Collection of sent official letters"
+    },
     "/sms_templates/{templateId}": {
       "schema": "SmsTemplate",
       "description": "Collection of saved SMS templates"

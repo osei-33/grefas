@@ -337,6 +337,11 @@ export default function Services() {
         <head>
           <title>Grefas Entertainment - Casting Intake Registry</title>
           <style>
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              box-sizing: border-box;
+            }
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               padding: 40px;
@@ -347,7 +352,7 @@ export default function Services() {
               line-height: 1.5;
             }
             .border-box {
-              border: 3px solid #000;
+              border: 3px solid #000 !important;
               padding: 30px;
               border-radius: 6px;
               min-height: 90vh;
@@ -358,7 +363,7 @@ export default function Services() {
             }
             .header {
               text-align: center;
-              border-bottom: 4px solid #000;
+              border-bottom: 4px solid #000 !important;
               padding-bottom: 15px;
               margin-bottom: 25px;
               position: relative;
@@ -385,13 +390,13 @@ export default function Services() {
               font-family: monospace;
               font-size: 10px;
               font-weight: bold;
-              border-top: 1px solid #ddd;
+              border-top: 1px solid #ddd !important;
               padding-top: 6px;
             }
             .registry-tag {
               text-align: center;
-              background-color: #000;
-              color: #fff;
+              background-color: #000 !important;
+              color: #fff !important;
               padding: 10px;
               margin: 20px 0;
               border-radius: 4px;
@@ -411,7 +416,7 @@ export default function Services() {
               font-weight: 950;
               text-transform: uppercase;
               letter-spacing: 1px;
-              border-bottom: 2px solid #000;
+              border-bottom: 2px solid #000 !important;
               padding-bottom: 3px;
               margin-bottom: 12px;
             }
@@ -445,7 +450,7 @@ export default function Services() {
             }
             .field-value {
               flex-grow: 1;
-              border-bottom: 1px solid #444;
+              border-bottom: 1px solid #444 !important;
               padding-bottom: 2px;
               font-family: monospace;
               padding-left: 5px;
@@ -458,14 +463,14 @@ export default function Services() {
             .passport-box {
               width: 105px;
               height: 125px;
-              border: 2px dashed #000;
+              border: 2px dashed #000 !important;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
               text-align: center;
               padding: 2px;
-              background-color: #fafafa;
+              background-color: #fafafa !important;
               flex-shrink: 0;
               box-sizing: border-box;
             }
@@ -477,9 +482,9 @@ export default function Services() {
               margin-top: 10px;
             }
             .score-card {
-              border: 2px solid #000;
+              border: 2px solid #000 !important;
               padding: 8px;
-              background-color: #fafafa;
+              background-color: #fafafa !important;
               border-radius: 4px;
             }
             .score-label {
@@ -495,15 +500,15 @@ export default function Services() {
             }
             .remarks-box {
               margin-top: 15px;
-              border: 2px solid #000;
+              border: 2px solid #000 !important;
               padding: 12px;
-              background-color: #fafafa;
+              background-color: #fafafa !important;
               border-radius: 4px;
               font-size: 11px;
             }
             .sign-off {
               margin-top: auto;
-              border-top: 1px solid #eee;
+              border-top: 1px solid #eee !important;
               padding-top: 15px;
             }
             .signatures-grid {
@@ -515,7 +520,7 @@ export default function Services() {
               font-family: monospace;
             }
             .sig-line {
-              border-top: 2px solid #000;
+              border-top: 2px solid #000 !important;
               width: 180px;
               text-align: center;
               padding-top: 5px;
@@ -523,7 +528,7 @@ export default function Services() {
               font-size: 9px;
             }
             .no-print-btn-bar {
-              background-color: #f1f5f9;
+              background-color: #f1f5f9 !important;
               padding: 12px 20px;
               border-radius: 8px;
               margin-bottom: 20px;
@@ -531,8 +536,8 @@ export default function Services() {
               justify-content: flex-end;
             }
             .print-btn {
-              background-color: #ea580c;
-              color: white;
+              background-color: #ea580c !important;
+              color: white !important;
               border: none;
               padding: 8px 16px;
               font-weight: bold;
@@ -557,16 +562,16 @@ export default function Services() {
           </div>
           <div class="border-box">
             <div>
-              <div class="header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #000; padding-bottom: 15px; margin-bottom: 25px; text-align: left;">
+              <div class="header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #000 !important; padding-bottom: 15px; margin-bottom: 25px; text-align: left;">
                 <div style="flex: 1; text-align: left;">
                   <h1 style="margin: 0; font-size: 22px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">GREFAS ENTERTAINMENT & PRODUCTIONS</h1>
                   <p style="margin: 5px 0 0 0; font-size: 11px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; color: #333;">Official Film Casting & Talent Management Division</p>
-                  <div class="meta-bar" style="margin-top: 10px; display: flex; justify-content: space-between; font-family: monospace; font-size: 9px; font-weight: bold; border-top: 1px solid #ddd; padding-top: 6px;">
+                  <div class="meta-bar" style="margin-top: 10px; display: flex; justify-content: space-between; font-family: monospace; font-size: 9px; font-weight: bold; border-top: 1px solid #ddd !important; padding-top: 6px;">
                     <span>INTAKE REGION: ASHANTI, GHANA</span>
                     <span>TIME: ${regDate}</span>
                   </div>
                 </div>
-                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-left: 20px; border: 2px solid #000; padding: 4px; background-color: #fff; border-radius: 4px; width: 70px; height: 70px; flex-shrink: 0;">
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-left: 20px; border: 2px solid #000 !important; padding: 4px; background-color: #fff !important; border-radius: 4px; width: 70px; height: 70px; flex-shrink: 0;">
                   <img src="${qrCodeUrl}" style="height: 60px; width: 60px; display: block;" alt="Verify" />
                 </div>
               </div>
@@ -706,18 +711,26 @@ export default function Services() {
               var images = document.getElementsByTagName('img');
               var loadedCount = 0;
               var totalImages = images.length;
+              var printTriggered = false;
+
+              function triggerPrint() {
+                if (printTriggered) return;
+                printTriggered = true;
+                window.print();
+              }
+
+              // Safety timeout: If images fail or load extremely slow, trigger print anyway after 1.5 seconds!
+              setTimeout(triggerPrint, 1500);
               
               if (totalImages === 0) {
-                setTimeout(function() { window.print(); }, 300);
+                triggerPrint();
                 return;
               }
               
               function onImageLoad() {
                 loadedCount++;
                 if (loadedCount === totalImages) {
-                  setTimeout(function() {
-                    window.print();
-                  }, 800);
+                  setTimeout(triggerPrint, 500);
                 }
               }
               
@@ -736,6 +749,264 @@ export default function Services() {
     `);
     printWindow.document.close();
     toast.success('Triggered safe printing in new tab!');
+  };
+
+  const downloadAsPDF = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const data = printableData || {
+        fullName: '',
+        dateOfBirth: '',
+        age: 0,
+        address: '',
+        contact: '',
+        whatsappNumber: '',
+        emailAddress: '',
+        passportPhoto: '',
+        signature: ''
+      };
+
+      // Elegant Outer Border
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.8);
+      doc.rect(15, 15, 180, 267);
+
+      // Header separation line
+      doc.setLineWidth(1.2);
+      doc.line(15, 48, 195, 48);
+
+      // Brand Title text
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(0, 0, 0);
+      doc.text('GREFAS ENTERTAINMENT & PRODUCTIONS', 18, 25);
+
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(50, 50, 50);
+      doc.text('Official Film Casting & Talent Management Division', 18, 30);
+
+      // Subheader thin lines and region
+      doc.setLineWidth(0.2);
+      doc.setDrawColor(180, 180, 180);
+      doc.line(18, 35, 150, 35);
+
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 100, 100);
+      doc.text('INTAKE REGION: ASHANTI, GHANA', 18, 41);
+      doc.text('FORM CODE: GEP-CAST-648123', 85, 41);
+      
+      // QR Code Generator (Embedded dynamic QR or placeholder)
+      try {
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.origin + '/services')}`;
+        const img = new Image();
+        img.src = qrUrl;
+        img.crossOrigin = "Anonymous";
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve; // Continue on error if network is down or CORS block
+        });
+        if (img.complete && img.naturalWidth > 0) {
+          doc.addImage(img, 'PNG', 162, 17, 26, 26);
+          doc.setFont('Helvetica', 'bold');
+          doc.setFontSize(5);
+          doc.setTextColor(80, 80, 80);
+          doc.text('VERIFY INTAKE', 175, 45, { align: 'center' });
+        } else {
+          doc.rect(162, 17, 26, 26);
+          doc.setFont('Helvetica', 'bold');
+          doc.setFontSize(6);
+          doc.setTextColor(100, 100, 100);
+          doc.text('[QR CODE]', 175, 30, { align: 'center' });
+        }
+      } catch (e) {
+        console.warn("Could not insert dynamic QR to PDF", e);
+      }
+
+      // Registry Banner Black Block
+      doc.setFillColor(0, 0, 0);
+      doc.rect(18, 52, 174, 8, 'F');
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.text('ACTOR CASTING & SKIT INTEGRATION FORM', 105, 57.5, { align: 'center' });
+
+      // Reset text color to black
+      doc.setTextColor(0, 0, 0);
+
+      // Section 1 Header
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.text('1. TALENT PROFILE REGISTRATION', 18, 70);
+      doc.setLineWidth(0.5);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(18, 72, 192, 72);
+
+      // Registration fields
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text('Candidate Name:', 18, 81);
+      doc.text('Birth Date:', 18, 89);
+      doc.text('Verified Age:', 18, 97);
+      doc.text('Location (Address):', 18, 105);
+
+      // User values
+      doc.setFont('Courier', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(40, 40, 40);
+      doc.text(data.fullName || '____________________________________________________', 50, 81);
+      doc.text(data.dateOfBirth || '_______________________', 50, 89);
+      doc.text(data.age ? `${data.age} years old` : '________ years old', 50, 97);
+      doc.text(data.address || '____________________________________________________', 50, 105);
+
+      // Passport Photo Frame & Box
+      if (data.passportPhoto && data.passportPhoto.startsWith('data:')) {
+        try {
+          doc.addImage(data.passportPhoto, 'JPEG', 157, 76, 25, 30);
+        } catch (err) {
+          console.warn("Failed rendering passport photo in jsPDF:", err);
+          doc.setLineWidth(0.2);
+          doc.setDrawColor(100, 100, 100);
+          doc.rect(157, 76, 25, 30);
+          doc.setFont('Helvetica', 'bold');
+          doc.setFontSize(6);
+          doc.text('PASSPORT', 169.5, 88, { align: 'center' });
+          doc.text('PHOTO HERE', 169.5, 92, { align: 'center' });
+        }
+      } else {
+        // Draw dashed passport photo box
+        doc.setLineWidth(0.3);
+        doc.setDrawColor(50, 50, 50);
+        doc.rect(157, 76, 25, 30);
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(6);
+        doc.text('AFFIX', 169.5, 87, { align: 'center' });
+        doc.text('PASSPORT', 169.5, 91, { align: 'center' });
+        doc.text('PHOTO HERE', 169.5, 95, { align: 'center' });
+      }
+
+      // Section 2 Header
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(0, 0, 0);
+      doc.text('2. OFFICIAL COMMUNICATION HUBS', 18, 118);
+      doc.setLineWidth(0.5);
+      doc.line(18, 120, 192, 120);
+
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text('Phone Connection:', 18, 129);
+      doc.text('WhatsApp Link:', 18, 137);
+      doc.text('Email Coordinates:', 18, 145);
+
+      doc.setFont('Courier', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(40, 40, 40);
+      doc.text(data.contact || '_______________________', 50, 129);
+      doc.text(data.whatsappNumber || '_______________________', 50, 137);
+      doc.text(data.emailAddress || '____________________________________________________', 50, 145);
+
+      // Section 3 Header
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(0, 0, 0);
+      doc.text('3. SCREEN TEST & AUDITION REPORT (OFFICIAL)', 18, 158);
+      doc.setLineWidth(0.5);
+      doc.line(18, 160, 192, 160);
+
+      // Assessment indicators
+      const boxWidth = 38;
+      const boxHeight = 14;
+      const boxY = 166;
+      const labels = ['ACTING RANGE', 'COMMUNICATION', 'CAMERA GLAM', 'PRESENCE'];
+      
+      labels.forEach((label, i) => {
+        const boxX = 18 + (i * 44);
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.3);
+        doc.rect(boxX, boxY, boxWidth, boxHeight);
+        
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(50, 50, 50);
+        doc.text(label, boxX + (boxWidth / 2), boxY + 5.5, { align: 'center' });
+        
+        doc.setFont('Courier', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text('A / B / C / D', boxX + (boxWidth / 2), boxY + 11, { align: 'center' });
+      });
+
+      // Evaluation Comments box
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.3);
+      doc.rect(18, 186, 174, 25);
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(0, 0, 0);
+      doc.text('AUDITION STAGE COMMENTS:', 21, 192);
+
+      doc.setFont('Courier', 'italic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 100, 100);
+      doc.text('[Assessment of cast suitability for comedies, skits, main features or modeling roles...]', 21, 200);
+
+      // Section 4 Policy / Signature Information
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(60, 60, 60);
+      doc.text('By signing, the talent verifies that self-submitted communication channels and credentials are fully correct and active.', 105, 226, { align: 'center' });
+
+      // Sign-off signature lines
+      doc.setLineWidth(0.4);
+      doc.setDrawColor(0, 0, 0);
+      doc.line(25, 252, 90, 252);
+      doc.line(120, 252, 185, 252);
+
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      doc.text('CANDIDATE SIGNATURE', 57.5, 257, { align: 'center' });
+      doc.text('AUTHORIZED OFFICER / STAMP', 152.5, 257, { align: 'center' });
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Date: ____ / ____ / ________', 57.5, 262, { align: 'center' });
+      doc.text('Grefas Production Official', 152.5, 262, { align: 'center' });
+
+      // Embed signature image if it exists
+      if (data.signature && data.signature.startsWith('data:')) {
+        try {
+          doc.addImage(data.signature, 'PNG', 35, 232, 45, 18);
+        } catch (err) {
+          console.warn("Failed rendering signature inside jsPDF:", err);
+        }
+      }
+
+      // Footer notice
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(120, 120, 120);
+      doc.text('This is an official document of GREFAS ENTERTAINMENT & PRODUCTIONS. All rights reserved. Registered in Ghana.', 105, 276, { align: 'center' });
+
+      const fileName = data.fullName 
+        ? `Grefas-Casting-Form-${data.fullName.trim().replace(/\s+/g, '-')}.pdf`
+        : 'Grefas-Casting-Form-Empty.pdf';
+
+      doc.save(fileName);
+      toast.success('Official PDF casting form downloaded successfully!');
+    } catch (err: any) {
+      console.error("PDF generation failed:", err);
+      toast.error(`Could not generate PDF: ${err.message || 'Unknown error'}`);
+    }
   };
 
   const printFilledForm = () => {
@@ -2047,6 +2318,13 @@ export default function Services() {
                 >
                   <LucideIcons.Printer className="h-4.5 w-4.5" />
                   <span>Launch System Print</span>
+                </Button>
+                <Button
+                  onClick={downloadAsPDF}
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-950 text-white font-black h-12 uppercase tracking-wider rounded-xl shadow-lg cursor-pointer flex items-center justify-center gap-2 transition-all border border-zinc-700"
+                >
+                  <LucideIcons.Download className="h-4.5 w-4.5" />
+                  <span>Download PDF</span>
                 </Button>
                 <Button
                   onClick={() => setShowPrintModal(false)}

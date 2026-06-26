@@ -61,6 +61,7 @@ service cloud.firestore {
            request.auth.token.email == "asantegrice@gmail.com" || 
            request.auth.token.email == "asantegrifice@gmail.com" || 
            request.auth.token.email == "oseikwameemmanuel33@gmail.com")) ||
+         (request.auth.token != null && request.auth.token.email in ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"]) ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
@@ -72,7 +73,8 @@ service cloud.firestore {
     }
 
     function isStaff() {
-      return isAdmin() || isEditor();
+      return isAdmin() || isEditor() ||
+        (isAuthenticated() && request.auth.token != null && request.auth.token.email in ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"]);
     }
 
     function isOwner(userId) {
@@ -135,6 +137,15 @@ service cloud.firestore {
              (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() < 120));
     }
 
+    function isValidTestimonial(data) {
+      return data.authorName is string && data.authorName.size() > 0 && data.authorName.size() < 100 &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 2000 &&
+             (!('authorRole' in data) || (data.authorRole is string && data.authorRole.size() < 100)) &&
+             (!('rating' in data) || (data.rating is number && data.rating >= 1 && data.rating <= 5)) &&
+             (!('approved' in data) || data.approved is bool) &&
+             (!('createdAt' in data) || data.createdAt == request.time);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -142,8 +153,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isAuthenticated() && (isOwner(userId) || isStaff());
       allow list: if isAuthenticated() && (isStaff() || ('email' in request.auth.token && resource.data.email == request.auth.token.email));
-      allow create: if (isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'guest') || isAdmin();
-      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data));
+      allow create: if (isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'guest') || isAdmin() || (isAuthenticated() && isOwner(userId) && request.resource.data.email in ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"] && request.resource.data.role == 'admin');
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data)) || (isAuthenticated() && isOwner(userId) && request.resource.data.email in ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"] && request.resource.data.role == 'admin');
       allow delete: if isAdmin();
     }
 
@@ -162,6 +173,10 @@ service cloud.firestore {
     match /newsletter/{subscriberId} {
       allow read, update, delete: if isStaff();
       allow create: if isValidNewsletterSubscriber(request.resource.data);
+    }
+
+    match /newsletter_campaigns/{campaignId} {
+      allow read, write: if isStaff();
     }
 
     match /gallery/{itemId} {
@@ -249,9 +264,19 @@ service cloud.firestore {
       allow update, delete: if isStaff();
     }
 
+    match /testimonials/{testimonialId} {
+      allow read: if true;
+      allow create: if isValidTestimonial(request.resource.data);
+      allow update, delete: if isStaff();
+    }
+
     match /sms_templates/{templateId} {
       allow read: if true;
       allow write: if isStaff();
+    }
+
+    match /letters/{letterId} {
+      allow read, write: if isStaff();
     }
     
     match /test/connection {

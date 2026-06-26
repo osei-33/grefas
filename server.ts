@@ -121,6 +121,19 @@ async function startServer() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Get Email API configuration and health status
+  app.get("/api/email-status", (req, res) => {
+    res.json({
+      status: "ok",
+      emailApi: {
+        configured: !!process.env.RESEND_API_KEY,
+        provider: "Resend",
+        domain: "resend.dev",
+        status: process.env.RESEND_API_KEY ? "Active" : "Not Configured"
+      }
+    });
+  });
+
   // Get in-memory SMS logs
   app.get("/api/sms-logs", (req, res) => {
     res.json({ status: "ok", logs: smsLogs });
@@ -834,6 +847,48 @@ async function startServer() {
     }
 
     res.json({ status: "ok", results });
+  });
+
+  app.post("/api/letters/generate", async (req, res) => {
+    const { recipientName, recipientType, recipientAddress, subject, additionalContext, tone } = req.body;
+    
+    if (!recipientName || !subject) {
+      return res.status(400).json({ error: "Missing required fields: recipientName or subject" });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: "GEMINI_API_KEY environment variable is not configured." });
+    }
+
+    try {
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      const prompt = `Write a professional official business letter from "Grefas Entertainment & Productions" (also known as Grefas Consult) to an ${recipientType || "individual/organisation"} named "${recipientName}" located at "${recipientAddress || "N/A"}".
+The letter subject is "${subject}".
+${additionalContext ? `Additional background context and key points to cover: "${additionalContext}"` : ""}
+${tone ? `Tone: ${tone}` : "Tone: Professional, authoritative, and polite"}
+
+Please generate ONLY the letter body paragraphs. DO NOT generate any letterhead, date, recipient address, salutation (like "Dear ..."), or sign-off (like "Sincerely ...") as these will be added automatically by the system.
+Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and fully developed.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+      });
+
+      res.json({ text: response.text });
+    } catch (err: any) {
+      console.error("Gemini letter generation failed:", err);
+      res.status(500).json({ error: err.message || "Failed to generate letter content" });
+    }
   });
 
   // Vite middleware for development

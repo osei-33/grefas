@@ -1,11 +1,11 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react';
-import { ArrowRight, Star, Users, Briefcase, Play, Quote, Loader2, Zap } from 'lucide-react';
+import { ArrowRight, Star, Users, Briefcase, Play, Quote, Loader2, Zap, X, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useLanguage } from '@/lib/LanguageContext';
 import SEO from '@/components/SEO';
 import BlogSection from '@/components/BlogSection';
@@ -18,6 +18,97 @@ export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [quote, setQuote] = useState<string>("");
   const [loadingQuote, setLoadingQuote] = useState(true);
+  const [testimonials, setTestimonials] = useState<any[]>([]);
+  const [activeTestimonial, setActiveTestimonial] = useState(0);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [submitFeedback, setSubmitFeedback] = useState({ authorName: '', authorRole: '', rating: 5, text: '' });
+  const [submitStatus, setSubmitStatus] = useState<{ loading: boolean; success: boolean; error: string | null }>({
+    loading: false,
+    success: false,
+    error: null,
+  });
+
+  const fallbackTestimonials = [
+    {
+      id: 'f1',
+      authorName: 'Sarah Mensah',
+      authorRole: 'Director, Ashanti Media',
+      rating: 5,
+      text: 'Grefas Consult transformed our media strategy. Their team\'s professionalism and deep connection in Nyinahin-Ashanti made our launch seamless and highly successful.',
+      avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=150'
+    },
+    {
+      id: 'f2',
+      authorName: 'David Boateng',
+      authorRole: 'HR Manager, Apex Ghana',
+      rating: 5,
+      text: 'The entertainment experience Grefas brought to our corporate retreat was outstanding. Highly energetic, perfectly organized, and absolute fun!',
+      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150'
+    },
+    {
+      id: 'f3',
+      authorName: 'Dr. Elizabeth Osei',
+      authorRole: 'Founder, Ashanti Health Initiatives',
+      rating: 5,
+      text: 'Exceptional consulting! They helped us streamline our operations and local community engagement with absolute precision and genuine care.',
+      avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=150'
+    }
+  ];
+
+  const displayTestimonials = testimonials.length > 0 ? testimonials : fallbackTestimonials;
+
+  useEffect(() => {
+    const q = query(collection(db, 'testimonials'), where('approved', '==', true));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setTestimonials(items);
+    }, (error) => {
+      console.debug("Home testimonial feed issue (handled):", error);
+      handleFirestoreError(error, OperationType.LIST, 'testimonials');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (displayTestimonials.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveTestimonial((prev) => (prev + 1) % displayTestimonials.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [displayTestimonials.length]);
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!submitFeedback.authorName || !submitFeedback.text) {
+      setSubmitStatus({ loading: false, success: false, error: 'Please fill in your name and feedback.' });
+      return;
+    }
+
+    setSubmitStatus({ loading: true, success: false, error: null });
+    try {
+      await addDoc(collection(db, 'testimonials'), {
+        authorName: submitFeedback.authorName,
+        authorRole: submitFeedback.authorRole || 'Client',
+        rating: Number(submitFeedback.rating),
+        text: submitFeedback.text,
+        approved: false, // Must be approved by admin
+        createdAt: serverTimestamp()
+      });
+      setSubmitStatus({ loading: false, success: true, error: null });
+      setSubmitFeedback({ authorName: '', authorRole: '', rating: 5, text: '' });
+      setTimeout(() => {
+        setShowReviewModal(false);
+        setSubmitStatus({ loading: false, success: false, error: null });
+      }, 2000);
+    } catch (error: any) {
+      console.error("Testimonial submission error:", error);
+      setSubmitStatus({ loading: false, success: false, error: error.message || 'Failed to submit review.' });
+    }
+  };
+
   const heroRef = useRef<HTMLElement>(null);
 
   const { scrollYProgress } = useScroll({
@@ -285,6 +376,228 @@ export default function Home() {
 
       {/* Blog Section at the bottom of the page */}
       <BlogSection />
+
+      {/* Testimonials Carousel Section */}
+      <section className="bg-zinc-900 py-24 border-t border-zinc-800 text-white relative overflow-hidden">
+        {/* Subtle decorative background blur */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-orange-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-black tracking-tight sm:text-4xl">Client Testimonials</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-zinc-400 text-sm">
+              Hear directly from Grefas clients about their business growth, events, and consultations.
+            </p>
+          </div>
+
+          {/* Testimonial Active Slider Box */}
+          <div className="relative min-h-[300px] flex flex-col justify-center items-center">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTestimonial}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.5 }}
+                className="w-full text-center max-w-3xl flex flex-col items-center"
+              >
+                <Quote className="h-12 w-12 text-orange-500 opacity-60 mb-6" />
+                <p className="text-xl sm:text-2xl font-medium italic text-zinc-100 leading-relaxed max-w-2xl px-4">
+                  "{displayTestimonials[activeTestimonial]?.text}"
+                </p>
+
+                {/* Stars */}
+                <div className="flex gap-1 mt-6 justify-center text-amber-400">
+                  {Array.from({ length: displayTestimonials[activeTestimonial]?.rating || 5 }).map((_, idx) => (
+                    <Star key={idx} className="h-5 w-5 fill-current" />
+                  ))}
+                </div>
+
+                {/* Author Metadata */}
+                <div className="mt-6 flex items-center gap-3">
+                  {displayTestimonials[activeTestimonial]?.avatarUrl ? (
+                    <img
+                      src={displayTestimonials[activeTestimonial].avatarUrl}
+                      alt={displayTestimonials[activeTestimonial].authorName}
+                      className="h-10 w-10 rounded-full object-cover border border-orange-500/30"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 rounded-full bg-orange-600/20 text-orange-500 flex items-center justify-center font-bold border border-orange-600/30">
+                      {displayTestimonials[activeTestimonial]?.authorName?.charAt(0)}
+                    </div>
+                  )}
+                  <div className="text-left">
+                    <p className="font-bold text-sm text-zinc-100">{displayTestimonials[activeTestimonial]?.authorName}</p>
+                    <p className="text-xs text-zinc-400">{displayTestimonials[activeTestimonial]?.authorRole}</p>
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+
+            {/* Slider Controls */}
+            <div className="mt-12 flex items-center justify-center gap-4">
+              <button
+                onClick={() => setActiveTestimonial((prev) => (prev - 1 + displayTestimonials.length) % displayTestimonials.length)}
+                className="p-2 rounded-full border border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
+                aria-label="Previous testimonial"
+              >
+                <ArrowRight className="h-4 w-4 rotate-180" />
+              </button>
+              
+              {/* Dots */}
+              <div className="flex gap-1.5">
+                {displayTestimonials.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setActiveTestimonial(idx)}
+                    className={`h-2 rounded-full transition-all ${
+                      activeTestimonial === idx ? 'w-6 bg-orange-500' : 'w-2 bg-zinc-700 hover:bg-zinc-600'
+                    }`}
+                    aria-label={`Go to slide ${idx + 1}`}
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={() => setActiveTestimonial((prev) => (prev + 1) % displayTestimonials.length)}
+                className="p-2 rounded-full border border-zinc-700 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
+                aria-label="Next testimonial"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-16 text-center">
+            <Button
+              onClick={() => setShowReviewModal(true)}
+              variant="outline"
+              className="border-orange-500/30 text-orange-500 hover:bg-orange-500 hover:text-white transition-all"
+            >
+              Share Your Experience
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Review Submission Modal */}
+      <AnimatePresence>
+        {showReviewModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl p-6 relative text-white"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-lg font-black tracking-tight">Write a Testimonial</h3>
+                  <p className="text-xs text-zinc-400 mt-1">Submit feedback about Grefas services</p>
+                </div>
+                <button
+                  onClick={() => setShowReviewModal(false)}
+                  className="p-1.5 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {submitStatus.success ? (
+                <div className="py-12 text-center">
+                  <div className="mx-auto h-12 w-12 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center mb-4">
+                    <CheckCircle className="h-6 w-6" />
+                  </div>
+                  <h4 className="font-bold text-zinc-100">Review Submitted!</h4>
+                  <p className="text-sm text-zinc-400 mt-2 max-w-xs mx-auto">
+                    Thank you! Your testimonial has been submitted successfully and is waiting for administrator approval.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleReviewSubmit} className="space-y-4">
+                  {submitStatus.error && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg text-xs font-bold">
+                      {submitStatus.error}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Your Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={submitFeedback.authorName}
+                        onChange={(e) => setSubmitFeedback({ ...submitFeedback, authorName: e.target.value })}
+                        placeholder="John Doe"
+                        className="w-full bg-zinc-800 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Your Role/Title</label>
+                      <input
+                        type="text"
+                        value={submitFeedback.authorRole}
+                        onChange={(e) => setSubmitFeedback({ ...submitFeedback, authorRole: e.target.value })}
+                        placeholder="Client, Entrepreneur"
+                        className="w-full bg-zinc-800 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Rating (1-5 Stars)</label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setSubmitFeedback({ ...submitFeedback, rating: star })}
+                          className={`p-1 rounded-md transition-all ${
+                            submitFeedback.rating >= star ? 'text-amber-400' : 'text-zinc-600'
+                          }`}
+                        >
+                          <Star className="h-6 w-6 fill-current" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Feedback / Testimonial *</label>
+                    <textarea
+                      required
+                      rows={4}
+                      value={submitFeedback.text}
+                      onChange={(e) => setSubmitFeedback({ ...submitFeedback, text: e.target.value })}
+                      placeholder="Share details of your experience with us..."
+                      className="w-full bg-zinc-800 border border-zinc-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <Button
+                      type="submit"
+                      disabled={submitStatus.loading}
+                      className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                    >
+                      {submitStatus.loading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Submitting Feedback...
+                        </>
+                      ) : (
+                        'Submit Testimonial'
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* CTA Section */}
       <section className="bg-orange-600 py-20 text-white">
