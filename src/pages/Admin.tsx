@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -1182,24 +1182,34 @@ function AdminServiceRequests() {
           {filteredIntakes.map((item) => (
             <Card key={item.id} className="border border-border/60 bg-card hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
               <CardHeader className="pb-3 border-b border-border/40">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <CardTitle className="text-sm font-bold truncate max-w-[180px]" title={item.fullName}>
-                      {item.fullName}
-                    </CardTitle>
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      <span className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 font-bold px-1.5 py-0.5 rounded font-mono">
-                        {item.age} Years Old
-                      </span>
-                      <span>•</span>
-                      <span>DOB: {item.dateOfBirth}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {item.passportPhoto ? (
+                      <div className="h-12 w-12 rounded-lg overflow-hidden border border-border shrink-0 bg-muted">
+                        <img src={item.passportPhoto} className="h-full w-full object-cover" alt="Passport" />
+                      </div>
+                    ) : (
+                      <div className="h-12 w-12 rounded-lg border border-border/80 shrink-0 bg-muted flex items-center justify-center text-muted-foreground">
+                        <UserIcon className="h-5 w-5 opacity-55" />
+                      </div>
+                    )}
+                    <div className="min-w-0 space-y-1">
+                      <CardTitle className="text-sm font-bold truncate max-w-[140px]" title={item.fullName}>
+                        {item.fullName}
+                      </CardTitle>
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground flex-wrap">
+                        <span className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 font-bold px-1.5 py-0.5 rounded font-mono shrink-0">
+                          {item.age} Yrs
+                        </span>
+                        <span className="font-mono text-[10px]">{item.dateOfBirth}</span>
+                      </div>
                     </div>
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setDeleteId(item.id)}
-                    className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                    className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>

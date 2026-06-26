@@ -6,10 +6,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import * as LucideIcons from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, onSnapshot, query, orderBy, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, where, getDocs } from 'firebase/firestore';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import { compressImage, blobToBase64 } from '@/lib/utils';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
@@ -31,6 +32,7 @@ export default function Services() {
     address: '',
     whatsappNumber: '',
     emailAddress: '',
+    passportPhoto: '', // Custom Base64 encoded passport size photo
     // Step 2: Project Requirements / Casting Specifications
     roleType: 'Actor / Actress',
     experienceLevel: 'Intermediate',
@@ -628,12 +630,29 @@ export default function Services() {
 
       await addDoc(collection(db, path), intakeData);
 
+      // Try to load casting_received template from Firestore for custom SMS alert
+      let customSmsMessage = undefined;
+      try {
+        const templatesSnapshot = await getDocs(query(collection(db, 'sms_templates'), where('name', '==', 'casting_received')));
+        if (!templatesSnapshot.empty) {
+          const tplData = templatesSnapshot.docs[0].data();
+          if (tplData && tplData.content) {
+            customSmsMessage = tplData.content.replace(/{name}/g, formData.fullName);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch casting_received template, falling back to default SMS.", err);
+      }
+
       // Trigger server-side notifications via email proxy
       try {
         await fetch('/api/notify-intake', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(intakeData)
+          body: JSON.stringify({
+            ...intakeData,
+            customMessage: customSmsMessage
+          })
         });
       } catch (err) {
         console.warn('Failed to send email notification:', err);
@@ -653,6 +672,7 @@ export default function Services() {
         address: '',
         whatsappNumber: '',
         emailAddress: '',
+        passportPhoto: '',
         roleType: 'Actor / Actress',
         experienceLevel: 'Intermediate',
         preferredGenres: [] as string[],
@@ -1107,6 +1127,73 @@ export default function Services() {
                             </span>
                           </div>
                           <p className="text-[10px] text-muted-foreground/80 italic">Calculated dynamically for booking roles</p>
+                        </div>
+
+                        {/* Passport Size Photo Field */}
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <LucideIcons.Camera className="h-3.5 w-3.5 text-orange-600" />
+                            Passport Size Photo
+                          </label>
+                          <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-xl border border-dashed border-border/80 bg-muted/20">
+                            {formData.passportPhoto ? (
+                              <div className="relative h-28 w-24 rounded-lg overflow-hidden border-2 border-orange-600 shadow-md bg-muted flex-none">
+                                <img src={formData.passportPhoto} className="h-full w-full object-cover" alt="Passport size preview" />
+                                <button
+                                  type="button"
+                                  onClick={() => handleInputChange('passportPhoto', '')}
+                                  className="absolute top-1 right-1 bg-black/75 hover:bg-black text-white p-1 rounded-full transition-all cursor-pointer shadow"
+                                  title="Remove Photo"
+                                >
+                                  <LucideIcons.X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="h-28 w-24 rounded-lg border border-dashed border-border flex flex-col items-center justify-center bg-muted/40 text-muted-foreground flex-none">
+                                <LucideIcons.User className="h-8 w-8 opacity-40 mb-1" />
+                                <span className="text-[9px] font-bold text-center leading-tight">No Photo<br/>Uploaded</span>
+                              </div>
+                            )}
+                            <div className="flex-1 space-y-2 text-center sm:text-left">
+                              <p className="text-xs font-bold text-foreground">
+                                Upload a clear, front-facing square portrait photo.
+                              </p>
+                              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                This photo will be embedded into your official printable audition card. Supports JPEG, PNG (max 5MB).
+                              </p>
+                              <div className="flex flex-wrap gap-2 justify-center sm:justify-start pt-1">
+                                <input
+                                  type="file"
+                                  id="passport-photo-picker"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    try {
+                                      toast.loading('Optimizing passport photo...', { id: 'passport-compress' });
+                                      const compressed = await compressImage(file, 400, 400, 0.8);
+                                      const base64 = await blobToBase64(compressed);
+                                      handleInputChange('passportPhoto', base64);
+                                      toast.success('Passport photo attached successfully!', { id: 'passport-compress' });
+                                    } catch (err) {
+                                      console.error(err);
+                                      toast.error('Failed to process image. Please try again.', { id: 'passport-compress' });
+                                    }
+                                  }}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => document.getElementById('passport-photo-picker')?.click()}
+                                  className="border-border hover:bg-muted font-bold text-xs"
+                                >
+                                  <LucideIcons.Upload className="h-3.5 w-3.5 mr-1" /> Choose File
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1591,30 +1678,43 @@ export default function Services() {
                       <h3 className="text-[10px] sm:text-xs font-black uppercase tracking-widest border-b-2 border-black pb-0.5">
                         1. TALENT PROFILE REGISTRATION
                       </h3>
-                      <div className="grid grid-cols-2 gap-y-3 text-xs pt-1">
-                        <div className="col-span-2 flex flex-wrap items-end gap-1.5">
-                          <span className="font-extrabold uppercase text-[10px] text-black">Candidate Name:</span>
-                          <span className="flex-1 border-b border-black/40 pb-0.5 font-mono font-extrabold text-sm text-neutral-900 px-2 min-w-[200px]">
-                            {printableData ? printableData.fullName : '____________________________________________________'}
-                          </span>
+                      <div className="flex gap-4 items-start pt-1">
+                        <div className="flex-1 grid grid-cols-2 gap-y-3 text-xs">
+                          <div className="col-span-2 flex flex-wrap items-end gap-1.5">
+                            <span className="font-extrabold uppercase text-[10px] text-black">Candidate Name:</span>
+                            <span className="flex-1 border-b border-black/40 pb-0.5 font-mono font-extrabold text-sm text-neutral-900 px-2 min-w-[200px]">
+                              {printableData ? printableData.fullName : '____________________________________________________'}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-end gap-1.5">
+                            <span className="font-extrabold uppercase text-[10px] text-black">Birth Date:</span>
+                            <span className="flex-1 border-b border-black/40 pb-0.5 font-mono px-2 text-neutral-800">
+                              {printableData ? printableData.dateOfBirth : '_______________________'}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-end gap-1.5">
+                            <span className="font-extrabold uppercase text-[10px] text-black">Verified Age:</span>
+                            <span className="flex-1 border-b border-black/40 pb-0.5 font-mono font-bold px-2 text-neutral-900">
+                              {printableData ? `${printableData.age} years old` : '________ years old'}
+                            </span>
+                          </div>
+                          <div className="col-span-2 flex flex-wrap items-end gap-1.5">
+                            <span className="font-extrabold uppercase text-[10px] text-black">Location (Address):</span>
+                            <span className="flex-1 border-b border-black/40 pb-0.5 font-mono px-2 text-neutral-800 min-w-[200px]">
+                              {printableData ? printableData.address : '____________________________________________________'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap items-end gap-1.5">
-                          <span className="font-extrabold uppercase text-[10px] text-black">Birth Date:</span>
-                          <span className="flex-1 border-b border-black/40 pb-0.5 font-mono px-2 text-neutral-800">
-                            {printableData ? printableData.dateOfBirth : '_______________________'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-end gap-1.5">
-                          <span className="font-extrabold uppercase text-[10px] text-black">Verified Age:</span>
-                          <span className="flex-1 border-b border-black/40 pb-0.5 font-mono font-bold px-2 text-neutral-900">
-                            {printableData ? `${printableData.age} years old` : '________ years old'}
-                          </span>
-                        </div>
-                        <div className="col-span-2 flex flex-wrap items-end gap-1.5">
-                          <span className="font-extrabold uppercase text-[10px] text-black">Location (Address):</span>
-                          <span className="flex-1 border-b border-black/40 pb-0.5 font-mono px-2 text-neutral-800 min-w-[200px]">
-                            {printableData ? printableData.address : '____________________________________________________'}
-                          </span>
+
+                        {/* Passport size photo space */}
+                        <div className="w-[105px] h-[125px] border-2 border-dashed border-black flex flex-col items-center justify-center text-center p-0.5 bg-neutral-50 shrink-0 shadow-xs relative">
+                          {printableData && printableData.passportPhoto ? (
+                            <img src={printableData.passportPhoto} className="w-full h-full object-cover" alt="Passport size photo" />
+                          ) : (
+                            <div className="text-[7.5px] font-black uppercase leading-tight text-neutral-500">
+                              Affix<br/>Passport<br/>Size Photo<br/>Here
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

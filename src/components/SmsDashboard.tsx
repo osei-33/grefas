@@ -5,7 +5,8 @@ import {
   CardContent, 
   CardDescription, 
   CardHeader, 
-  CardTitle 
+  CardTitle,
+  CardFooter
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,6 +104,12 @@ export default function SmsDashboard() {
   const [templates, setTemplates] = useState<SmsTemplate[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<SmsTemplate | null>(null);
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
+
+  // Auto-trigger SMS templates editing state
+  const [autoConfirmed, setAutoConfirmed] = useState('');
+  const [autoCasting, setAutoCasting] = useState('');
+  const [autoReminder, setAutoReminder] = useState('');
+  const [isSavingAuto, setIsSavingAuto] = useState<Record<string, boolean>>({});
   
   // New Template Form
   const [tplName, setTplName] = useState('');
@@ -223,6 +230,52 @@ export default function SmsDashboard() {
 
     return unsubscribeTemplates;
   }, []);
+
+  // Initialize automatic templates form states when Firestore loads them
+  useEffect(() => {
+    if (templates.length > 0) {
+      const confirmed = templates.find(t => t.name === 'booking_confirmed');
+      const casting = templates.find(t => t.name === 'casting_received');
+      const reminder = templates.find(t => t.name === 'booking_reminder');
+
+      if (confirmed && !autoConfirmed) {
+        setAutoConfirmed(confirmed.content);
+      }
+      if (casting && !autoCasting) {
+        setAutoCasting(casting.content);
+      }
+      if (reminder && !autoReminder) {
+        setAutoReminder(reminder.content);
+      }
+    }
+  }, [templates]);
+
+  const handleSaveAutoTemplate = async (name: string, content: string, title: string, type: 'booking' | 'casting') => {
+    setIsSavingAuto(prev => ({ ...prev, [name]: true }));
+    try {
+      const existingTpl = templates.find(t => t.name === name);
+      if (existingTpl) {
+        await updateDoc(doc(db, 'sms_templates', existingTpl.id), {
+          content,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        await addDoc(collection(db, 'sms_templates'), {
+          name,
+          title,
+          content,
+          type,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      toast.success(`Automatic "${title}" SMS template updated successfully!`);
+    } catch (err) {
+      console.error(`Error updating auto template ${name}:`, err);
+      toast.error(`Failed to update "${title}" template.`);
+    } finally {
+      setIsSavingAuto(prev => ({ ...prev, [name]: false }));
+    }
+  };
 
   // Trigger low credit warning & email notification if balance drops below threshold
   useEffect(() => {
@@ -676,12 +729,15 @@ export default function SmsDashboard() {
 
       {/* Tabs Layout for Templates, Broadcasting, Settings, and Logs */}
       <Tabs defaultValue="dispatcher" className="w-full space-y-6">
-        <TabsList className="grid grid-cols-2 md:grid-cols-4 bg-muted/50 p-1 rounded-xl border border-border/60">
+        <TabsList className="grid grid-cols-2 md:grid-cols-5 bg-muted/50 p-1 rounded-xl border border-border/60">
           <TabsTrigger value="dispatcher" className="text-xs font-bold gap-1.5">
             <Send className="h-3.5 w-3.5" /> SMS Dispatcher
           </TabsTrigger>
           <TabsTrigger value="templates" className="text-xs font-bold gap-1.5">
             <Layout className="h-3.5 w-3.5" /> SMS Templates
+          </TabsTrigger>
+          <TabsTrigger value="triggers" className="text-xs font-bold gap-1.5">
+            <MessageSquare className="h-3.5 w-3.5" /> Auto-SMS Triggers
           </TabsTrigger>
           <TabsTrigger value="broadcast" className="text-xs font-bold gap-1.5">
             <Users className="h-3.5 w-3.5" /> Group Broadcast
@@ -1098,6 +1154,209 @@ export default function SmsDashboard() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        </TabsContent>
+
+        {/* Tab: Automatic Trigger SMS Configurations */}
+        <TabsContent value="triggers" className="space-y-6 animate-fade-in">
+          <div>
+            <h3 className="text-lg font-bold text-foreground">Automatic SMS Trigger Templates</h3>
+            <p className="text-xs text-muted-foreground font-medium">
+              Configure and customize the actual SMS messages sent automatically in response to customer bookings and client intake registrations.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* 1. Booking Confirmation SMS */}
+            <Card className="border-border shadow-xs bg-card flex flex-col justify-between">
+              <div>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-orange-500/10 text-orange-600 shrink-0">
+                      <CheckCircle className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <CardTitle className="text-sm font-bold text-foreground">Booking Confirmed SMS</CardTitle>
+                      <CardDescription className="text-[11px] font-semibold text-muted-foreground">Key: booking_confirmed</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Sent automatically to customers as soon as they book a consultation or planning session.
+                  </p>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-extrabold text-muted-foreground flex justify-between">
+                      <span>Message Body</span>
+                      <span className="text-[10px] text-orange-600 lowercase">{autoConfirmed.length}/160 chars</span>
+                    </label>
+                    <Textarea 
+                      placeholder="Hi {name}, your booking for {service} on {date} at {time} is confirmed! Ref: {orderNumber}. - Grefas"
+                      value={autoConfirmed}
+                      onChange={(e) => setAutoConfirmed(e.target.value)}
+                      className="min-h-[100px] text-xs font-mono leading-relaxed"
+                      maxLength={160}
+                    />
+                  </div>
+
+                  <div className="p-3 bg-muted/45 border border-border/40 rounded-lg space-y-1.5 text-[10px] font-medium text-muted-foreground">
+                    <span className="font-extrabold text-foreground uppercase tracking-wider block">Available Placeholder Variables</span>
+                    <ul className="list-disc pl-3.5 space-y-1">
+                      <li><code className="text-orange-600 bg-orange-600/5 px-1 rounded font-bold font-mono">{`{name}`}</code> - Recipient's Display Name</li>
+                      <li><code className="text-orange-600 bg-orange-600/5 px-1 rounded font-bold font-mono">{`{service}`}</code> - Booked Service Title</li>
+                      <li><code className="text-orange-600 bg-orange-600/5 px-1 rounded font-bold font-mono">{`{date}`}</code> - Scheduled Booking Date</li>
+                      <li><code className="text-orange-600 bg-orange-600/5 px-1 rounded font-bold font-mono">{`{time}`}</code> - Booked Time Slot</li>
+                      <li><code className="text-orange-600 bg-orange-600/5 px-1 rounded font-bold font-mono">{`{orderNumber}`}</code> - Unique Transaction Reference</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </div>
+              <CardFooter className="pt-2 border-t border-border/40 bg-muted/10">
+                <Button 
+                  size="sm"
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs"
+                  onClick={() => handleSaveAutoTemplate('booking_confirmed', autoConfirmed, 'Booking Confirmed', 'booking')}
+                  disabled={isSavingAuto['booking_confirmed']}
+                >
+                  {isSavingAuto['booking_confirmed'] ? (
+                    <>
+                      <RefreshCw className="mr-1 h-3 w-3 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-1 h-3.5 w-3.5" /> Save Changes
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            {/* 2. Casting / Intake Received SMS */}
+            <Card className="border-border shadow-xs bg-card flex flex-col justify-between">
+              <div>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 shrink-0">
+                      <Layout className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <CardTitle className="text-sm font-bold text-foreground">Casting/Intake Received SMS</CardTitle>
+                      <CardDescription className="text-[11px] font-semibold text-muted-foreground">Key: casting_received</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Sent automatically as soon as an applicant submits the Actor Casting & Skit Integration form.
+                  </p>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-extrabold text-muted-foreground flex justify-between">
+                      <span>Message Body</span>
+                      <span className="text-[10px] text-blue-600 lowercase">{autoCasting.length}/160 chars</span>
+                    </label>
+                    <Textarea 
+                      placeholder="Hello {name}, your Grefas Casting registration is received successfully! Status: Pending. We will review soon. - Grefas"
+                      value={autoCasting}
+                      onChange={(e) => setAutoCasting(e.target.value)}
+                      className="min-h-[100px] text-xs font-mono leading-relaxed"
+                      maxLength={160}
+                    />
+                  </div>
+
+                  <div className="p-3 bg-muted/45 border border-border/40 rounded-lg space-y-1.5 text-[10px] font-medium text-muted-foreground">
+                    <span className="font-extrabold text-foreground uppercase tracking-wider block">Available Placeholder Variables</span>
+                    <ul className="list-disc pl-3.5 space-y-1">
+                      <li><code className="text-blue-600 bg-blue-600/5 px-1 rounded font-bold font-mono">{`{name}`}</code> - Recipient's Full Name</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </div>
+              <CardFooter className="pt-2 border-t border-border/40 bg-muted/10">
+                <Button 
+                  size="sm"
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs"
+                  onClick={() => handleSaveAutoTemplate('casting_received', autoCasting, 'Casting/Intake Received', 'casting')}
+                  disabled={isSavingAuto['casting_received']}
+                >
+                  {isSavingAuto['casting_received'] ? (
+                    <>
+                      <RefreshCw className="mr-1 h-3 w-3 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-1 h-3.5 w-3.5" /> Save Changes
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            {/* 3. Booking Reminder SMS */}
+            <Card className="border-border shadow-xs bg-card flex flex-col justify-between">
+              <div>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-green-500/10 text-green-600 shrink-0">
+                      <Sliders className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <CardTitle className="text-sm font-bold text-foreground">Appointment Reminder SMS</CardTitle>
+                      <CardDescription className="text-[11px] font-semibold text-muted-foreground">Key: booking_reminder</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Sent to clients as a courtesy reminder for their pending or scheduled appointment briefing.
+                  </p>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-extrabold text-muted-foreground flex justify-between">
+                      <span>Message Body</span>
+                      <span className="text-[10px] text-green-600 lowercase">{autoReminder.length}/160 chars</span>
+                    </label>
+                    <Textarea 
+                      placeholder="Reminder: Hi {name}, you have a Grefas appointment for {service} on {date} at {time}. - Grefas Consult"
+                      value={autoReminder}
+                      onChange={(e) => setAutoReminder(e.target.value)}
+                      className="min-h-[100px] text-xs font-mono leading-relaxed"
+                      maxLength={160}
+                    />
+                  </div>
+
+                  <div className="p-3 bg-muted/45 border border-border/40 rounded-lg space-y-1.5 text-[10px] font-medium text-muted-foreground">
+                    <span className="font-extrabold text-foreground uppercase tracking-wider block">Available Placeholder Variables</span>
+                    <ul className="list-disc pl-3.5 space-y-1">
+                      <li><code className="text-green-600 bg-green-600/5 px-1 rounded font-bold font-mono">{`{name}`}</code> - Recipient's Display Name</li>
+                      <li><code className="text-green-600 bg-green-600/5 px-1 rounded font-bold font-mono">{`{service}`}</code> - Booked Service Title</li>
+                      <li><code className="text-green-600 bg-green-600/5 px-1 rounded font-bold font-mono">{`{date}`}</code> - Scheduled Booking Date</li>
+                      <li><code className="text-green-600 bg-green-600/5 px-1 rounded font-bold font-mono">{`{time}`}</code> - Booked Time Slot</li>
+                      <li><code className="text-green-600 bg-green-600/5 px-1 rounded font-bold font-mono">{`{orderNumber}`}</code> - Unique Transaction Reference</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </div>
+              <CardFooter className="pt-2 border-t border-border/40 bg-muted/10">
+                <Button 
+                  size="sm"
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs"
+                  onClick={() => handleSaveAutoTemplate('booking_reminder', autoReminder, 'Appointment Reminder', 'booking')}
+                  disabled={isSavingAuto['booking_reminder']}
+                >
+                  {isSavingAuto['booking_reminder'] ? (
+                    <>
+                      <RefreshCw className="mr-1 h-3 w-3 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-1 h-3.5 w-3.5" /> Save Changes
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
           </div>
         </TabsContent>
 

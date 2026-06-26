@@ -691,7 +691,8 @@ async function startServer() {
       contact, 
       address, 
       whatsappNumber, 
-      emailAddress 
+      emailAddress,
+      customMessage
     } = req.body;
 
     if (!fullName) {
@@ -705,7 +706,7 @@ async function startServer() {
       try {
         results.sms = await sendSMS(
           contact,
-          `Hello ${fullName}, your Grefas Casting application is received successfully! Status: Pending. Our team will review your profile. - Grefas`
+          customMessage || `Hello ${fullName}, your Grefas Casting application is received successfully! Status: Pending. Our team will review your profile. - Grefas`
         );
       } catch (smsErr: any) {
         console.error("Failed to send casting confirmation SMS:", smsErr);
