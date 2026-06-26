@@ -1569,7 +1569,7 @@ export default function Services() {
       {/* Elegant Responsive Printable Preview Modal (Pure design visible on screen, hidden in print, handles all devices) */}
       <AnimatePresence>
         {showPrintModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto print:hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto print:bg-transparent print:p-0 print:block print:static">
             <style>{`
               @media print {
                 html, body {
@@ -1610,10 +1610,10 @@ export default function Services() {
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-card border border-border/80 w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
+              className="bg-card border border-border/80 w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden print:border-none print:shadow-none print:max-h-none print:overflow-visible print:bg-transparent"
             >
               {/* Modal Header */}
-              <div className="flex items-center justify-between border-b border-border px-5 py-3.5 bg-muted/40 font-sans">
+              <div className="flex items-center justify-between border-b border-border px-5 py-3.5 bg-muted/40 font-sans print:hidden">
                 <div className="flex items-center gap-2">
                   <div className="bg-orange-100 dark:bg-orange-950/40 p-1.5 rounded-lg text-orange-600">
                     <LucideIcons.Printer className="h-4.5 w-4.5" />
@@ -1637,7 +1637,7 @@ export default function Services() {
               </div>
 
               {/* Advisory Alert */}
-              <div className="bg-orange-50 dark:bg-orange-950/20 border-b border-orange-200/20 px-5 py-2.5 text-[11px] leading-relaxed text-orange-700 dark:text-orange-400 flex items-start gap-2">
+              <div className="bg-orange-50 dark:bg-orange-950/20 border-b border-orange-200/20 px-5 py-2.5 text-[11px] leading-relaxed text-orange-700 dark:text-orange-400 flex items-start gap-2 print:hidden">
                 <LucideIcons.AlertCircle className="h-4.5 w-4.5 text-orange-500 mt-0.5 flex-none animate-pulse" />
                 <div>
                   <span className="font-extrabold uppercase">Notice:</span> Inside the preview sandbox, standard print triggers may be restricted by security contexts. If clicking <span className="font-bold underline text-foreground">Launch System Print</span> behaves unresponsively, please use the <span className="font-bold">New Tab Button</span> in the top-right to print/save smoothly.
@@ -1645,10 +1645,10 @@ export default function Services() {
               </div>
 
               {/* Document Sheet Body */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-zinc-150 dark:bg-zinc-950/80 flex justify-center border-b border-border">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-zinc-150 dark:bg-zinc-950/80 flex justify-center border-b border-border print:p-0 print:bg-transparent print:border-none">
                 {/* Visual rendering resembling an A4 document page */}
                 <div 
-                  className="w-full max-w-2xl bg-white text-black p-5 sm:p-10 font-sans border-2 border-black rounded-lg shadow-lg flex flex-col justify-between select-text selection:bg-orange-200 selection:text-black min-h-[750px] aspect-[1/1.4]"
+                  className="w-full max-w-2xl bg-white text-black p-5 sm:p-10 font-sans border-2 border-black rounded-lg shadow-lg flex flex-col justify-between select-text selection:bg-orange-200 selection:text-black min-h-[750px] aspect-[1/1.4] print:shadow-none print:border-none print:p-0 print:rounded-none"
                   id="print-preview-modal-document-sheet"
                 >
                   <div>
@@ -1806,7 +1806,7 @@ export default function Services() {
               </div>
 
               {/* Modal Actions */}
-              <div className="p-4 sm:p-5 bg-muted/30 flex flex-col sm:flex-row gap-3 font-sans">
+              <div className="p-4 sm:p-5 bg-muted/30 flex flex-col sm:flex-row gap-3 font-sans print:hidden">
                 <Button
                   onClick={() => {
                     try {
