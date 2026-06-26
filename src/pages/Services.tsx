@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,7 +39,8 @@ export default function Services() {
     preferredGenres: [] as string[],
     availability: 'Part-time',
     portfolioLink: '',
-    bio: ''
+    bio: '',
+    signature: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [printableData, setPrintableData] = useState<any | null>(null);
@@ -48,6 +49,100 @@ export default function Services() {
   const [showSuccessState, setShowSuccessState] = useState(false);
   const [submittedName, setSubmittedName] = useState('');
   const [showPrintModal, setShowPrintModal] = useState(false);
+
+  // Digital Signature Canvas references & drawing states
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  // Set line properties when canvas is available
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.5;
+      }
+    }
+  }, [currentStep, formData.signature]);
+
+  const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    
+    // Scale the coordinate drawing based on the actual layout dimensions
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    if ('touches' in e) {
+      if (e.touches.length === 0) return { x: 0, y: 0 };
+      const touch = e.touches[0];
+      return {
+        x: (touch.clientX - rect.left) * scaleX,
+        y: (touch.clientY - rect.top) * scaleY
+      };
+    } else {
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+      };
+    }
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCoordinates(e);
+    ctx.beginPath();
+    ctx.moveTo(coords.x, coords.y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCoordinates(e);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    saveSignatureImage();
+  };
+
+  const saveSignatureImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    setFormData(prev => ({
+      ...prev,
+      signature: dataUrl
+    }));
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setFormData(prev => ({
+      ...prev,
+      signature: ''
+    }));
+  };
 
   // Check for saved draft on mount
   useEffect(() => {
@@ -234,6 +329,8 @@ export default function Services() {
 
     const docBirth = data?.dateOfBirth ? new Date(data.dateOfBirth).toLocaleDateString() : '__________________';
     const regDate = data?.createdAt ? new Date(data.createdAt).toLocaleString() : new Date().toLocaleString();
+    const bookingUrl = window.location.origin + '/services';
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(bookingUrl)}`;
 
     printWindow.document.write(`
       <html>
@@ -257,6 +354,7 @@ export default function Services() {
               display: flex;
               justify-content: space-between;
               flex-direction: column;
+              box-sizing: border-box;
             }
             .header {
               text-align: center;
@@ -317,12 +415,18 @@ export default function Services() {
               padding-bottom: 3px;
               margin-bottom: 12px;
             }
+            .profile-layout {
+              display: flex;
+              gap: 20px;
+              align-items: start;
+            }
             .field-grid {
               display: grid;
               grid-template-cols: 1fr 1fr;
               row-gap: 15px;
               column-gap: 20px;
               font-size: 13px;
+              flex: 1;
             }
             .field-span-2 {
               grid-column: span 2;
@@ -350,6 +454,20 @@ export default function Services() {
             .field-value.highlight {
               font-weight: bold;
               font-size: 14px;
+            }
+            .passport-box {
+              width: 105px;
+              height: 125px;
+              border: 2px dashed #000;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              text-align: center;
+              padding: 2px;
+              background-color: #fafafa;
+              flex-shrink: 0;
+              box-sizing: border-box;
             }
             .score-grid {
               display: grid;
@@ -439,38 +557,48 @@ export default function Services() {
           </div>
           <div class="border-box">
             <div>
-              <div class="header">
-                <h1>GREFAS ENTERTAINMENT</h1>
-                <p>Theatre, Film Casting & Skit Making Auditions Register</p>
-                <div class="meta-bar">
-                  <span>REGION: ASHANTI, GHANA (KUMASI)</span>
-                  <span>TIME: ${regDate}</span>
+              <div class="header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #000; padding-bottom: 15px; margin-bottom: 25px; text-align: left;">
+                <div style="flex: 1; text-align: left;">
+                  <h1 style="margin: 0; font-size: 22px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">GREFAS ENTERTAINMENT & PRODUCTIONS</h1>
+                  <p style="margin: 5px 0 0 0; font-size: 11px; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; color: #333;">Official Film Casting & Talent Management Division</p>
+                  <div class="meta-bar" style="margin-top: 10px; display: flex; justify-content: space-between; font-family: monospace; font-size: 9px; font-weight: bold; border-top: 1px solid #ddd; padding-top: 6px;">
+                    <span>INTAKE REGION: ASHANTI, GHANA</span>
+                    <span>TIME: ${regDate}</span>
+                  </div>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-left: 20px; border: 2px solid #000; padding: 4px; background-color: #fff; border-radius: 4px; width: 70px; height: 70px; flex-shrink: 0;">
+                  <img src="${qrCodeUrl}" style="height: 60px; width: 60px; display: block;" alt="Verify" />
                 </div>
               </div>
 
               <div class="registry-tag">
-                <h2>ACTOR CASTING & CREW INTAKE REGISTRY CARD</h2>
+                <h2>ACTOR CASTING & SKIT INTEGRATION FORM</h2>
               </div>
 
               <!-- Segment 1 -->
               <div class="section">
                 <div class="section-title">1. Personal Biodata & Demographics</div>
-                <div class="field-grid">
-                  <div class="field field-span-2">
-                    <span class="field-label">Legal/Screen Name:</span>
-                    <span class="field-value highlight">${data?.fullName || '____________________________________________________'}</span>
+                <div class="profile-layout">
+                  <div class="field-grid">
+                    <div class="field field-span-2">
+                      <span class="field-label">Legal/Screen Name:</span>
+                      <span class="field-value highlight">${data?.fullName || '____________________________________________________'}</span>
+                    </div>
+                    <div class="field">
+                      <span class="field-label">Birth Date:</span>
+                      <span class="field-value">${docBirth}</span>
+                    </div>
+                    <div class="field">
+                      <span class="field-label">Age Checked:</span>
+                      <span class="field-value">${data ? `${data.age} years old` : '________ years old'}</span>
+                    </div>
+                    <div class="field field-span-2">
+                      <span class="field-label">Residential Location:</span>
+                      <span class="field-value">${data?.address || '____________________________________________________'}</span>
+                    </div>
                   </div>
-                  <div class="field">
-                    <span class="field-label">Birth Date:</span>
-                    <span class="field-value">${docBirth}</span>
-                  </div>
-                  <div class="field">
-                    <span class="field-label">Age Checked:</span>
-                    <span class="field-value">${data ? `${data.age} years old` : '________ years old'}</span>
-                  </div>
-                  <div class="field field-span-2">
-                    <span class="field-label">Residential Location:</span>
-                    <span class="field-value">${data?.address || '____________________________________________________'}</span>
+                  <div class="passport-box">
+                    ${data?.passportPhoto ? `<img src="${data.passportPhoto}" style="width: 100%; height: 100%; object-fit: cover;" />` : `<div style="font-size: 7.5px; font-weight: bold; text-transform: uppercase; color: #555; line-height: 1.2;">Affix<br>Passport<br>Size Photo<br>Here</div>`}
                   </div>
                 </div>
               </div>
@@ -494,33 +622,33 @@ export default function Services() {
                 </div>
               </div>
 
-              <!-- New Requirements Segment -->
+              <!-- Segment 3 -->
               <div class="section">
                 <div class="section-title">3. Production Roles & Casting Details</div>
                 <div class="field-grid">
                   <div class="field">
                     <span class="field-label">Prescribed Role:</span>
-                    <span class="field-value font-bold">${data?.roleType || 'Actor / Actress'}</span>
+                    <span class="field-value font-bold">${data?.roleType || '_______________________ (Actor / Actress, Crew, etc.)'}</span>
                   </div>
                   <div class="field">
                     <span class="field-label">Experience Stage:</span>
-                    <span class="field-value font-bold">${data?.experienceLevel || 'Intermediate'}</span>
+                    <span class="field-value font-bold">${data?.experienceLevel || '_______________________ (Beginner, Intermediate, Pro)'}</span>
                   </div>
                   <div class="field">
                     <span class="field-label">Availability Schedule:</span>
-                    <span class="field-value">${data?.availability || 'Part-time'}</span>
+                    <span class="field-value">${data?.availability || '_______________________ (Full-time, Part-time, Project-basis)'}</span>
                   </div>
                   <div class="field">
                     <span class="field-label">Portfolio URL link:</span>
-                    <span class="field-value" style="font-size: 11px;">${data?.portfolioLink || 'N/A'}</span>
+                    <span class="field-value" style="font-size: 11px;">${data?.portfolioLink || '_______________________'}</span>
                   </div>
                   <div class="field field-span-2">
                     <span class="field-label">Selected Genres:</span>
-                    <span class="field-value">${data?.preferredGenres && data.preferredGenres.length > 0 ? data.preferredGenres.join(', ') : 'Comedy, Drama'}</span>
+                    <span class="field-value">${data?.preferredGenres && data.preferredGenres.length > 0 ? data.preferredGenres.join(', ') : '____________________________________________________'}</span>
                   </div>
                   <div class="field field-span-2">
                     <span class="field-label">Short Talent Pitch:</span>
-                    <span class="field-value" style="font-size: 11px;">${data?.bio || 'Pending first audition review notes...'}</span>
+                    <span class="field-value" style="font-size: 11px;">${data?.bio || '____________________________________________________________________________________________________________________________________________________'}</span>
                   </div>
                 </div>
               </div>
@@ -547,7 +675,7 @@ export default function Services() {
                   </div>
                 </div>
                 <div class="remarks-box">
-                  <strong>AUDITION REGISTER SCREENING NOTES & REELS EVALENT:</strong>
+                  <strong>AUDITION REGISTER SCREENING NOTES & REELS EVALUATE:</strong>
                   <div style="min-height: 40px; color: #555; margin-top: 6px; font-style: italic; font-size: 10px;">
                     [Screen compliance markers, dialect notes, stage styling notes for skit or full series casting suitability]
                   </div>
@@ -556,11 +684,12 @@ export default function Services() {
             </div>
 
             <div class="sign-off">
-              <p style="text-align: center; font-size: 9px; margin-bottom: 25px; line-height: 1.4;">
+              <p style="text-align: center; font-size: 9px; margin-bottom: 25px; line-height: 1.4; font-weight: bold;">
                 By signing, the talent verifies that self-submitted communication channels and credentials are fully correct and active.
               </p>
               <div class="signatures-grid">
-                <div>
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; min-height: 80px;">
+                  ${data?.signature ? `<img src="${data.signature}" style="max-height: 50px; max-width: 150px; object-fit: contain; margin-bottom: 5px;" alt="Signature" />` : `<div style="height: 50px;"></div>`}
                   <div class="sig-line">Candidate Signature</div>
                   <div style="text-align: center; font-size: 8px; color: #555; margin-top: 4px;">Date: ____ / ____ / ________</div>
                 </div>
@@ -571,12 +700,36 @@ export default function Services() {
               </div>
             </div>
           </div>
+
           <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 300);
-            }
+            window.addEventListener('load', function() {
+              var images = document.getElementsByTagName('img');
+              var loadedCount = 0;
+              var totalImages = images.length;
+              
+              if (totalImages === 0) {
+                setTimeout(function() { window.print(); }, 300);
+                return;
+              }
+              
+              function onImageLoad() {
+                loadedCount++;
+                if (loadedCount === totalImages) {
+                  setTimeout(function() {
+                    window.print();
+                  }, 800);
+                }
+              }
+              
+              for (var i = 0; i < totalImages; i++) {
+                if (images[i].complete) {
+                  onImageLoad();
+                } else {
+                  images[i].addEventListener('load', onImageLoad);
+                  images[i].addEventListener('error', onImageLoad);
+                }
+              }
+            });
           </script>
         </body>
       </html>
@@ -678,7 +831,8 @@ export default function Services() {
         preferredGenres: [] as string[],
         availability: 'Part-time',
         portfolioLink: '',
-        bio: ''
+        bio: '',
+        signature: ''
       });
       setErrors({});
       setCurrentStep(1);
@@ -1514,6 +1668,64 @@ export default function Services() {
                             className="w-full rounded-lg border border-border/80 bg-background px-4 py-3 text-sm text-foreground placeholder-muted-foreground focus:border-orange-600 focus:ring-1 focus:ring-orange-600 outline-none transition-all duration-300"
                           />
                         </div>
+
+                        {/* Digital Signature Canvas Section */}
+                        <div className="space-y-2 sm:col-span-2 border-t border-border/40 pt-6">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <LucideIcons.PenTool className="h-4 w-4 text-orange-600 shrink-0" />
+                            Talent Digital Signature Consent
+                          </label>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Please sign inside the canvas box below using your mouse, trackpad, or touch screen. This signature is required to verify your application and will be affixed to your printed audition form.
+                          </p>
+                          
+                          <div className="relative border border-border/80 bg-white rounded-xl overflow-hidden p-1.5 shadow-xs">
+                            <canvas
+                              ref={canvasRef}
+                              width={600}
+                              height={180}
+                              className="w-full h-[180px] bg-slate-50 rounded-lg cursor-crosshair touch-none"
+                              onMouseDown={startDrawing}
+                              onMouseMove={draw}
+                              onMouseUp={stopDrawing}
+                              onMouseLeave={stopDrawing}
+                              onTouchStart={startDrawing}
+                              onTouchMove={draw}
+                              onTouchEnd={stopDrawing}
+                            />
+                            
+                            {/* Floating controls in canvas */}
+                            <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={clearSignature}
+                                variant="outline"
+                                className="h-8 text-[11px] font-bold uppercase tracking-wider text-red-600 border-red-200 hover:bg-red-50 hover:border-red-400 bg-white/95 backdrop-blur-xs flex items-center gap-1 shadow-xs"
+                              >
+                                <LucideIcons.Trash2 className="h-3 w-3" />
+                                <span>Clear Signature</span>
+                              </Button>
+                            </div>
+
+                            {/* Blank state indicator or signature preview status */}
+                            {!formData.signature && (
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none opacity-40">
+                                <div className="text-center">
+                                  <LucideIcons.Signature className="h-8 w-8 mx-auto text-muted-foreground/80 mb-1" />
+                                  <span className="text-[10px] font-medium text-muted-foreground">Sign Here</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {formData.signature && (
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] uppercase tracking-wider animate-pulse px-1">
+                              <LucideIcons.CheckCircle2 className="h-3.5 w-3.5" />
+                              <span>Digital Signature Captured & Locked</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -1653,16 +1865,29 @@ export default function Services() {
                 >
                   <div>
                     {/* Brand Identifier */}
-                    <div className="text-center border-b-4 border-black pb-3 relative">
-                      <h1 className="text-lg sm:text-2xl font-black uppercase tracking-widest text-black">
-                        GREFAS ENTERTAINMENT & PRODUCTIONS
-                      </h1>
-                      <p className="text-[9px] sm:text-[11px] uppercase tracking-widest font-black mt-1 text-black/80">
-                        Official Film Casting & Talent Management Division
-                      </p>
-                      <div className="mt-3.5 flex justify-between text-[8px] sm:text-[10px] font-mono font-bold text-black border-t border-black/20 pt-1.5">
-                        <span>INTAKE REGION: ASHANTI, GHANA</span>
-                        <span>FORM CODE: GEP-CAST-{Math.floor(111111 + Math.random() * 888888)}</span>
+                    <div className="flex items-center gap-4 border-b-4 border-black pb-3 relative text-left">
+                      <div className="flex-1">
+                        <h1 className="text-lg sm:text-2xl font-black uppercase tracking-widest text-black">
+                          GREFAS ENTERTAINMENT & PRODUCTIONS
+                        </h1>
+                        <p className="text-[9px] sm:text-[11px] uppercase tracking-widest font-black mt-1 text-black/80">
+                          Official Film Casting & Talent Management Division
+                        </p>
+                        <div className="mt-3.5 flex justify-between text-[8px] sm:text-[10px] font-mono font-bold text-black border-t border-black/20 pt-1.5">
+                          <span>INTAKE REGION: ASHANTI, GHANA</span>
+                          <span>FORM CODE: GEP-CAST-648123</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 p-1 border border-black/30 rounded bg-white select-none">
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.origin + '/services')}`} 
+                          className="h-14 w-14 object-contain" 
+                          alt="Verification QR" 
+                          referrerPolicy="no-referrer"
+                        />
+                        <span className="text-[7px] font-black tracking-tighter uppercase text-center text-black/70">
+                          Verify Intake
+                        </span>
                       </div>
                     </div>
 
@@ -1784,8 +2009,17 @@ export default function Services() {
                       By signing, the talent verifies that self-submitted communication channels and credentials are fully correct and active.
                     </p>
                     <div className="flex justify-between text-[9px] sm:text-[10px] pt-1 font-mono font-bold text-black pb-1">
-                      <div className="w-1/2">
-                        <div className="border-t border-black w-[80%] pt-0.5 mt-4 text-center uppercase text-[8px] sm:text-[9px]">
+                      <div className="w-1/2 flex flex-col items-center">
+                        {printableData && printableData.signature ? (
+                          <img 
+                            src={printableData.signature} 
+                            className="max-h-12 max-w-[150px] object-contain mb-[-4px]" 
+                            alt="Signature" 
+                          />
+                        ) : (
+                          <div className="h-11"></div>
+                        )}
+                        <div className="border-t border-black w-[80%] pt-0.5 mt-1 text-center uppercase text-[8px] sm:text-[9px]">
                           Candidate Signature
                         </div>
                         <div className="text-[7px] sm:text-[8px] text-neutral-500 text-center w-[80%] mt-0.5">
@@ -1808,13 +2042,7 @@ export default function Services() {
               {/* Modal Actions */}
               <div className="p-4 sm:p-5 bg-muted/30 flex flex-col sm:flex-row gap-3 font-sans print:hidden">
                 <Button
-                  onClick={() => {
-                    try {
-                      window.print();
-                    } catch (e) {
-                      toast.error("Standard system printing trigger failed inside sandbox iframe.");
-                    }
-                  }}
+                  onClick={() => runIframeSafePrint(printableData)}
                   className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-black h-12 uppercase tracking-wider rounded-xl shadow-lg cursor-pointer flex items-center justify-center gap-2 transition-all"
                 >
                   <LucideIcons.Printer className="h-4.5 w-4.5" />
