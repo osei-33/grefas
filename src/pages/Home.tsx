@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react';
-import { ArrowRight, Star, Users, Briefcase, Play, Quote, Loader2, Zap, X, CheckCircle } from 'lucide-react';
+import { ArrowRight, Star, Users, Briefcase, Play, Quote, Loader2, Zap, X, CheckCircle, Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
@@ -27,6 +27,10 @@ export default function Home() {
     success: false,
     error: null,
   });
+
+  // Visitor pop-up alerts
+  const [activeAlert, setActiveAlert] = useState<any | null>(null);
+  const [showAlert, setShowAlert] = useState(false);
 
   const fallbackTestimonials = [
     {
@@ -69,6 +73,49 @@ export default function Home() {
       console.debug("Home testimonial feed issue (handled):", error);
       handleFirestoreError(error, OperationType.LIST, 'testimonials');
     });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    // Fetch active visitor alerts / announcements
+    const q = query(
+      collection(db, 'visitor_notifications'), 
+      where('isActive', '==', true)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        // Sort manually by creation timestamp desc
+        const alertsList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }) as any);
+        
+        alertsList.sort((a, b) => {
+          const timeA = a.createdAt?.seconds || 0;
+          const timeB = b.createdAt?.seconds || 0;
+          return timeB - timeA;
+        });
+
+        const latestAlert = alertsList[0];
+        const dismissed = sessionStorage.getItem(`dismissed_alert_${latestAlert.id}`);
+        if (!dismissed) {
+          setActiveAlert(latestAlert);
+          const timer = setTimeout(() => {
+            setShowAlert(true);
+          }, 1500);
+          return () => clearTimeout(timer);
+        } else {
+          setActiveAlert(null);
+          setShowAlert(false);
+        }
+      } else {
+        setActiveAlert(null);
+        setShowAlert(false);
+      }
+    }, (error) => {
+      console.warn("Visitor notifications load issue (handled):", error);
+    });
+
     return () => unsubscribe();
   }, []);
 
@@ -615,6 +662,129 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Site-wide Visitor Alert Popup Modal */}
+      <AnimatePresence>
+        {showAlert && activeAlert && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                sessionStorage.setItem(`dismissed_alert_${activeAlert.id}`, 'true');
+                setShowAlert(false);
+              }}
+              className="absolute inset-0 bg-black/75 backdrop-blur-xs"
+            />
+
+            {/* Modal Body */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className={`relative w-full max-w-md overflow-hidden rounded-2xl bg-zinc-950 border text-white shadow-2xl ${
+                activeAlert.type === 'accent' ? 'border-orange-500/50 shadow-orange-500/10' :
+                activeAlert.type === 'warning' ? 'border-amber-500/50 shadow-amber-500/10' :
+                activeAlert.type === 'success' ? 'border-emerald-500/50 shadow-emerald-500/10' :
+                'border-sky-500/50 shadow-sky-500/10'
+              }`}
+            >
+              {/* Type Accent Top Bar */}
+              <div className={`h-1.5 w-full ${
+                activeAlert.type === 'accent' ? 'bg-orange-500' :
+                activeAlert.type === 'warning' ? 'bg-amber-500' :
+                activeAlert.type === 'success' ? 'bg-emerald-500' :
+                'bg-sky-500'
+              }`} />
+
+              {/* Close Button */}
+              <button
+                onClick={() => {
+                  sessionStorage.setItem(`dismissed_alert_${activeAlert.id}`, 'true');
+                  setShowAlert(false);
+                }}
+                className="absolute top-4 right-4 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 p-1.5 rounded-full transition-all cursor-pointer"
+                aria-label="Close notification"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="p-6 sm:p-8">
+                {/* Icon Header */}
+                <div className="flex items-center gap-3 pb-4">
+                  <div className={`p-2.5 rounded-xl ${
+                    activeAlert.type === 'accent' ? 'bg-orange-500/10 text-orange-500' :
+                    activeAlert.type === 'warning' ? 'bg-amber-500/10 text-amber-500' :
+                    activeAlert.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' :
+                    'bg-sky-500/10 text-sky-500'
+                  }`}>
+                    <Megaphone className="h-5 w-5" />
+                  </div>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${
+                    activeAlert.type === 'accent' ? 'text-orange-400' :
+                    activeAlert.type === 'warning' ? 'text-amber-400' :
+                    activeAlert.type === 'success' ? 'text-emerald-400' :
+                    'text-sky-400'
+                  }`}>
+                    {activeAlert.type === 'accent' ? 'Exclusive Update' :
+                     activeAlert.type === 'warning' ? 'Important Alert' :
+                     activeAlert.type === 'success' ? 'Special Notice' :
+                     'Official Announcement'}
+                  </span>
+                </div>
+
+                {/* Content */}
+                <div className="space-y-3">
+                  <h3 className="text-xl sm:text-2xl font-black tracking-tight leading-tight text-white">
+                    {activeAlert.title}
+                  </h3>
+                  <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-wrap">
+                    {activeAlert.message}
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                  {activeAlert.buttonText && activeAlert.buttonUrl && (
+                    <Button
+                      asChild
+                      className={`font-extrabold w-full sm:w-auto px-6 ${
+                        activeAlert.type === 'accent' ? 'bg-orange-600 hover:bg-orange-700 text-white' :
+                        activeAlert.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700 text-white' :
+                        activeAlert.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' :
+                        'bg-sky-600 hover:bg-sky-700 text-white'
+                      }`}
+                    >
+                      {activeAlert.buttonUrl.startsWith('http') ? (
+                        <a href={activeAlert.buttonUrl} target="_blank" rel="noopener noreferrer">
+                          {activeAlert.buttonText}
+                        </a>
+                      ) : (
+                        <Link to={activeAlert.buttonUrl}>
+                          {activeAlert.buttonText}
+                        </Link>
+                      )}
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      sessionStorage.setItem(`dismissed_alert_${activeAlert.id}`, 'true');
+                      setShowAlert(false);
+                    }}
+                    className="border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-900 font-extrabold w-full sm:w-auto"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

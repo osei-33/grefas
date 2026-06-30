@@ -285,9 +285,28 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["authorName", "text", "approved"]
+    },
+    "VisitorNotification": {
+      "title": "VisitorNotification",
+      "description": "An announcement or alert shown to visitors on the home page",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "type": { "type": "string" },
+        "buttonText": { "type": "string" },
+        "buttonUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "isActive"]
     }
   },
   "firestore": {
+    "/visitor_notifications/{notificationId}": {
+      "schema": "VisitorNotification",
+      "description": "Collection of visitor popup notifications managed by admin"
+    },
     "/testimonials/{testimonialId}": {
       "schema": "Testimonial",
       "description": "Collection of client testimonials"

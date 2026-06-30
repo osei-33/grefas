@@ -146,6 +146,16 @@ service cloud.firestore {
              (!('createdAt' in data) || data.createdAt == request.time);
     }
 
+    function isValidVisitorNotification(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 5000 &&
+             data.isActive is bool &&
+             (!('type' in data) || data.type is string) &&
+             (!('buttonText' in data) || data.buttonText is string) &&
+             (!('buttonUrl' in data) || data.buttonUrl is string) &&
+             (!('createdAt' in data) || data.createdAt == request.time);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -268,6 +278,13 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isValidTestimonial(request.resource.data);
       allow update, delete: if isStaff();
+    }
+
+    match /visitor_notifications/{notificationId} {
+      allow read: if true;
+      allow create: if isStaff() && isValidVisitorNotification(request.resource.data);
+      allow update: if isStaff() && isValidVisitorNotification(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /sms_templates/{templateId} {

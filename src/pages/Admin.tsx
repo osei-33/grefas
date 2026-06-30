@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -638,6 +638,20 @@ export default function Admin() {
                 <span>Testimonials</span>
                 {isActive('/admin/testimonials') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+              <Link
+                to="/admin/announcements"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/announcements') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-announcements"
+              >
+                <Megaphone className={`h-4 w-4 ${isActive('/admin/announcements') ? 'text-orange-600' : ''}`} />
+                <span>Visitor Alerts</span>
+                {isActive('/admin/announcements') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
               {role === 'admin' && (
                 <>
                   <div className="pt-4 pb-2">
@@ -732,6 +746,7 @@ export default function Admin() {
           <Route path="/newsletter" element={<ManageNewsletter />} />
           <Route path="/letters" element={<ManageLetters />} />
           <Route path="/testimonials" element={<ManageTestimonials />} />
+          <Route path="/announcements" element={<ManageVisitorAlerts />} />
           {role === 'admin' && (
             <>
               <Route path="/users" element={<ManageUsers />} />
@@ -7401,6 +7416,378 @@ export function ManageTestimonials() {
           title="Delete Testimonial"
           message="Are you sure you want to permanently delete this testimonial? This action cannot be undone."
           onConfirm={handleDeleteTestimonial}
+          onCancel={() => setDeleteId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+export function ManageVisitorAlerts() {
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Form state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [formState, setFormState] = useState({
+    title: '',
+    message: '',
+    isActive: true,
+    type: 'info', // 'info' | 'warning' | 'success' | 'accent'
+    buttonText: '',
+    buttonUrl: ''
+  });
+  const [submitLoading, setSubmitLoading] = useState(false);
+
+  useEffect(() => {
+    const q = query(collection(db, 'visitor_notifications'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAlerts(items);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error listening to visitor alerts:", error);
+      toast.error("Failed to load visitor alerts");
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleToggleActive = async (id: string, currentActive: boolean) => {
+    try {
+      await updateDoc(doc(db, 'visitor_notifications', id), {
+        isActive: !currentActive
+      });
+      toast.success(!currentActive ? "Alert activated and live!" : "Alert deactivated");
+    } catch (error: any) {
+      console.error("Error updating alert:", error);
+      toast.error("Failed to update alert status");
+    }
+  };
+
+  const handleDeleteAlert = async () => {
+    if (!deleteId) return;
+    try {
+      await deleteDoc(doc(db, 'visitor_notifications', deleteId));
+      toast.success("Alert deleted successfully");
+      setDeleteId(null);
+    } catch (error: any) {
+      console.error("Error deleting alert:", error);
+      toast.error("Failed to delete alert");
+    }
+  };
+
+  const handleOpenEdit = (alert: any) => {
+    setEditId(alert.id);
+    setFormState({
+      title: alert.title || '',
+      message: alert.message || '',
+      isActive: alert.isActive !== false,
+      type: alert.type || 'info',
+      buttonText: alert.buttonText || '',
+      buttonUrl: alert.buttonUrl || ''
+    });
+    setIsEditing(true);
+  };
+
+  const handleResetForm = () => {
+    setFormState({
+      title: '',
+      message: '',
+      isActive: true,
+      type: 'info',
+      buttonText: '',
+      buttonUrl: ''
+    });
+    setEditId(null);
+    setIsEditing(false);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formState.title || !formState.message) {
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+    setSubmitLoading(true);
+    try {
+      if (editId) {
+        // Update existing alert
+        await updateDoc(doc(db, 'visitor_notifications', editId), {
+          title: formState.title,
+          message: formState.message,
+          isActive: formState.isActive,
+          type: formState.type,
+          buttonText: formState.buttonText,
+          buttonUrl: formState.buttonUrl
+        });
+        toast.success("Visitor alert updated successfully!");
+      } else {
+        // Create new alert
+        await addDoc(collection(db, 'visitor_notifications'), {
+          title: formState.title,
+          message: formState.message,
+          isActive: formState.isActive,
+          type: formState.type,
+          buttonText: formState.buttonText,
+          buttonUrl: formState.buttonUrl,
+          createdAt: serverTimestamp()
+        });
+        toast.success("Visitor alert created successfully!");
+      }
+      handleResetForm();
+    } catch (error: any) {
+      console.error("Error saving visitor alert:", error);
+      toast.error("Failed to save alert");
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
+            <Megaphone className="h-6 w-6 text-orange-600 animate-pulse" />
+            <span>Visitor Alerts & Pop-ups</span>
+          </h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Create urgent announcements or promotional pop-ups that appear when visitors enter the home page.
+          </p>
+        </div>
+        {!isEditing ? (
+          <Button 
+            onClick={() => setIsEditing(true)}
+            className="bg-orange-600 hover:bg-orange-700 font-bold"
+          >
+            Create New Alert
+          </Button>
+        ) : (
+          <Button 
+            variant="outline"
+            onClick={handleResetForm}
+            className="font-bold"
+          >
+            Back to Alerts
+          </Button>
+        )}
+      </div>
+
+      {isEditing ? (
+        <Card className="bg-card border-border shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg font-bold">
+              {editId ? 'Edit Visitor Alert' : 'Create New Visitor Alert'}
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Fill in the fields below to customize the popup alert.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Alert Title *</label>
+                  <Input 
+                    required 
+                    value={formState.title}
+                    onChange={e => setFormState({ ...formState, title: e.target.value })}
+                    placeholder="e.g. Special Offer or System Downtime Alert" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Alert Type / Theme</label>
+                  <select
+                    value={formState.type}
+                    onChange={e => setFormState({ ...formState, type: e.target.value })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="info">Info (Blue)</option>
+                    <option value="warning">Warning (Amber)</option>
+                    <option value="success">Success (Emerald)</option>
+                    <option value="accent">Special Promo (Orange)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Alert Message / Announcement Text *</label>
+                <Textarea 
+                  required 
+                  rows={4}
+                  value={formState.message}
+                  onChange={e => setFormState({ ...formState, message: e.target.value })}
+                  placeholder="Type the message you want visitors to read as soon as they visit..." 
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Call to Action Button Text (Optional)</label>
+                  <Input 
+                    value={formState.buttonText}
+                    onChange={e => setFormState({ ...formState, buttonText: e.target.value })}
+                    placeholder="e.g. Book Now or Learn More" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Call to Action Link (Optional)</label>
+                  <Input 
+                    value={formState.buttonUrl}
+                    onChange={e => setFormState({ ...formState, buttonUrl: e.target.value })}
+                    placeholder="e.g. /services or https://example.com" 
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <input 
+                  type="checkbox" 
+                  id="active-alert-checkbox"
+                  checked={formState.isActive}
+                  onChange={e => setFormState({ ...formState, isActive: e.target.checked })}
+                  className="rounded border-border h-4 w-4 bg-background text-orange-600 focus:ring-orange-500"
+                />
+                <label htmlFor="active-alert-checkbox" className="text-xs font-bold text-foreground">
+                  Activate this alert immediately (Will display on Home Page popup)
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-border/60">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleResetForm}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={submitLoading}
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                >
+                  {submitLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : (editId ? 'Update Alert' : 'Create Alert')}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-card border-border shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/40">
+            <CardTitle className="text-base font-bold">Alert Inventory</CardTitle>
+            <CardDescription className="text-xs">
+              Manage your site-wide alerts. Note that if multiple alerts are active, the home page popup will show them sequentially or show the latest active one!
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-12 text-center flex flex-col items-center gap-2">
+                <Loader2 className="h-6 w-6 animate-spin text-orange-600" />
+                <span className="text-xs text-muted-foreground font-mono font-bold">LOADING VISITOR ALERTS...</span>
+              </div>
+            ) : alerts.length === 0 ? (
+              <div className="p-12 text-center text-muted-foreground text-xs">
+                No visitor alerts found. Click "Create New Alert" to get started!
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-border text-[10px] font-bold text-muted-foreground uppercase bg-muted/20">
+                      <th className="p-4">Alert Title & Type</th>
+                      <th className="p-4">Message</th>
+                      <th className="p-4">Action Button</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {alerts.map((item) => (
+                      <tr key={item.id} className="hover:bg-muted/10 transition-colors text-xs">
+                        <td className="p-4 font-bold text-foreground">
+                          <div>
+                            <p className="font-extrabold">{item.title}</p>
+                            <span className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-wider ${
+                              item.type === 'accent' ? 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-400' :
+                              item.type === 'warning' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' :
+                              item.type === 'success' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                              'bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-400'
+                            }`}>
+                              {item.type || 'info'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-4 max-w-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                          {item.message}
+                        </td>
+                        <td className="p-4">
+                          {item.buttonText ? (
+                            <div className="text-[10px]">
+                              <span className="font-bold text-foreground bg-muted px-2 py-1 rounded border border-border">
+                                {item.buttonText}
+                              </span>
+                              <p className="text-muted-foreground mt-1 truncate max-w-[120px] font-mono">{item.buttonUrl}</p>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground italic text-[10px]">None</span>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <button
+                            onClick={() => handleToggleActive(item.id, item.isActive !== false)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                              item.isActive !== false
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 hover:bg-emerald-200' 
+                                : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-zinc-200'
+                            }`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${item.isActive !== false ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-400'}`} />
+                            {item.isActive !== false ? 'Active' : 'Disabled'}
+                          </button>
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex justify-end items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenEdit(item)}
+                              className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteId(item.id)}
+                              className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 h-8 w-8 p-0"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteId && (
+        <AdminDeleteModal
+          title="Delete Visitor Alert"
+          message="Are you sure you want to permanently delete this visitor alert? This will stop it from displaying as a pop-up on the website."
+          onConfirm={handleDeleteAlert}
           onCancel={() => setDeleteId(null)}
         />
       )}
