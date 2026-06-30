@@ -300,6 +300,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "message", "isActive"]
+    },
+    "ActivityLog": {
+      "title": "Activity Log",
+      "description": "Records client engagement including login history and status changes.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "metadata": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "description", "createdAt"]
     }
   },
   "firestore": {
@@ -378,6 +393,10 @@
     "/service_intakes/{intakeId}": {
       "schema": "ServiceIntake",
       "description": "Collection of service client intake registrations"
+    },
+    "/activity_logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Log of client activities, logins, and status updates"
     }
   }
 }

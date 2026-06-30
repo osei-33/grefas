@@ -54,16 +54,22 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isHardcodedAdmin() {
+      return isAuthenticated() && 
+             request.auth.token != null && 
+             'email' in request.auth.token && 
+             (request.auth.token.email == "serwaahlinda1995@gmail.com" || 
+              request.auth.token.email == "asantegrice@gmail.com" || 
+              request.auth.token.email == "asantegrifice@gmail.com" || 
+              request.auth.token.email == "oseikwameemmanuel33@gmail.com");
+    }
+
     function isAdmin() {
-      return isAuthenticated() && (
-        (request.auth.token != null && 'email' in request.auth.token && 
-         (request.auth.token.email == "serwaahlinda1995@gmail.com" || 
-          request.auth.token.email == "asantegrice@gmail.com" || 
-          request.auth.token.email == "asantegrifice@gmail.com" || 
-          request.auth.token.email == "oseikwameemmanuel33@gmail.com")) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      return isHardcodedAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
       );
     }
 
@@ -75,7 +81,7 @@ service cloud.firestore {
     }
 
     function isStaff() {
-      return isAdmin() || isEditor();
+      return isHardcodedAdmin() || isAdmin() || isEditor();
     }
 
     function isOwner(userId) {
@@ -154,6 +160,12 @@ service cloud.firestore {
              (!('type' in data) || data.type is string) &&
              (!('buttonText' in data) || data.buttonText is string) &&
              (!('buttonUrl' in data) || data.buttonUrl is string);
+    }
+
+    function isValidActivityLog(data) {
+      return data.type is string && data.type.size() > 0 && data.type.size() < 100 &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 2000 &&
+             data.createdAt is string;
     }
 
     // ===============================================================
@@ -304,6 +316,11 @@ service cloud.firestore {
     match /salaries/{salaryId} {
       allow read: if isStaff() || (isAuthenticated() && resource.data.employeeEmail == request.auth.token.email);
       allow create, update, delete: if isStaff();
+    }
+    
+    match /activity_logs/{logId} {
+      allow read: if isStaff();
+      allow create: if isValidActivityLog(request.resource.data);
     }
     
     match /test/connection {

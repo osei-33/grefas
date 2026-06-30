@@ -686,6 +686,19 @@ export default function Admin() {
                     {isActive('/admin/users') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                   <Link
+                    to="/admin/activity"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      isActive('/admin/activity') 
+                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Clock className={`h-4 w-4 ${isActive('/admin/activity') ? 'text-orange-600' : ''}`} />
+                    <span>Client Activity Log</span>
+                    {isActive('/admin/activity') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                  </Link>
+                  <Link
                     to="/admin/chat"
                     onClick={() => setIsSidebarOpen(false)}
                     className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -766,6 +779,7 @@ export default function Admin() {
           {role === 'admin' && (
             <>
               <Route path="/users" element={<ManageUsers />} />
+              <Route path="/activity" element={<ManageActivityLog />} />
               <Route path="/chat" element={<ManageChat />} />
               <Route path="/sms" element={<SmsDashboard />} />
               <Route path="/settings" element={<ManageSettings />} />
@@ -1790,6 +1804,20 @@ function AdminServiceRequests() {
                             await updateDoc(doc(db, 'service_intakes', item.id), {
                               status: statusOption
                             });
+
+                            // Record status change activity log
+                            try {
+                              await addDoc(collection(db, 'activity_logs'), {
+                                userId: item.userId || null,
+                                userEmail: item.emailAddress || null,
+                                userName: item.fullName || 'Unknown Client',
+                                type: 'status_change',
+                                description: `Application status changed to "${statusOption}" by Admin.`,
+                                createdAt: new Date().toISOString()
+                              });
+                            } catch (logErr) {
+                              console.warn('Failed to log status change activity:', logErr);
+                            }
 
                             // Send SMS notification via the backend
                             try {
@@ -5310,6 +5338,195 @@ function ManageBookings() {
           onCancel={() => setDeleteConfig(null)}
         />
       )}
+    </div>
+  );
+}
+
+function ManageActivityLog() {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState('all');
+
+  useEffect(() => {
+    const q = query(collection(db, 'activity_logs'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'activity_logs');
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const filteredLogs = logs.filter(log => {
+    const matchesSearch = 
+      (log.userEmail || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.description || '').toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesFilter = filterType === 'all' || log.type === filterType;
+    return matchesSearch && matchesFilter;
+  });
+
+  // Calculate statistics
+  const totalLogins = logs.filter(l => l.type === 'login').length;
+  const totalSubmissions = logs.filter(l => l.type === 'application_submission').length;
+  const totalOtps = logs.filter(l => l.type === 'sms_verification').length;
+  const totalStatusChanges = logs.filter(l => l.type === 'status_change').length;
+
+  const getActivityColor = (type: string) => {
+    switch (type) {
+      case 'login':
+        return 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-400';
+      case 'application_submission':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400';
+      case 'sms_verification':
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-400';
+      case 'status_change':
+        return 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400';
+      case 'password_reset':
+        return 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400';
+      default:
+        return 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400';
+    }
+  };
+
+  const formatActivityType = (type: string) => {
+    return (type || '').replace(/_/g, ' ').toUpperCase();
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-xl font-black uppercase tracking-tight text-foreground">Client Engagement Log</h1>
+          <p className="text-xs text-muted-foreground">Monitor real-time candidate registration, verification, status changes, and portal logins.</p>
+        </div>
+      </div>
+
+      {/* Grid Statistics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="rounded-xl border border-border shadow-xs">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 bg-green-100 dark:bg-green-950/20 text-green-600 rounded-lg animate-pulse">
+              <UserIcon className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Client Logins</p>
+              <h4 className="text-lg font-black">{totalLogins}</h4>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border border-border shadow-xs">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 bg-blue-100 dark:bg-blue-950/20 text-blue-600 rounded-lg animate-pulse">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Career Apps</p>
+              <h4 className="text-lg font-black">{totalSubmissions}</h4>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border border-border shadow-xs">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 bg-orange-100 dark:bg-orange-950/20 text-orange-600 rounded-lg animate-pulse">
+              <Phone className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">SMS OTPs Sent</p>
+              <h4 className="text-lg font-black">{totalOtps}</h4>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border border-border shadow-xs">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 bg-purple-100 dark:bg-purple-950/20 text-purple-600 rounded-lg animate-pulse">
+              <SettingsIcon className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Status Updates</p>
+              <h4 className="text-lg font-black">{totalStatusChanges}</h4>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filtering Options */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, email, or description..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 text-xs rounded-xl"
+          />
+        </div>
+        <div className="flex gap-2">
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="h-10 text-xs rounded-xl border border-border bg-background px-3 font-semibold text-foreground focus:outline-hidden cursor-pointer"
+          >
+            <option value="all">All Activities</option>
+            <option value="login">Logins</option>
+            <option value="sms_verification">SMS OTPs</option>
+            <option value="application_submission">Submissions</option>
+            <option value="status_change">Status Changes</option>
+            <option value="password_reset">Resets</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Activity Timeline Card */}
+      <Card className="rounded-2xl border border-border shadow-md">
+        <CardHeader className="border-b px-6 py-4">
+          <CardTitle className="text-sm font-black uppercase tracking-wider text-foreground">Timeline History</CardTitle>
+          <CardDescription className="text-xs">Real-time chronologically sorted candidate events.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-6">
+          {loading ? (
+            <div className="flex min-h-[200px] items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-orange-600" />
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Info className="h-8 w-8 mx-auto text-muted-foreground/60 mb-2 animate-bounce" />
+              <p className="text-xs font-bold">No activity logs match your filter criteria.</p>
+            </div>
+          ) : (
+            <div className="relative border-l-2 border-border ml-3 pl-6 space-y-6">
+              {filteredLogs.map((log) => (
+                <div key={log.id} className="relative animate-in fade-in slide-in-from-left-4 duration-200">
+                  {/* Timeline bullet dot */}
+                  <div className="absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 border-background bg-orange-600" />
+                  
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-black text-foreground">{log.userName || 'Anonymous Client'}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono">{log.userEmail || ''}</span>
+                      <span className={`text-[9px] font-black tracking-widest px-1.5 py-0.5 rounded-sm uppercase ${getActivityColor(log.type)}`}>
+                        {formatActivityType(log.type)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-foreground/80 font-medium">{log.description}</p>
+                    <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-mono">
+                      <Clock className="h-3 w-3" />
+                      {log.createdAt ? format(parseISO(log.createdAt), 'PPP p') : 'Just now'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

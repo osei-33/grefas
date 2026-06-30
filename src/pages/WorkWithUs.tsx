@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -10,7 +10,8 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   updateProfile,
-  signOut
+  signOut,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,12 +48,18 @@ export default function WorkWithUs() {
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Portal Sign In / Sign Up states
-  const [portalMode, setPortalMode] = useState<'signin' | 'signup'>('signin');
+  const [portalMode, setPortalMode] = useState<'signin' | 'signup' | 'forgot_password' | 'verify_otp'>('signin');
   const [portalEmail, setPortalEmail] = useState('');
   const [portalPassword, setPortalPassword] = useState('');
   const [portalFullName, setPortalFullName] = useState('');
   const [portalConfirmPassword, setPortalConfirmPassword] = useState('');
+  const [portalPhone, setPortalPhone] = useState('');
   const [isPortalActionLoading, setIsPortalActionLoading] = useState(false);
+
+  // OTP SMS verification states
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [userEnteredOtp, setUserEnteredOtp] = useState('');
+  const [tempUserData, setTempUserData] = useState<any>(null);
 
   // Form State
   const [fullName, setFullName] = useState('');
@@ -81,6 +88,61 @@ export default function WorkWithUs() {
     return () => unsubscribe();
   }, []);
 
+  // Pre-fill profile details if they have submitted an application before
+  useEffect(() => {
+    if (!user) return;
+    
+    // Set basic auth-derived states first as fallback
+    setFullName(prev => prev || user.displayName || '');
+    setEmailAddress(prev => prev || user.email || '');
+
+    const fetchLatestProfile = async () => {
+      try {
+        const q = query(
+          collection(db, 'service_intakes'),
+          where('userId', '==', user.uid)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          // Sort manually by createdAt descending to get the newest
+          const sorted = snap.docs
+            .map(d => d.data())
+            .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          
+          const latest = sorted[0];
+          if (latest) {
+            setFullName(latest.fullName || user.displayName || '');
+            setDateOfBirth(latest.dateOfBirth || '');
+            setContact(latest.contact || '');
+            setAddress(latest.address || '');
+            setWhatsappNumber(latest.whatsappNumber || '');
+            setEmailAddress(latest.emailAddress || user.email || '');
+            setRoleType(latest.roleType || 'Actor / Actress');
+            setExperienceLevel(latest.experienceLevel || 'Intermediate');
+            setAvailability(latest.availability || 'Full-time');
+            setPortfolioLink(latest.portfolioLink || '');
+            setBio(latest.bio || '');
+            setSignature(latest.signature || '');
+            toast.success('Welcome back! Your previous application profile has been auto-filled.');
+          }
+        } else {
+          // If no service intakes found, check if there is a users doc with phone number
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc && userDoc.exists()) {
+            const uData = userDoc.data();
+            if (uData.phone) {
+              setContact(prev => prev || uData.phone || '');
+              setWhatsappNumber(prev => prev || uData.phone || '');
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching latest application for auto-fill:', err);
+      }
+    };
+    fetchLatestProfile();
+  }, [user]);
+
   const handlePortalSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!portalEmail.trim() || !portalPassword) {
@@ -89,7 +151,24 @@ export default function WorkWithUs() {
     }
     setIsPortalActionLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, portalEmail.trim(), portalPassword);
+      const userCredential = await signInWithEmailAndPassword(auth, portalEmail.trim(), portalPassword);
+      
+      // Log login activity
+      if (userCredential.user) {
+        try {
+          await addDoc(collection(db, 'activity_logs'), {
+            userId: userCredential.user.uid,
+            userEmail: userCredential.user.email,
+            userName: userCredential.user.displayName || 'Grefas Client',
+            type: 'login',
+            description: `Client logged in securely via email and password.`,
+            createdAt: new Date().toISOString()
+          });
+        } catch (logErr) {
+          console.warn('Login activity logging failed:', logErr);
+        }
+      }
+
       toast.success('Signed in successfully!');
     } catch (error: any) {
       console.error('Portal sign in error:', error);
@@ -105,7 +184,7 @@ export default function WorkWithUs() {
     }
   };
 
-  const handlePortalSignUp = async (e: React.FormEvent) => {
+  const handlePortalSignUpInit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!portalFullName.trim()) {
       toast.error('Please enter your full name.');
@@ -113,6 +192,10 @@ export default function WorkWithUs() {
     }
     if (!portalEmail.trim()) {
       toast.error('Please enter your email.');
+      return;
+    }
+    if (!portalPhone.trim()) {
+      toast.error('Please enter your phone number.');
       return;
     }
     if (portalPassword.length < 6) {
@@ -123,25 +206,148 @@ export default function WorkWithUs() {
       toast.error('Passwords do not match.');
       return;
     }
+
     setIsPortalActionLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, portalEmail.trim(), portalPassword);
+      // Generate a random 6-digit verification code
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      setGeneratedOtp(otp);
+      setTempUserData({
+        fullName: portalFullName.trim(),
+        email: portalEmail.trim(),
+        password: portalPassword,
+        phone: portalPhone.trim()
+      });
+
+      // Send the OTP via server SMS endpoint
+      const res = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: portalPhone.trim(),
+          code: otp
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to dispatch SMS verification code.');
+      }
+
+      // Log the OTP action
+      try {
+        await addDoc(collection(db, 'activity_logs'), {
+          userId: null,
+          userEmail: portalEmail.trim(),
+          userName: portalFullName.trim(),
+          type: 'sms_verification',
+          description: `SMS verification OTP code sent to client phone number ${portalPhone.trim()}.`,
+          createdAt: new Date().toISOString()
+        });
+      } catch (logErr) {
+        console.warn('Activity logging failed:', logErr);
+      }
+
+      toast.success(`Verification SMS dispatched to ${portalPhone.trim()}!`);
+      setPortalMode('verify_otp');
+    } catch (error: any) {
+      console.error('SMS verification dispatch error:', error);
+      toast.error(error.message || 'Failed to dispatch verification SMS.');
+    } finally {
+      setIsPortalActionLoading(false);
+    }
+  };
+
+  const handleVerifyOtpAndRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (userEnteredOtp !== generatedOtp) {
+      toast.error('Incorrect verification code. Please try again.');
+      return;
+    }
+
+    if (!tempUserData) {
+      toast.error('Session expired. Please start registration again.');
+      setPortalMode('signup');
+      return;
+    }
+
+    setIsPortalActionLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, tempUserData.email, tempUserData.password);
       if (userCredential.user) {
         await updateProfile(userCredential.user, {
-          displayName: portalFullName.trim()
+          displayName: tempUserData.fullName
         });
-        setUser({ ...userCredential.user, displayName: portalFullName.trim() });
+
+        // Save phone to user profile in Firestore
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          email: tempUserData.email,
+          fullName: tempUserData.fullName,
+          phone: tempUserData.phone,
+          role: 'guest',
+          createdAt: serverTimestamp()
+        }, { merge: true });
+
+        // Update local user state
+        setUser({ ...userCredential.user, displayName: tempUserData.fullName });
+
+        // Record registration activity log
+        try {
+          await addDoc(collection(db, 'activity_logs'), {
+            userId: userCredential.user.uid,
+            userEmail: tempUserData.email,
+            userName: tempUserData.fullName,
+            type: 'login',
+            description: `Client portal account registered successfully after SMS verification of ${tempUserData.phone}.`,
+            createdAt: new Date().toISOString()
+          });
+        } catch (logErr) {
+          console.warn('Failed to log registration activity:', logErr);
+        }
       }
-      toast.success('Sign up completed! Welcome to Grefas Consult.');
+      toast.success('Registration and SMS Verification completed! Welcome to Grefas.');
     } catch (error: any) {
-      console.error('Portal sign up error:', error);
-      let errorMsg = 'Failed to sign up.';
+      console.error('Registration completion error:', error);
+      let errorMsg = 'Failed to complete registration.';
       if (error?.code === 'auth/email-already-in-use') {
         errorMsg = 'An account already exists with this email address.';
       } else if (error?.code === 'auth/invalid-email') {
         errorMsg = 'The email address is invalid.';
       }
       toast.error(errorMsg);
+    } finally {
+      setIsPortalActionLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!portalEmail.trim()) {
+      toast.error('Please enter your email address first.');
+      return;
+    }
+    setIsPortalActionLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, portalEmail.trim());
+      
+      // Track password reset activity
+      try {
+        await addDoc(collection(db, 'activity_logs'), {
+          userId: null,
+          userEmail: portalEmail.trim(),
+          userName: 'Anonymous Client',
+          type: 'password_reset',
+          description: `Requested a password reset link for ${portalEmail.trim()}.`,
+          createdAt: new Date().toISOString()
+        });
+      } catch (logErr) {
+        console.warn('Failed to log password reset activity:', logErr);
+      }
+
+      toast.success('Password reset email sent! Check your inbox.');
+      setPortalMode('signin');
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      toast.error(error.message || 'Failed to send password reset email.');
     } finally {
       setIsPortalActionLoading(false);
     }
@@ -175,7 +381,24 @@ export default function WorkWithUs() {
   const handleGoogleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      
+      // Log login activity
+      if (result.user) {
+        try {
+          await addDoc(collection(db, 'activity_logs'), {
+            userId: result.user.uid,
+            userEmail: result.user.email,
+            userName: result.user.displayName || 'Grefas Client',
+            type: 'login',
+            description: `Client logged in securely via Google Authentication.`,
+            createdAt: new Date().toISOString()
+          });
+        } catch (logErr) {
+          console.warn('Login activity logging failed:', logErr);
+        }
+      }
+
       toast.success('Authenticated successfully!');
     } catch (error) {
       console.error('Sign-in failed:', error);
@@ -250,6 +473,22 @@ export default function WorkWithUs() {
         console.warn('API notify intake skipped or failed:', err);
       }
 
+      // 4. Record application submission activity log
+      if (user) {
+        try {
+          await addDoc(collection(db, 'activity_logs'), {
+            userId: user.uid,
+            userEmail: user.email,
+            userName: fullName.trim(),
+            type: 'application_submission',
+            description: `Submitted a casting career application for the role of ${roleType}.`,
+            createdAt: new Date().toISOString()
+          });
+        } catch (logErr) {
+          console.warn('Failed to log application submission:', logErr);
+        }
+      }
+
       toast.success('Your application was submitted successfully!');
       setShowSuccess(true);
     } catch (error) {
@@ -294,44 +533,50 @@ export default function WorkWithUs() {
               className="bg-card border border-border shadow-xl rounded-2xl overflow-hidden"
             >
               {/* Header Tab Switches */}
-              <div className="flex border-b">
-                <button
-                  type="button"
-                  onClick={() => setPortalMode('signin')}
-                  className={`flex-1 py-4 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                    portalMode === 'signin' 
-                      ? 'border-b-2 border-orange-600 text-orange-600 bg-orange-600/5' 
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Portal Sign In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPortalMode('signup')}
-                  className={`flex-1 py-4 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                    portalMode === 'signup' 
-                      ? 'border-b-2 border-orange-600 text-orange-600 bg-orange-600/5' 
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Create Client Account
-                </button>
-              </div>
+              {portalMode !== 'verify_otp' && portalMode !== 'forgot_password' && (
+                <div className="flex border-b">
+                  <button
+                    type="button"
+                    onClick={() => setPortalMode('signin')}
+                    className={`flex-1 py-4 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      portalMode === 'signin' 
+                        ? 'border-b-2 border-orange-600 text-orange-600 bg-orange-600/5' 
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Portal Sign In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPortalMode('signup')}
+                    className={`flex-1 py-4 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      portalMode === 'signup' 
+                        ? 'border-b-2 border-orange-600 text-orange-600 bg-orange-600/5' 
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Create Client Account
+                  </button>
+                </div>
+              )}
 
               <div className="p-6 space-y-6">
                 <div className="text-center space-y-1">
                   <h2 className="text-xl font-black text-foreground uppercase tracking-tight">
-                    {portalMode === 'signin' ? 'Welcome Back Applicant' : 'Start Your Grefas Journey'}
+                    {portalMode === 'signin' ? 'Welcome Back Applicant' : 
+                     portalMode === 'signup' ? 'Start Your Grefas Journey' :
+                     portalMode === 'forgot_password' ? 'Reset Secret Password' :
+                     'SMS Code Verification'}
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    {portalMode === 'signin' 
-                      ? 'Access the secure talent registry to apply and track your status' 
-                      : 'Sign up to submit your career application and manage details'}
+                    {portalMode === 'signin' ? 'Access the secure talent registry to apply and track your status' : 
+                     portalMode === 'signup' ? 'Sign up to submit your career application and manage details' :
+                     portalMode === 'forgot_password' ? 'Enter your registered email to receive a secure reset link' :
+                     `Enter the 6-digit code dispatched to ${portalPhone}`}
                   </p>
                 </div>
 
-                {portalMode === 'signin' ? (
+                {portalMode === 'signin' && (
                   <form onSubmit={handlePortalSignIn} className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Email Address</label>
@@ -345,7 +590,16 @@ export default function WorkWithUs() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Secret Password</label>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Secret Password</label>
+                        <button
+                          type="button"
+                          onClick={() => setPortalMode('forgot_password')}
+                          className="text-[10px] font-bold text-orange-600 hover:underline"
+                        >
+                          Forgot Password?
+                        </button>
+                      </div>
                       <Input
                         type="password"
                         value={portalPassword}
@@ -370,8 +624,10 @@ export default function WorkWithUs() {
                       )}
                     </Button>
                   </form>
-                ) : (
-                  <form onSubmit={handlePortalSignUp} className="space-y-4">
+                )}
+
+                {portalMode === 'signup' && (
+                  <form onSubmit={handlePortalSignUpInit} className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Full Legal Name</label>
                       <Input
@@ -383,16 +639,29 @@ export default function WorkWithUs() {
                         className="h-10 text-xs rounded-lg bg-muted/20"
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Email Address</label>
-                      <Input
-                        type="email"
-                        value={portalEmail}
-                        onChange={(e) => setPortalEmail(e.target.value)}
-                        placeholder="linda@gmail.com"
-                        required
-                        className="h-10 text-xs rounded-lg bg-muted/20"
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Email Address</label>
+                        <Input
+                          type="email"
+                          value={portalEmail}
+                          onChange={(e) => setPortalEmail(e.target.value)}
+                          placeholder="linda@gmail.com"
+                          required
+                          className="h-10 text-xs rounded-lg bg-muted/20"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Phone Number (SMS)</label>
+                        <Input
+                          type="tel"
+                          value={portalPhone}
+                          onChange={(e) => setPortalPhone(e.target.value)}
+                          placeholder="+233244123456"
+                          required
+                          className="h-10 text-xs rounded-lg bg-muted/20"
+                        />
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
@@ -426,28 +695,117 @@ export default function WorkWithUs() {
                       {isPortalActionLoading ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Creating Account...
+                          Sending SMS Code...
                         </>
                       ) : (
-                        'Create Secure Account'
+                        'Request Verification Code'
                       )}
                     </Button>
                   </form>
                 )}
 
-                <div className="relative flex items-center justify-center my-4">
-                  <div className="border-t border-border w-full"></div>
-                  <span className="absolute bg-card px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Or Connect With</span>
-                </div>
+                {portalMode === 'forgot_password' && (
+                  <form onSubmit={handleForgotPassword} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Email Address</label>
+                      <Input
+                        type="email"
+                        value={portalEmail}
+                        onChange={(e) => setPortalEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        required
+                        className="h-10 text-xs rounded-lg bg-muted/20"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={isPortalActionLoading}
+                      className="w-full bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase tracking-wider h-10 rounded-xl cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      {isPortalActionLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Sending Reset Email...
+                        </>
+                      ) : (
+                        'Send Reset Link'
+                      )}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setPortalMode('signin')}
+                      className="text-[11px] font-black text-muted-foreground uppercase tracking-wider hover:text-foreground block text-center w-full pt-2"
+                    >
+                      Back to Sign In
+                    </button>
+                  </form>
+                )}
 
-                <Button
-                  onClick={handleGoogleLogin}
-                  variant="outline"
-                  className="w-full h-10 text-xs font-bold border-border hover:bg-muted text-foreground flex items-center justify-center gap-2 rounded-xl cursor-pointer"
-                >
-                  <LogIn className="h-4 w-4 text-orange-600" />
-                  Continue with Google
-                </Button>
+                {portalMode === 'verify_otp' && (
+                  <form onSubmit={handleVerifyOtpAndRegister} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">6-Digit Verification Code</label>
+                      <Input
+                        type="text"
+                        maxLength={6}
+                        value={userEnteredOtp}
+                        onChange={(e) => setUserEnteredOtp(e.target.value.replace(/\D/g, ''))}
+                        placeholder="123456"
+                        required
+                        className="h-12 text-center text-lg font-black tracking-widest rounded-lg bg-muted/20"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={isPortalActionLoading}
+                      className="w-full bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase tracking-wider h-10 rounded-xl cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      {isPortalActionLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Completing Registration...
+                        </>
+                      ) : (
+                        'Verify & Complete Registration'
+                      )}
+                    </Button>
+                    <div className="flex justify-between pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setPortalMode('signup')}
+                        className="text-[10px] font-black text-muted-foreground uppercase tracking-wider hover:text-foreground animate-pulse"
+                      >
+                        Change Details
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePortalSignUpInit}
+                        className="text-[10px] font-black text-orange-600 uppercase tracking-wider hover:underline animate-pulse"
+                      >
+                        Resend OTP SMS
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {portalMode !== 'verify_otp' && portalMode !== 'forgot_password' && (
+                  <>
+                    <div className="relative flex items-center justify-center my-4">
+                      <div className="border-t border-border w-full"></div>
+                      <span className="absolute bg-card px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Or Connect With</span>
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      variant="outline"
+                      className="w-full h-10 text-xs font-bold border-border hover:bg-muted text-foreground flex items-center justify-center gap-2 rounded-xl cursor-pointer"
+                    >
+                      <LogIn className="h-4 w-4 text-orange-600" />
+                      Continue with Google
+                    </Button>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>

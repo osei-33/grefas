@@ -185,6 +185,22 @@ async function startServer() {
     });
   });
 
+  // Send OTP endpoint for client portal signup
+  app.post("/api/send-otp", async (req, res) => {
+    const { phone, code } = req.body;
+    if (!phone || !code) {
+      return res.status(400).json({ error: "Phone number and verification code are required" });
+    }
+    try {
+      const message = `Your Grefas Consult verification code is: ${code}. Valid for 10 minutes. Please enter this code to complete your client portal registration.`;
+      const smsStatus = await sendSMS(phone, message);
+      res.json({ status: smsStatus });
+    } catch (err: any) {
+      console.error("Error sending OTP SMS:", err);
+      res.status(500).json({ error: err.message || "Failed to send SMS OTP" });
+    }
+  });
+
   // In-memory cache to prevent spamming low credit email alerts (allow once every 24 hours per unique email)
   const sentLowCreditAlerts = new Map<string, number>();
 
