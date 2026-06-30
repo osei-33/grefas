@@ -55,26 +55,27 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
-        ((request.auth.token != null && 'email' in request.auth.token && 
-          (request.auth.token.email == "serwaahlinda1995@gmail.com" || 
-           request.auth.token.email == "asantegrice@gmail.com" || 
-           request.auth.token.email == "asantegrifice@gmail.com" || 
-           request.auth.token.email == "oseikwameemmanuel33@gmail.com")) ||
-         (request.auth.token != null && request.auth.token.email in ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"]) ||
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+      return isAuthenticated() && (
+        (request.auth.token != null && 'email' in request.auth.token && 
+         (request.auth.token.email == "serwaahlinda1995@gmail.com" || 
+          request.auth.token.email == "asantegrice@gmail.com" || 
+          request.auth.token.email == "asantegrifice@gmail.com" || 
+          request.auth.token.email == "oseikwameemmanuel33@gmail.com")) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
     function isEditor() {
       return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor';
     }
 
     function isStaff() {
-      return isAdmin() || isEditor() ||
-        (isAuthenticated() && request.auth.token != null && request.auth.token.email in ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"]);
+      return isAdmin() || isEditor();
     }
 
     function isOwner(userId) {
@@ -152,8 +153,7 @@ service cloud.firestore {
              data.isActive is bool &&
              (!('type' in data) || data.type is string) &&
              (!('buttonText' in data) || data.buttonText is string) &&
-             (!('buttonUrl' in data) || data.buttonUrl is string) &&
-             (!('createdAt' in data) || data.createdAt == request.time);
+             (!('buttonUrl' in data) || data.buttonUrl is string);
     }
 
     // ===============================================================
@@ -294,6 +294,16 @@ service cloud.firestore {
 
     match /letters/{letterId} {
       allow read, write: if isStaff();
+    }
+
+    match /employees/{employeeId} {
+      allow read: if isStaff() || (isAuthenticated() && resource.data.email == request.auth.token.email);
+      allow create, update, delete: if isStaff();
+    }
+
+    match /salaries/{salaryId} {
+      allow read: if isStaff() || (isAuthenticated() && resource.data.employeeEmail == request.auth.token.email);
+      allow create, update, delete: if isStaff();
     }
     
     match /test/connection {

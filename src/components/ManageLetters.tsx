@@ -61,6 +61,16 @@ interface Settings {
   email?: string;
 }
 
+interface CastCrewMember {
+  id: string;
+  fullName: string;
+  roleType: string;
+  emailAddress?: string;
+  address?: string;
+  contact?: string;
+  status?: string;
+}
+
 export default function ManageLetters() {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [settings, setSettings] = useState<Settings>({
@@ -76,6 +86,8 @@ export default function ManageLetters() {
 
   // Form states
   const [recipientType, setRecipientType] = useState<'organisation' | 'individual' | 'institution'>('organisation');
+  const [castCrewList, setCastCrewList] = useState<CastCrewMember[]>([]);
+  const [selectedCastCrewId, setSelectedCastCrewId] = useState<string>('');
   const [recipientName, setRecipientName] = useState('');
   const [recipientAddress, setRecipientAddress] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -129,6 +141,7 @@ export default function ManageLetters() {
     setWatermarkEnabled(true);
     setWatermarkOpacity(0.05);
     setAiPrompt('');
+    setSelectedCastCrewId('');
     setActiveTab('compose');
   };
 
@@ -171,6 +184,45 @@ export default function ManageLetters() {
 
     return () => unsubscribe();
   }, []);
+
+  // Load cast and crew members (service intakes)
+  useEffect(() => {
+    const q = query(collection(db, 'service_intakes'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const members: CastCrewMember[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        members.push({
+          id: doc.id,
+          fullName: data.fullName || '',
+          roleType: data.roleType || '',
+          emailAddress: data.emailAddress || '',
+          address: data.address || '',
+          contact: data.contact || '',
+          status: data.status || ''
+        });
+      });
+      setCastCrewList(members);
+    }, (error) => {
+      console.error("Failed to load cast & crew for letters selection:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSelectCastCrew = (memberId: string) => {
+    setSelectedCastCrewId(memberId);
+    if (!memberId) return;
+
+    const member = castCrewList.find(m => m.id === memberId);
+    if (member) {
+      setRecipientType('individual');
+      setRecipientName(member.fullName);
+      setRecipientAddress(
+        `${member.address || ''}\nContact: ${member.contact || ''}\nEmail: ${member.emailAddress || ''}`.trim()
+      );
+      setLetterheadType('entertainment');
+    }
+  };
 
   const handleCreateLetter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -816,6 +868,86 @@ export default function ManageLetters() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-6 space-y-4">
+                {/* Cast & Crew Fast-Track Integration */}
+                <div className="bg-orange-50/5 dark:bg-orange-950/5 border border-orange-200/50 p-4 rounded-xl space-y-3.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-orange-600 flex items-center gap-1.5">
+                      <Sparkles className="h-4 w-4 animate-pulse text-orange-600" /> Cast & Crew Quick-Issue Desk
+                    </p>
+                    {castCrewList.length > 0 && (
+                      <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">
+                        {castCrewList.length} Active Candidates
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Select Cast or Crew Member</label>
+                      <select
+                        id="select-cast-crew-member"
+                        value={selectedCastCrewId}
+                        onChange={(e) => handleSelectCastCrew(e.target.value)}
+                        className="w-full bg-background border border-border rounded-lg text-xs h-9 px-3 text-foreground font-semibold focus:border-orange-500"
+                      >
+                        <option value="">-- Choose from registered talent --</option>
+                        {castCrewList.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.fullName} ({member.roleType || 'General'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Apply Official Template</label>
+                      <div className="flex gap-2">
+                        <Button
+                          id="btn-apply-cast-template"
+                          type="button"
+                          variant="outline"
+                          disabled={!recipientName}
+                          onClick={() => {
+                            const role = selectedCastCrewId 
+                              ? (castCrewList.find(m => m.id === selectedCastCrewId)?.roleType || 'Cast Member')
+                              : 'Cast Member';
+                            setSubject(`OFFER OF ENGAGEMENT: ${role.toUpperCase()}`);
+                            setSalutation(`Dear ${recipientName.split(' ')[0] || 'Sir/Madam'},`);
+                            setBody(`This letter serves as an official offer of engagement by Grefas Entertainment & Productions for your professional performance services.\n\nWe have been thoroughly impressed by your audition, screen presence, and creative credentials. Accordingly, you are being engaged in the capacity of ${role}, effective from the date of scheduling.\n\nYour primary engagements will include:\n1. Attending all scheduled rehearsals, read-throughs, table reads, and blocking sessions.\n2. Cooperating fully with the director, technical crew, and fellow cast members to maintain artistic integrity.\n3. Arriving on set promptly with full preparation of lines, blocking, and characterization.\n\nIn consideration for your artistic services, Grefas Entertainment shall provide a competitive performance stipend as discussed, payable upon successful completion of production milestones. Logistics, styling, and basic on-set hospitality during shoot days will be provided by our production coordinators.\n\nPlease review this agreement, sign the copy below, and return it to our admin office to confirm your acceptance. We are incredibly thrilled to have you onboard and look forward to capturing magic on screen together!`);
+                            toast.success("Cast Engagement Letter template applied!");
+                          }}
+                          className="flex-1 text-[10px] font-bold h-9 border-orange-200 hover:bg-orange-50 hover:text-orange-700 text-foreground"
+                        >
+                          Cast Offer
+                        </Button>
+                        <Button
+                          id="btn-apply-crew-template"
+                          type="button"
+                          variant="outline"
+                          disabled={!recipientName}
+                          onClick={() => {
+                            const role = selectedCastCrewId 
+                              ? (castCrewList.find(m => m.id === selectedCastCrewId)?.roleType || 'Production Crew')
+                              : 'Production Crew';
+                            setSubject(`OFFER OF ENGAGEMENT: ${role.toUpperCase()} (PRODUCTION STAFF)`);
+                            setSalutation(`Dear ${recipientName.split(' ')[0] || 'Sir/Madam'},`);
+                            setBody(`This letter serves as an official offer of engagement by Grefas Entertainment & Productions for your professional technical and production services.\n\nBased on your stellar technical expertise and professional portfolio, we are pleased to engage you as a vital member of our Production Crew in the role of ${role}, effective from the scheduled production start.\n\nYour key deliverables will include:\n1. Overseeing technical setups, gear inventory, and operational management of your assigned department (e.g., Camera, Sound, Lighting, Set Design, or Production Management).\n2. Coordinating closely with the Director, Producer, and fellow crew members to ensure high-fidelity audio-visual output.\n3. Ensuring proper maintenance, safety, and breakdown of all technical equipment on set.\n\nIn consideration for your technical services, Grefas Entertainment shall provide a professional day-rate or project stipend as negotiated, payable upon milestone clearances. All on-set meals, safety gear, and local transport during shoot timelines will be fully covered.\n\nPlease sign and return a duplicate of this engagement letter to our administration desk to confirm your availability and agreement to these terms. We are excited to collaborate with you to deliver world-class production values.`);
+                            toast.success("Crew Engagement Letter template applied!");
+                          }}
+                          className="flex-1 text-[10px] font-bold h-9 border-orange-200 hover:bg-orange-50 hover:text-orange-700 text-foreground"
+                        >
+                          Crew Offer
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {!recipientName && (
+                    <p className="text-[10px] text-muted-foreground italic">
+                      💡 Select a registered member above or enter a Recipient Name to activate the template quick-apply buttons.
+                    </p>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-foreground block">Recipient Classification</label>

@@ -19,7 +19,7 @@ const artistImg = '/src/assets/images/service_artist_1782127476185.jpg';
 export default function Services() {
   const [services, setServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'All' | 'Consulting' | 'Entertainment'>('All');
+  const [activeTab, setActiveTab] = useState<string>('All');
   
   const [currentStep, setCurrentStep] = useState(1);
   const [draftInfo, setDraftInfo] = useState<{ savedAt: string; data: any } | null>(null);
@@ -1127,8 +1127,8 @@ export default function Services() {
     return () => unsubscribe();
   }, []);
 
-  const getServiceCategory = (service: any): 'Consulting' | 'Entertainment' => {
-    if (service.category === 'Consulting' || service.category === 'Entertainment') {
+  const getServiceCategory = (service: any): string => {
+    if (service.category) {
       return service.category;
     }
     // High-fidelity fallback heuristic based on keywords
@@ -1199,15 +1199,17 @@ export default function Services() {
         </div>
 
         {/* Tabbed Filter UI */}
-        <div className="mt-10 flex justify-center">
-          <div className="inline-flex rounded-xl bg-muted/60 p-1 backdrop-blur-sm border border-border/30">
-            {(['All', 'Consulting', 'Entertainment'] as const).map((tab) => {
+        <div className="mt-10 flex flex-wrap gap-2 justify-center">
+          <div className="inline-flex flex-wrap items-center gap-1 rounded-xl bg-muted/60 p-1 backdrop-blur-sm border border-border/30">
+            {['All', ...Array.from(new Set(services.map(s => getServiceCategory(s))))].map((tab) => {
               const isActive = activeTab === tab;
               const TabIcon = tab === 'All' 
                 ? (LucideIcons.Layers || LucideIcons.Grid)
                 : tab === 'Consulting' 
                   ? LucideIcons.Briefcase 
-                  : (LucideIcons.Music2 || LucideIcons.Music);
+                  : tab === 'Entertainment'
+                    ? (LucideIcons.Music2 || LucideIcons.Music)
+                    : LucideIcons.Sparkles;
               
               return (
                 <button

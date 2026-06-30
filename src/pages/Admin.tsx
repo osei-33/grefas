@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -38,6 +38,7 @@ import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Cart
 import ManageBlog from './ManageBlog';
 import SmsDashboard from '@/components/SmsDashboard';
 import ManageLetters from '@/components/ManageLetters';
+import ManageEmployeesPayroll from '@/components/ManageEmployeesPayroll';
 
 const isAdminEmail = (email: string | null) => {
   if (!email) return false;
@@ -625,6 +626,20 @@ export default function Admin() {
                 {isActive('/admin/letters') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
+                to="/admin/payroll"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/payroll') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-payroll"
+              >
+                <CreditCard className={`h-4 w-4 ${isActive('/admin/payroll') ? 'text-orange-600' : ''}`} />
+                <span>Staff & Payroll</span>
+                {isActive('/admin/payroll') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+              <Link
                 to="/admin/testimonials"
                 onClick={() => setIsSidebarOpen(false)}
                 className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -745,6 +760,7 @@ export default function Admin() {
           <Route path="/blog" element={<ManageBlog />} />
           <Route path="/newsletter" element={<ManageNewsletter />} />
           <Route path="/letters" element={<ManageLetters />} />
+          <Route path="/payroll" element={<ManageEmployeesPayroll />} />
           <Route path="/testimonials" element={<ManageTestimonials />} />
           <Route path="/announcements" element={<ManageVisitorAlerts />} />
           {role === 'admin' && (
@@ -1830,6 +1846,9 @@ function ManageServices() {
   const [newService, setNewService] = useState({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting' });
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  const [categoryType, setCategoryType] = useState('Consulting');
+  const [customCategory, setCustomCategory] = useState('');
+
   useEffect(() => {
     const q = query(collection(db, 'services'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -1843,14 +1862,21 @@ function ManageServices() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const finalCategory = categoryType === 'Custom' ? customCategory.trim() : categoryType;
+      if (!finalCategory) {
+        toast.error('Please specify a category');
+        return;
+      }
       await addDoc(collection(db, 'services'), {
         ...newService,
-        category: newService.category || 'Consulting',
+        category: finalCategory,
         createdAt: serverTimestamp()
       });
       toast.success('Service added');
       setIsAdding(false);
       setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting' });
+      setCategoryType('Consulting');
+      setCustomCategory('');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'services');
     }
@@ -1976,14 +2002,28 @@ function ManageServices() {
                   required 
                   className="bg-muted/50 border-border"
                 />
-                <select
-                  value={newService.category}
-                  onChange={e => setNewService({...newService, category: e.target.value})}
-                  className="flex h-10 w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500"
-                >
-                  <option value="Consulting">Consulting Services</option>
-                  <option value="Entertainment">Entertainment Services</option>
-                </select>
+                <div className="flex flex-col gap-2">
+                  <select
+                    value={categoryType}
+                    onChange={e => setCategoryType(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="Consulting">Consulting Services</option>
+                    <option value="Entertainment">Entertainment Services</option>
+                    <option value="Production">Production Services</option>
+                    <option value="Creative">Creative Services</option>
+                    <option value="Custom">Custom Category...</option>
+                  </select>
+                  {categoryType === 'Custom' && (
+                    <Input 
+                      placeholder="Enter Custom Category" 
+                      value={customCategory} 
+                      onChange={e => setCustomCategory(e.target.value)} 
+                      required 
+                      className="bg-muted/50 border-border h-10 text-sm"
+                    />
+                  )}
+                </div>
               </div>
               <Button type="submit" className="w-full bg-orange-600 text-white">Save Service</Button>
             </form>
@@ -4114,6 +4154,279 @@ function ManageBookings() {
     toast.success("Preparing PDF document report for printing...");
   };
 
+  const handleGenerateInvoicePDF = (booking: any) => {
+    const reportDate = format(new Date(), 'MMMM d, yyyy');
+    const invoiceNumber = booking.orderNumber || `INV-${Math.floor(100000 + Math.random() * 900000)}`;
+    
+    // Compute pricing based on service name
+    const serviceName = booking.serviceTitle || 'General Consultation';
+    const basePrice = serviceName.toLowerCase().includes('entertainment') ? 1200 : 450;
+    const vat = parseFloat((basePrice * 0.15).toFixed(2));
+    const total = basePrice + vat;
+
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    document.body.appendChild(printFrame);
+
+    const doc = printFrame.contentWindow?.document || printFrame.contentDocument;
+    if (!doc) {
+      toast.error('Could not initiate Invoice PDF generation.');
+      return;
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invoice - ${invoiceNumber}</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+          body {
+            font-family: 'Inter', system-ui, sans-serif;
+            color: #1f2937;
+            margin: 0;
+            padding: 50px;
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .invoice-container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 1px solid #e5e7eb;
+            padding: 40px;
+            border-radius: 12px;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid #ea580c;
+            padding-bottom: 25px;
+            margin-bottom: 30px;
+          }
+          .logo-area h1 {
+            margin: 0;
+            font-size: 26px;
+            font-weight: 800;
+            color: #ea580c;
+            letter-spacing: -0.05em;
+          }
+          .logo-area p {
+            margin: 4px 0 0 0;
+            font-size: 11px;
+            color: #6b7280;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+          }
+          .invoice-title-area {
+            text-align: right;
+          }
+          .invoice-title-area h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 800;
+            color: #111827;
+            letter-spacing: -0.02em;
+          }
+          .invoice-title-area p {
+            margin: 5px 0 0 0;
+            font-size: 13px;
+            color: #4b5563;
+          }
+          .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 40px;
+          }
+          .details-block h3 {
+            margin: 0 0 10px 0;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #ea580c;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+          }
+          .details-block p {
+            margin: 4px 0;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #374151;
+          }
+          .details-block .name {
+            font-weight: 700;
+            font-size: 15px;
+            color: #111827;
+          }
+          .invoice-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+          }
+          .invoice-table th {
+            background-color: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: #4b5563;
+          }
+          .invoice-table td {
+            padding: 16px;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 13px;
+            color: #111827;
+          }
+          .totals-section {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 40px;
+          }
+          .totals-table {
+            width: 280px;
+          }
+          .totals-table tr td {
+            padding: 8px 12px;
+            font-size: 13px;
+          }
+          .totals-table tr.total-row td {
+            font-weight: 800;
+            font-size: 16px;
+            color: #ea580c;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 12px;
+          }
+          .footer {
+            text-align: center;
+            border-top: 1px solid #f3f4f6;
+            padding-top: 20px;
+            margin-top: 40px;
+            font-size: 11px;
+            color: #9ca3af;
+            line-height: 1.6;
+          }
+          .status-stamp {
+            display: inline-block;
+            border: 3px double #059669;
+            color: #059669;
+            font-size: 14px;
+            font-weight: 900;
+            text-transform: uppercase;
+            padding: 6px 15px;
+            border-radius: 4px;
+            transform: rotate(-5deg);
+            margin-top: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="invoice-container">
+          <div class="header">
+            <div class="logo-area">
+              <h1>GREFAS CONSULT</h1>
+              <p>Consult & Entertainment Group</p>
+            </div>
+            <div class="invoice-title-area">
+              <h2>DIGITAL INVOICE</h2>
+              <p><strong>Invoice No:</strong> ${invoiceNumber}</p>
+              <p><strong>Date Issued:</strong> ${reportDate}</p>
+              <div class="status-stamp">APPROVED & SECURED</div>
+            </div>
+          </div>
+
+          <div class="details-grid">
+            <div class="details-block">
+              <h3>Billed To (Client):</h3>
+              <p class="name">${booking.userName || 'Valued Client'}</p>
+              <p><strong>Email:</strong> ${booking.userEmail || 'N/A'}</p>
+              <p><strong>Phone:</strong> ${booking.userPhone || 'N/A'}</p>
+            </div>
+            <div class="details-block">
+              <h3>Service Details:</h3>
+              <p><strong>Requested:</strong> ${serviceName}</p>
+              <p><strong>Schedule Date:</strong> ${booking.date}</p>
+              <p><strong>Schedule Time:</strong> ${booking.time || 'General Business Hours'}</p>
+              ${booking.teamMemberName ? `<p><strong>Assigned Consultant:</strong> ${booking.teamMemberName}</p>` : ''}
+            </div>
+          </div>
+
+          <table class="invoice-table">
+            <thead>
+              <tr>
+                <th style="width: 60%;">Service Description</th>
+                <th style="width: 20%; text-align: right;">Unit Rate</th>
+                <th style="width: 20%; text-align: right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <strong>${serviceName}</strong><br/>
+                  <span style="font-size: 11px; color: #6b7280;">Secure professional booking fee and consultation arrangement</span>
+                </td>
+                <td style="text-align: right;">GHS ${basePrice.toFixed(2)}</td>
+                <td style="text-align: right;">GHS ${basePrice.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="totals-section">
+            <table class="totals-table">
+              <tr>
+                <td style="color: #6b7280;">Subtotal:</td>
+                <td style="text-align: right; font-weight: 600;">GHS ${basePrice.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="color: #6b7280;">VAT (15%):</td>
+                <td style="text-align: right; font-weight: 600;">GHS ${vat.toFixed(2)}</td>
+              </tr>
+              <tr class="total-row">
+                <td>Total Due:</td>
+                <td style="text-align: right;">GHS ${total.toFixed(2)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div class="footer">
+            <p>Thank you for choosing Grefas Consult & Entertainment!</p>
+            <p>For inquiries or adjustments, please email us at <strong>support@grefas.com</strong> or call Grefas Support desk.</p>
+            <p style="font-size: 9px; color: #d1d5db; margin-top: 15px;">This is a digitally generated invoice issued upon approval of the booking request. No physical signature is required.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        printFrame.contentWindow?.focus();
+        printFrame.contentWindow?.print();
+      } catch (e) {
+        console.error("Failed to print directly:", e);
+        toast.error("Failed to open print PDF preview. Check pop-up blockers.");
+      } finally {
+        setTimeout(() => {
+          document.body.removeChild(printFrame);
+        }, 1000);
+      }
+    }, 1000);
+
+    toast.success("Preparing digital invoice PDF...");
+  };
+
   useEffect(() => {
     const q = query(collection(db, 'bookings'), orderBy('date', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -4637,6 +4950,14 @@ function ManageBookings() {
                             onClick={() => handleSendReminder(booking)}
                           >
                             <Bell className="h-4 w-4" /> Send Reminder
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-green-600 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/10 flex items-center gap-2"
+                            onClick={() => handleGenerateInvoicePDF(booking)}
+                          >
+                            <FileText className="h-4 w-4 text-green-600" /> Issue Invoice (PDF)
                           </Button>
                         </>
                       )}
@@ -7454,6 +7775,7 @@ export function ManageVisitorAlerts() {
       console.error("Error listening to visitor alerts:", error);
       toast.error("Failed to load visitor alerts");
       setLoading(false);
+      handleFirestoreError(error, OperationType.GET, 'visitor_notifications');
     });
     return () => unsubscribe();
   }, []);
@@ -7467,6 +7789,7 @@ export function ManageVisitorAlerts() {
     } catch (error: any) {
       console.error("Error updating alert:", error);
       toast.error("Failed to update alert status");
+      handleFirestoreError(error, OperationType.UPDATE, `visitor_notifications/${id}`);
     }
   };
 
@@ -7479,6 +7802,7 @@ export function ManageVisitorAlerts() {
     } catch (error: any) {
       console.error("Error deleting alert:", error);
       toast.error("Failed to delete alert");
+      handleFirestoreError(error, OperationType.DELETE, `visitor_notifications/${deleteId}`);
     }
   };
 
@@ -7544,6 +7868,7 @@ export function ManageVisitorAlerts() {
     } catch (error: any) {
       console.error("Error saving visitor alert:", error);
       toast.error("Failed to save alert");
+      handleFirestoreError(error, editId ? OperationType.UPDATE : OperationType.CREATE, editId ? `visitor_notifications/${editId}` : 'visitor_notifications');
     } finally {
       setSubmitLoading(false);
     }
