@@ -209,102 +209,39 @@ export default function WorkWithUs() {
 
     setIsPortalActionLoading(true);
     try {
-      // Generate a random 6-digit verification code
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(otp);
-      setTempUserData({
-        fullName: portalFullName.trim(),
-        email: portalEmail.trim(),
-        password: portalPassword,
-        phone: portalPhone.trim()
-      });
-
-      // Send the OTP via server SMS endpoint
-      const res = await fetch('/api/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: portalPhone.trim(),
-          code: otp
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to dispatch SMS verification code.');
-      }
-
-      // Log the OTP action
-      try {
-        await addDoc(collection(db, 'activity_logs'), {
-          userId: null,
-          userEmail: portalEmail.trim(),
-          userName: portalFullName.trim(),
-          type: 'sms_verification',
-          description: `SMS verification OTP code sent to client phone number ${portalPhone.trim()}.`,
-          createdAt: new Date().toISOString()
-        });
-      } catch (logErr) {
-        console.warn('Activity logging failed:', logErr);
-      }
-
-      toast.success(`Verification SMS dispatched to ${portalPhone.trim()}!`);
-      setPortalMode('verify_otp');
-    } catch (error: any) {
-      console.error('SMS verification dispatch error:', error);
-      toast.error(error.message || 'Failed to dispatch verification SMS.');
-    } finally {
-      setIsPortalActionLoading(false);
-    }
-  };
-
-  const handleVerifyOtpAndRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (userEnteredOtp !== generatedOtp) {
-      toast.error('Incorrect verification code. Please try again.');
-      return;
-    }
-
-    if (!tempUserData) {
-      toast.error('Session expired. Please start registration again.');
-      setPortalMode('signup');
-      return;
-    }
-
-    setIsPortalActionLoading(true);
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, tempUserData.email, tempUserData.password);
+      const userCredential = await createUserWithEmailAndPassword(auth, portalEmail.trim(), portalPassword);
       if (userCredential.user) {
         await updateProfile(userCredential.user, {
-          displayName: tempUserData.fullName
+          displayName: portalFullName.trim()
         });
 
         // Save phone to user profile in Firestore
         await setDoc(doc(db, 'users', userCredential.user.uid), {
-          email: tempUserData.email,
-          fullName: tempUserData.fullName,
-          phone: tempUserData.phone,
+          email: portalEmail.trim(),
+          fullName: portalFullName.trim(),
+          phone: portalPhone.trim(),
           role: 'guest',
           createdAt: serverTimestamp()
         }, { merge: true });
 
         // Update local user state
-        setUser({ ...userCredential.user, displayName: tempUserData.fullName });
+        setUser({ ...userCredential.user, displayName: portalFullName.trim() });
 
         // Record registration activity log
         try {
           await addDoc(collection(db, 'activity_logs'), {
             userId: userCredential.user.uid,
-            userEmail: tempUserData.email,
-            userName: tempUserData.fullName,
+            userEmail: portalEmail.trim(),
+            userName: portalFullName.trim(),
             type: 'login',
-            description: `Client portal account registered successfully after SMS verification of ${tempUserData.phone}.`,
+            description: `Client portal account registered successfully (direct sign up without SMS verification). Phone: ${portalPhone.trim()}.`,
             createdAt: new Date().toISOString()
           });
         } catch (logErr) {
           console.warn('Failed to log registration activity:', logErr);
         }
       }
-      toast.success('Registration and SMS Verification completed! Welcome to Grefas.');
+      toast.success('Registration completed! Welcome to Grefas.');
     } catch (error: any) {
       console.error('Registration completion error:', error);
       let errorMsg = 'Failed to complete registration.';
@@ -317,6 +254,11 @@ export default function WorkWithUs() {
     } finally {
       setIsPortalActionLoading(false);
     }
+  };
+
+  const handleVerifyOtpAndRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    toast.info('SMS OTP Verification is currently bypassed.');
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -695,10 +637,10 @@ export default function WorkWithUs() {
                       {isPortalActionLoading ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Sending SMS Code...
+                          Registering Account...
                         </>
                       ) : (
-                        'Request Verification Code'
+                        'Register Client Account'
                       )}
                     </Button>
                   </form>
