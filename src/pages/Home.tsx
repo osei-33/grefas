@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react';
-import { ArrowRight, Star, Users, Briefcase, Play, Quote, Loader2, Zap, X, CheckCircle, Megaphone } from 'lucide-react';
+import { ArrowRight, Star, Users, Briefcase, Play, Quote, Loader2, Zap, X, CheckCircle, Megaphone, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
@@ -208,7 +208,7 @@ export default function Home() {
         keywords="Home Grefas, Nyinahin, Ashanti Region, Ghana Consult, Entertainment Ghana, Grefas official website"
       />
       {/* Hero Section with Carousel */}
-      <section ref={heroRef} className="relative h-[90vh] w-full overflow-hidden bg-zinc-900">
+      <section ref={heroRef} className="relative h-[90vh] w-full overflow-hidden bg-zinc-900 group/hero">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentSlide}
@@ -222,9 +222,12 @@ export default function Home() {
             <img
               src={slides[currentSlide]}
               alt="Hero Background"
-              className="h-full w-full object-cover opacity-60"
+              className="h-full w-full object-cover opacity-50"
               referrerPolicy="no-referrer"
             />
+            {/* Tech Dot Matrix Grid Overlay */}
+            <div className="absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
+            
             {/* Watermark */}
             <div className="pointer-events-none absolute bottom-8 left-8 z-10 select-none opacity-10">
               <p className="text-sm font-bold tracking-[0.2em] text-white">
@@ -234,9 +237,9 @@ export default function Home() {
           </motion.div>
         </AnimatePresence>
 
-        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-zinc-900/80" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-zinc-900" />
 
-        <div className="relative mx-auto flex h-full max-w-7xl flex-col justify-center px-4 sm:px-6 lg:px-8">
+        <div className="relative mx-auto flex h-full max-w-7xl flex-col justify-center px-4 sm:px-6 lg:px-8 z-10">
           <motion.div
             style={{ opacity }}
             className="max-w-4xl"
@@ -246,7 +249,7 @@ export default function Home() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8, delay: 0.2 }}
             >
-              <span className="inline-block rounded-full bg-orange-600/20 px-4 py-1 text-sm font-semibold text-orange-500 backdrop-blur-sm">
+              <span className="inline-block rounded-full bg-orange-600/20 px-4 py-1 text-sm font-semibold text-orange-500 backdrop-blur-sm border border-orange-500/20">
                 {t('hero.badge')}
               </span>
             </motion.div>
@@ -285,7 +288,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.6 }}
-              className="mt-6 text-xl text-zinc-300 max-w-2xl"
+              className="mt-6 text-xl text-zinc-300 max-w-2xl leading-relaxed"
             >
               {t('hero.description')}
             </motion.p>
@@ -296,27 +299,66 @@ export default function Home() {
               transition={{ duration: 0.8, delay: 0.8 }}
               className="mt-10 flex flex-wrap gap-4"
             >
-              <Button size="lg" className="bg-orange-600 hover:bg-orange-700" asChild>
+              <Button size="lg" className="bg-orange-600 hover:bg-orange-700 font-bold uppercase text-xs tracking-wider h-12 rounded-xl px-6" asChild>
                 <Link to="/contact">{t('hero.getStarted')} <ArrowRight className="ml-2 h-5 w-5" /></Link>
               </Button>
-              <Button size="lg" variant="outline" className="border-white text-white hover:bg-white hover:text-zinc-900" asChild>
+              <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white hover:text-zinc-900 font-bold uppercase text-xs tracking-wider h-12 rounded-xl px-6" asChild>
                 <Link to="/gallery">{t('hero.viewGallery')}</Link>
               </Button>
             </motion.div>
           </motion.div>
         </div>
 
+        {/* Manual Arrow Controls (Visible on hover of the section) */}
+        <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none z-20">
+          <button
+            onClick={() => setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length)}
+            className="w-11 h-11 rounded-full bg-black/40 hover:bg-orange-600 text-white flex items-center justify-center backdrop-blur-md border border-white/10 opacity-0 group-hover/hero:opacity-100 transition-all duration-300 pointer-events-auto shadow-lg"
+            title="Previous Slide"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <button
+            onClick={() => setCurrentSlide((prev) => (prev + 1) % slides.length)}
+            className="w-11 h-11 rounded-full bg-black/40 hover:bg-orange-600 text-white flex items-center justify-center backdrop-blur-md border border-white/10 opacity-0 group-hover/hero:opacity-100 transition-all duration-300 pointer-events-auto shadow-lg"
+            title="Next Slide"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        </div>
+
         {/* Carousel Indicators */}
-        <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 space-x-2">
+        <div className="absolute bottom-12 left-1/2 flex -translate-x-1/2 space-x-2.5 z-20">
           {slides.map((_, i) => (
             <button
               key={i}
               onClick={() => setCurrentSlide(i)}
-              className={`h-1.5 rounded-full transition-all ${
-                currentSlide === i ? 'w-8 bg-orange-600' : 'w-2 bg-white/40 hover:bg-white/60'
+              className={`h-2 rounded-full transition-all duration-300 cursor-pointer ${
+                currentSlide === i ? 'w-8 bg-orange-600' : 'w-2 bg-white/40 hover:bg-white/70'
               }`}
+              aria-label={`Go to slide ${i + 1}`}
             />
           ))}
+        </div>
+
+        {/* Scrolling indicator at the bottom center */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-all duration-300">
+          <span className="text-[10px] font-mono font-bold tracking-widest text-zinc-400 uppercase select-none">
+            Scroll down
+          </span>
+          <motion.div
+            animate={{ y: [0, 6, 0] }}
+            transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+            className="cursor-pointer"
+            onClick={() => {
+              window.scrollTo({
+                top: window.innerHeight * 0.85,
+                behavior: 'smooth'
+              });
+            }}
+          >
+            <ChevronDown className="h-5 w-5 text-orange-500" />
+          </motion.div>
         </div>
       </section>
 
