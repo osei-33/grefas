@@ -3573,7 +3573,17 @@ function ManageSettings() {
     isAgentOnline: true,
     autoReplyMessage: 'Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible.',
     isMaintenanceMode: false,
-    maintenanceMessage: 'Our website/portal is currently undergoing scheduled platform updates and alignments. We will be back online shortly!'
+    maintenanceMessage: 'Our website/portal is currently undergoing scheduled platform updates and alignments. We will be back online shortly!',
+    isVacancyActive: false,
+    vacancyAlertTitle: 'We are Hiring! Active Vacancy Available',
+    vacancyAlertMessage: 'We are currently looking for brilliant actors, skit creators, creative writers, video editors, and production crew to join our team in Nyinahin-Ashanti. Click below to view open roles and apply!',
+    vacancyButtonText: 'Apply Now',
+    letterheadJointTitle: 'GREFAS ENTERTAINMENT & CONSULT',
+    letterheadJointSubtitle: 'Theatre, Film Casting, Artiste Management, Production & Business Consulting',
+    letterheadEntTitle: 'GREFAS ENTERTAINMENT & PRODUCTIONS',
+    letterheadEntSubtitle: 'Skit & Movie Production, Casting Services, Creative Arts and Artiste Management',
+    letterheadConsultTitle: 'GREFAS BUSINESS & STRATEGY CONSULT',
+    letterheadConsultSubtitle: 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting'
   });
   const [loading, setLoading] = useState(true);
 
@@ -3595,7 +3605,17 @@ function ManageSettings() {
           isAgentOnline: data.isAgentOnline !== false,
           autoReplyMessage: data.autoReplyMessage || 'Thank you for contacting Grefas Consult & Entertainment. We are currently offline, but your message has been received! Our team will get back to you as soon as possible.',
           isMaintenanceMode: data.isMaintenanceMode === true,
-          maintenanceMessage: data.maintenanceMessage || 'Our website/portal is currently undergoing scheduled platform updates and alignments. We will be back online shortly!'
+          maintenanceMessage: data.maintenanceMessage || 'Our website/portal is currently undergoing scheduled platform updates and alignments. We will be back online shortly!',
+          isVacancyActive: data.isVacancyActive === true,
+          vacancyAlertTitle: data.vacancyAlertTitle || 'We are Hiring! Active Vacancy Available',
+          vacancyAlertMessage: data.vacancyAlertMessage || 'We are currently looking for brilliant actors, skit creators, creative writers, video editors, and production crew to join our team in Nyinahin-Ashanti. Click below to view open roles and apply!',
+          vacancyButtonText: data.vacancyButtonText || 'Apply Now',
+          letterheadJointTitle: data.letterheadJointTitle || 'GREFAS ENTERTAINMENT & CONSULT',
+          letterheadJointSubtitle: data.letterheadJointSubtitle || 'Theatre, Film Casting, Artiste Management, Production & Business Consulting',
+          letterheadEntTitle: data.letterheadEntTitle || 'GREFAS ENTERTAINMENT & PRODUCTIONS',
+          letterheadEntSubtitle: data.letterheadEntSubtitle || 'Skit & Movie Production, Casting Services, Creative Arts and Artiste Management',
+          letterheadConsultTitle: data.letterheadConsultTitle || 'GREFAS BUSINESS & STRATEGY CONSULT',
+          letterheadConsultSubtitle: data.letterheadConsultSubtitle || 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting'
         });
       }
       setLoading(false);
@@ -3831,6 +3851,163 @@ function ManageSettings() {
                   <p className="text-[11px] text-muted-foreground italic">
                     This custom message will display in real time on the website's overlay screen, informing clients about maintenance activities.
                   </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Careers & Vacancy Alert Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                <Briefcase className="h-5 w-5 text-orange-600" /> Careers & Vacancy Alert Config
+              </h3>
+              <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-sm text-foreground">Activate Vacancy Alert Banner</p>
+                    <p className="text-xs text-muted-foreground">Toggle whether an eye-catching vacancy alert banner is visible on the home page.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${settings.isVacancyActive === true ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+                      {settings.isVacancyActive === true ? '● Vacancy Active' : '○ No Active Vacancies'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, isVacancyActive: settings.isVacancyActive === true ? false : true })}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${settings.isVacancyActive === true ? 'bg-orange-600' : 'bg-zinc-300 dark:bg-zinc-700'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settings.isVacancyActive === true ? 'translate-x-5' : 'translate-x-0'}`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Vacancy Alert Title
+                    </label>
+                    <Input
+                      value={settings.vacancyAlertTitle || ''}
+                      onChange={(e) => setSettings({ ...settings, vacancyAlertTitle: e.target.value })}
+                      placeholder="e.g. We are Hiring! Active Vacancy Available"
+                      className="bg-background border-border"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Apply Button Text
+                    </label>
+                    <Input
+                      value={settings.vacancyButtonText || ''}
+                      onChange={(e) => setSettings({ ...settings, vacancyButtonText: e.target.value })}
+                      placeholder="e.g. Apply Now"
+                      className="bg-background border-border"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Vacancy Alert Message / Description
+                  </label>
+                  <Textarea
+                    value={settings.vacancyAlertMessage || ''}
+                    onChange={(e) => setSettings({ ...settings, vacancyAlertMessage: e.target.value })}
+                    placeholder="Enter the description/message for the vacancy alert banner on the home page..."
+                    rows={3}
+                    className="bg-background border-border"
+                  />
+                  <p className="text-[11px] text-muted-foreground italic">
+                    This message will be shown to public visitors on the homepage to invite them to apply through the careers desk.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Letterhead Settings Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                <FileText className="h-5 w-5 text-orange-600" /> Official Letterhead Customization
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Customize the titles and subtitles printed on official Grefas document letterheads based on division types.
+              </p>
+              
+              <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-6">
+                {/* Joint/Default Letterhead */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-foreground border-b border-border pb-1">1. Joint & General Letterhead (Default)</h4>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Title</label>
+                      <Input
+                        value={settings.letterheadJointTitle || ''}
+                        onChange={(e) => setSettings({ ...settings, letterheadJointTitle: e.target.value })}
+                        placeholder="GREFAS ENTERTAINMENT & CONSULT"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Subtitle / Tagline</label>
+                      <Input
+                        value={settings.letterheadJointSubtitle || ''}
+                        onChange={(e) => setSettings({ ...settings, letterheadJointSubtitle: e.target.value })}
+                        placeholder="Theatre, Film Casting, Artiste Management, Production & Business Consulting"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Entertainment Letterhead */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-foreground border-b border-border pb-1">2. Entertainment & Productions Division</h4>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Title</label>
+                      <Input
+                        value={settings.letterheadEntTitle || ''}
+                        onChange={(e) => setSettings({ ...settings, letterheadEntTitle: e.target.value })}
+                        placeholder="GREFAS ENTERTAINMENT & PRODUCTIONS"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Subtitle / Tagline</label>
+                      <Input
+                        value={settings.letterheadEntSubtitle || ''}
+                        onChange={(e) => setSettings({ ...settings, letterheadEntSubtitle: e.target.value })}
+                        placeholder="Skit & Movie Production, Casting Services, Creative Arts and Artiste Management"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Business Consult Letterhead */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-foreground border-b border-border pb-1">3. Business & Strategy Consult Division</h4>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Title</label>
+                      <Input
+                        value={settings.letterheadConsultTitle || ''}
+                        onChange={(e) => setSettings({ ...settings, letterheadConsultTitle: e.target.value })}
+                        placeholder="GREFAS BUSINESS & STRATEGY CONSULT"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Subtitle / Tagline</label>
+                      <Input
+                        value={settings.letterheadConsultSubtitle || ''}
+                        onChange={(e) => setSettings({ ...settings, letterheadConsultSubtitle: e.target.value })}
+                        placeholder="Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

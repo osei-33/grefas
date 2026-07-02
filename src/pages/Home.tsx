@@ -32,6 +32,12 @@ export default function Home() {
   const [activeAlert, setActiveAlert] = useState<any | null>(null);
   const [showAlert, setShowAlert] = useState(false);
 
+  // Vacancy alert states
+  const [vacancyActive, setVacancyActive] = useState<boolean>(false);
+  const [vacancyTitle, setVacancyTitle] = useState<string>('');
+  const [vacancyMessage, setVacancyMessage] = useState<string>('');
+  const [vacancyBtnText, setVacancyBtnText] = useState<string>('');
+
   const fallbackTestimonials = [
     {
       id: 'f1',
@@ -185,14 +191,21 @@ export default function Home() {
     const errorPath = 'settings/global';
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) {
-        setQuote(doc.data().dailyQuote || "Excellence is not an act, but a habit.");
+        const data = doc.data();
+        setQuote(data.dailyQuote || "Excellence is not an act, but a habit.");
+        setVacancyActive(data.isVacancyActive === true);
+        setVacancyTitle(data.vacancyAlertTitle || 'We are Hiring! Active Vacancy Available');
+        setVacancyMessage(data.vacancyAlertMessage || 'We are currently looking for brilliant talent to join our team. Click below to view open roles and apply!');
+        setVacancyBtnText(data.vacancyButtonText || 'Apply Now');
       } else {
         setQuote("Excellence is not an act, but a habit.");
+        setVacancyActive(false);
       }
       setLoadingQuote(false);
     }, (error) => {
       console.debug("Home quote feed issue (handled):", error);
       setQuote("Excellence is not an act, but a habit.");
+      setVacancyActive(false);
       setLoadingQuote(false);
       // Pass to internal handler which handles offline suppressions
       handleFirestoreError(error, OperationType.GET, errorPath);
@@ -207,6 +220,44 @@ export default function Home() {
         description="Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region is your premier partner for professional consulting and world-class entertainment services."
         keywords="Home Grefas, Nyinahin, Ashanti Region, Ghana Consult, Entertainment Ghana, Grefas official website"
       />
+
+      {/* Vacancy Alert Banner */}
+      {vacancyActive && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-600 text-white border-b border-orange-500/20 relative z-30 shadow-md"
+        >
+          <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-left">
+              <div className="bg-white/10 p-2 rounded-lg shrink-0 animate-pulse">
+                <Briefcase className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <p className="font-extrabold text-sm sm:text-base tracking-tight leading-tight">
+                  {vacancyTitle}
+                </p>
+                <p className="text-orange-50/90 text-xs sm:text-sm mt-0.5 leading-normal">
+                  {vacancyMessage}
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0">
+              <Button 
+                asChild
+                size="sm" 
+                className="bg-white text-orange-600 hover:bg-orange-50 font-extrabold tracking-wider text-xs uppercase shadow-md h-9 rounded-xl px-5 border border-white/20"
+              >
+                <Link to="/work-with-us">
+                  {vacancyBtnText}
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Hero Section with Carousel */}
       <section ref={heroRef} className="relative h-[90vh] w-full overflow-hidden bg-zinc-900 group/hero">
         <AnimatePresence mode="wait">

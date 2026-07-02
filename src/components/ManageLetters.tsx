@@ -59,6 +59,12 @@ interface Settings {
   address?: string;
   phone?: string;
   email?: string;
+  letterheadJointTitle?: string;
+  letterheadJointSubtitle?: string;
+  letterheadEntTitle?: string;
+  letterheadEntSubtitle?: string;
+  letterheadConsultTitle?: string;
+  letterheadConsultSubtitle?: string;
 }
 
 interface CastCrewMember {
@@ -77,7 +83,13 @@ export default function ManageLetters() {
     logoUrl: '',
     address: 'Accra, Ghana',
     phone: '+233 24 412 3456',
-    email: 'info@grefas.com'
+    email: 'info@grefas.com',
+    letterheadJointTitle: 'GREFAS ENTERTAINMENT & CONSULT',
+    letterheadJointSubtitle: 'Theatre, Film Casting, Artiste Management, Production & Business Consulting',
+    letterheadEntTitle: 'GREFAS ENTERTAINMENT & PRODUCTIONS',
+    letterheadEntSubtitle: 'Skit & Movie Production, Casting Services, Creative Arts and Artiste Management',
+    letterheadConsultTitle: 'GREFAS BUSINESS & STRATEGY CONSULT',
+    letterheadConsultSubtitle: 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting'
   });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -174,7 +186,13 @@ export default function ManageLetters() {
           logoUrl: data.logoUrl || '',
           address: data.address || 'Accra, Ghana',
           phone: data.phone || '+233 24 412 3456',
-          email: data.email || 'info@grefas.com'
+          email: data.email || 'info@grefas.com',
+          letterheadJointTitle: data.letterheadJointTitle || 'GREFAS ENTERTAINMENT & CONSULT',
+          letterheadJointSubtitle: data.letterheadJointSubtitle || 'Theatre, Film Casting, Artiste Management, Production & Business Consulting',
+          letterheadEntTitle: data.letterheadEntTitle || 'GREFAS ENTERTAINMENT & PRODUCTIONS',
+          letterheadEntSubtitle: data.letterheadEntSubtitle || 'Skit & Movie Production, Casting Services, Creative Arts and Artiste Management',
+          letterheadConsultTitle: data.letterheadConsultTitle || 'GREFAS BUSINESS & STRATEGY CONSULT',
+          letterheadConsultSubtitle: data.letterheadConsultSubtitle || 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting'
         });
       }
     }, (error) => {
@@ -342,15 +360,15 @@ export default function ManageLetters() {
     }
 
     // Set up Letterhead metadata and logo fallback
-    let headerTitle = "GREFAS ENTERTAINMENT & CONSULT";
-    let headerSubtitle = "Theatre, Film Casting, Artiste Management, Production & Business Consulting";
+    let headerTitle = settings.letterheadJointTitle || "GREFAS ENTERTAINMENT & CONSULT";
+    let headerSubtitle = settings.letterheadJointSubtitle || "Theatre, Film Casting, Artiste Management, Production & Business Consulting";
     
     if (letter.letterheadType === 'entertainment') {
-      headerTitle = "GREFAS ENTERTAINMENT & PRODUCTIONS";
-      headerSubtitle = "Skit & Movie Production, Casting Services, Creative Arts and Artiste Management";
+      headerTitle = settings.letterheadEntTitle || "GREFAS ENTERTAINMENT & PRODUCTIONS";
+      headerSubtitle = settings.letterheadEntSubtitle || "Skit & Movie Production, Casting Services, Creative Arts and Artiste Management";
     } else if (letter.letterheadType === 'consult') {
-      headerTitle = "GREFAS BUSINESS & STRATEGY CONSULT";
-      headerSubtitle = "Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting";
+      headerTitle = settings.letterheadConsultTitle || "GREFAS BUSINESS & STRATEGY CONSULT";
+      headerSubtitle = settings.letterheadConsultSubtitle || "Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting";
     }
 
     const logoHtml = settings.logoUrl 
@@ -1293,14 +1311,14 @@ export default function ManageLetters() {
                     )}
                     <div className="text-right font-sans text-[8px] leading-tight text-neutral-600">
                       <h4 className="font-bold text-neutral-900 text-[10px]">
-                        {letterheadType === 'joint' && 'GREFAS ENTERTAINMENT & CONSULT'}
-                        {letterheadType === 'entertainment' && 'GREFAS ENTERTAINMENT & PRODUCTIONS'}
-                        {letterheadType === 'consult' && 'GREFAS BUSINESS CONSULT'}
+                        {letterheadType === 'joint' && (settings.letterheadJointTitle || 'GREFAS ENTERTAINMENT & CONSULT')}
+                        {letterheadType === 'entertainment' && (settings.letterheadEntTitle || 'GREFAS ENTERTAINMENT & PRODUCTIONS')}
+                        {letterheadType === 'consult' && (settings.letterheadConsultTitle || 'GREFAS BUSINESS & STRATEGY CONSULT')}
                       </h4>
                       <p className="text-[7px] text-orange-600 font-semibold uppercase mt-0.5">
-                        {letterheadType === 'joint' && 'Theatre • Casting • Artiste • Consulting'}
-                        {letterheadType === 'entertainment' && 'Movie & Skit Production • Casting'}
-                        {letterheadType === 'consult' && 'Corporate Strategy • Advisory • Visa Prep'}
+                        {letterheadType === 'joint' && (settings.letterheadJointSubtitle || 'Theatre • Casting • Artiste • Consulting')}
+                        {letterheadType === 'entertainment' && (settings.letterheadEntSubtitle || 'Movie & Skit Production • Casting')}
+                        {letterheadType === 'consult' && (settings.letterheadConsultSubtitle || 'Corporate Strategy • Advisory • Visa Prep')}
                       </p>
                       <p className="mt-1">{settings.address}</p>
                       <p>{settings.phone} | {settings.email}</p>
