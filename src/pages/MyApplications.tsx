@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
+import AuthDialog from '@/components/AuthDialog';
 
 export default function MyApplications() {
   const [user, setUser] = useState<any>(null);
@@ -22,6 +23,8 @@ export default function MyApplications() {
   
   // Controls print preview modal
   const [previewApp, setPreviewApp] = useState<any | null>(null);
+  const [appAuthOpen, setAppAuthOpen] = useState(false);
+  const [appAuthDefaultMode, setAppAuthDefaultMode] = useState<'signin' | 'signup'>('signin');
 
   // Track Auth state
   useEffect(() => {
@@ -248,16 +251,30 @@ export default function MyApplications() {
             
             <h2 className="text-xl font-bold tracking-tight text-foreground mb-2">Secure Area Account Authentication</h2>
             <p className="text-xs text-muted-foreground leading-relaxed max-w-sm mx-auto mb-6">
-              To protect your private data like contact numbers, birthdates, and residences, please sign in with Google. Any applications matching your email will appear automatically!
+              To protect your private data like contact numbers, birthdates, and residences, please sign in. You can register/login with any active email address, or use Google. Any applications matching your email will appear automatically!
             </p>
 
-            <Button 
-              onClick={handleGoogleLogin} 
-              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-xl w-full max-w-xs h-12 flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all"
-            >
-              <span>Authenticating with Google</span>
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm mx-auto">
+              <Button 
+                onClick={() => {
+                  setAppAuthDefaultMode('signin');
+                  setAppAuthOpen(true);
+                }}
+                className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold rounded-xl px-5 h-12 flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer flex-1 text-xs"
+              >
+                <Mail className="h-4 w-4 shrink-0" />
+                <span>Email Portal</span>
+              </Button>
+              <Button 
+                onClick={handleGoogleLogin} 
+                className="bg-zinc-950 dark:bg-zinc-900 border border-zinc-900 dark:border-zinc-800 text-white hover:bg-zinc-800 font-bold rounded-xl px-4 h-12 flex items-center justify-center gap-2 transition-all cursor-pointer flex-1 text-xs"
+              >
+                <svg className="h-4 w-4 fill-white shrink-0" viewBox="0 0 24 24">
+                  <path d="M12.24 10.285V13.4h6.887C18.2 15.614 15.645 18 12.24 18c-3.86 0-7-3.14-7-7s3.14-7 7-7c1.71 0 3.27.61 4.5 1.635L19.16 3.21C17.21 1.485 14.82 1 12.24 1 6.58 1 2 5.58 2 11.24s4.58 10.24 10.24 10.24c5.79 0 10.24-4.07 10.24-10.24 0-.695-.08-1.355-.22-1.955H12.24z"/>
+                </svg>
+                <span>Google</span>
+              </Button>
+            </div>
           </motion.div>
         ) : (
           /* Logged In Content */
@@ -431,6 +448,12 @@ export default function MyApplications() {
           </div>
         )}
       </div>
+
+      <AuthDialog 
+        isOpen={appAuthOpen} 
+        onClose={() => setAppAuthOpen(false)} 
+        defaultMode={appAuthDefaultMode} 
+      />
     </div>
   );
 }

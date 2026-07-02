@@ -16,6 +16,7 @@ import { useLanguage, LANGUAGES } from '@/lib/LanguageContext';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Send } from 'lucide-react';
+import AuthDialog from './AuthDialog';
 
 interface LayoutProps {
   children: ReactNode;
@@ -30,6 +31,8 @@ export default function Layout({ children }: LayoutProps) {
     return (safeGetLocalStorage('theme', 'light') as 'light' | 'dark');
   });
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [authDialogDefaultMode, setAuthDialogDefaultMode] = useState<'signin' | 'signup'>('signin');
   const location = useLocation();
 
   useEffect(() => {
@@ -418,12 +421,27 @@ export default function Layout({ children }: LayoutProps) {
             >
               {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </Button>
-            {user && (
+            {user ? (
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-muted-foreground hidden lg:inline-block max-w-[120px] truncate">
+                  {user.displayName || user.email}
+                </span>
+                <button 
+                  onClick={() => auth.signOut()}
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hover:text-orange-600 cursor-pointer"
+                >
+                  {t('nav.signOut') || 'Sign Out'}
+                </button>
+              </div>
+            ) : (
               <button 
-                onClick={() => auth.signOut()}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hover:text-orange-600"
+                onClick={() => {
+                  setAuthDialogOpen(true);
+                  setAuthDialogDefaultMode('signin');
+                }}
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hover:text-orange-600 cursor-pointer"
               >
-                {t('nav.signOut')}
+                Sign In
               </button>
             )}
           </div>
@@ -469,15 +487,26 @@ export default function Layout({ children }: LayoutProps) {
                   {link.name}
                 </Link>
               ))}
-              {user && (
+              {user ? (
                 <button
                   onClick={() => {
                     auth.signOut();
                     setIsMenuOpen(false);
                   }}
-                  className="block w-full text-left py-2 text-base font-medium text-muted-foreground hover:text-orange-600"
+                  className="block w-full text-left py-2 text-base font-medium text-muted-foreground hover:text-orange-600 cursor-pointer"
                 >
-                  {t('nav.signOut')}
+                  {t('nav.signOut') || 'Sign Out'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setAuthDialogOpen(true);
+                    setAuthDialogDefaultMode('signin');
+                    setIsMenuOpen(false);
+                  }}
+                  className="block w-full text-left py-2 text-base font-medium text-muted-foreground hover:text-orange-600 cursor-pointer"
+                >
+                  Sign In / Register
                 </button>
               )}
               <div className="pt-4 mt-2 border-t border-border">
@@ -662,6 +691,12 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </footer>
+
+      <AuthDialog 
+        isOpen={authDialogOpen} 
+        onClose={() => setAuthDialogOpen(false)} 
+        defaultMode={authDialogDefaultMode} 
+      />
     </div>
   );
 }

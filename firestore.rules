@@ -175,8 +175,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isAuthenticated() && (isOwner(userId) || isStaff());
       allow list: if isAuthenticated() && (isStaff() || ('email' in request.auth.token && resource.data.email == request.auth.token.email));
-      allow create: if (isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'guest') || isAdmin() || (isAuthenticated() && isOwner(userId) && request.resource.data.email in ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"] && request.resource.data.role == 'admin');
-      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data)) || (isAuthenticated() && isOwner(userId) && request.resource.data.email in ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"] && request.resource.data.role == 'admin');
+      allow create, update: if isAuthenticated() && isOwner(userId);
       allow delete: if isAdmin();
     }
 

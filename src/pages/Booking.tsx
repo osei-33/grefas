@@ -17,6 +17,7 @@ import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import { showBrowserNotification } from '@/lib/utils';
 import AppointmentCountdown from '@/components/AppointmentCountdown';
+import AuthDialog from '@/components/AuthDialog';
 
 const convertAccraTimeToUserTimezone = (accraTimeStr: string, targetTimezone: string) => {
   try {
@@ -83,6 +84,89 @@ export default function Booking() {
   const [loadingClientBookings, setLoadingClientBookings] = useState(false);
   const [cachedBookings, setCachedBookings] = useState<any[]>([]);
   const [lastCreatedBooking, setLastCreatedBooking] = useState<any>(null);
+  const [bookingAuthOpen, setBookingAuthOpen] = useState(false);
+  const [bookingAuthDefaultMode, setBookingAuthDefaultMode] = useState<'signin' | 'signup'>('signin');
+
+  // Trigger browser print dialog after successful booking automatically
+  useEffect(() => {
+    if (showSuccessDialog && lastCreatedBooking) {
+      const timer = setTimeout(() => {
+        window.print();
+      }, 700); // Small timeout to ensure the printable DOM is fully hydrated and open
+      return () => clearTimeout(timer);
+    }
+  }, [showSuccessDialog, lastCreatedBooking]);
+
+  const getPrintData = () => {
+    if (activeTab === 'status' && statusSearchResult) {
+      let dFormatted = '';
+      let dDayFormatted = 'N/A';
+      try {
+        if (statusSearchResult.date) {
+          const parsed = parseISO(statusSearchResult.date);
+          dFormatted = format(parsed, 'MMM d, yyyy');
+          dDayFormatted = format(parsed, 'EEEE, MMMM d, yyyy');
+        }
+      } catch (e) {
+        dFormatted = statusSearchResult.date || '';
+        dDayFormatted = statusSearchResult.date || 'N/A';
+      }
+
+      return {
+        orderNumber: statusSearchResult.orderNumber || '',
+        dateFormatted: dFormatted,
+        dateDayFormatted: dDayFormatted,
+        userName: statusSearchResult.userName || '',
+        userEmail: statusSearchResult.userEmail || '',
+        userPhone: statusSearchResult.userPhone || 'Not provided',
+        serviceTitle: statusSearchResult.serviceTitle || 'General Consultation',
+        time: statusSearchResult.time || '',
+        teamMemberName: statusSearchResult.teamMemberName || 'First Available Specialist',
+        notes: statusSearchResult.notes || ''
+      };
+    }
+    
+    // Fallback to lastCreatedBooking if active, or current booking values
+    const source = lastCreatedBooking || {
+      orderNumber,
+      date: date ? format(date, 'yyyy-MM-dd') : '',
+      time: formData.time,
+      serviceTitle: formData.serviceTitle || 'General Consultation',
+      teamMemberName: formData.teamMemberName || 'Primary Available Specialist',
+      userName: formData.userName,
+      userEmail: formData.userEmail,
+      userPhone: formData.userPhone,
+      notes: formData.notes
+    };
+
+    let dFormatted = '';
+    let dDayFormatted = 'N/A';
+    try {
+      if (source.date) {
+        const parsed = parseISO(source.date);
+        dFormatted = format(parsed, 'MMM d, yyyy');
+        dDayFormatted = format(parsed, 'EEEE, MMMM d, yyyy');
+      }
+    } catch (e) {
+      dFormatted = source.date || '';
+      dDayFormatted = source.date || 'N/A';
+    }
+
+    return {
+      orderNumber: source.orderNumber || '',
+      dateFormatted: dFormatted,
+      dateDayFormatted: dDayFormatted,
+      userName: source.userName || '',
+      userEmail: source.userEmail || '',
+      userPhone: source.userPhone || 'Not provided',
+      serviceTitle: source.serviceTitle || 'General Consultation',
+      time: source.time || '',
+      teamMemberName: source.teamMemberName || 'First Available Specialist',
+      notes: source.notes || ''
+    };
+  };
+
+  const printData = getPrintData();
 
   const loadCachedBookings = () => {
     try {
@@ -1252,16 +1336,28 @@ export default function Booking() {
                         Automated Booking Status Control!
                       </h4>
                       <p className="text-xs text-muted-foreground font-semibold max-w-md leading-relaxed">
-                        Sign in with Google to sync all consultation schedules and track confirmations in real-time on your private client status dashboard.
+                        Sign in using Google or any valid email account to sync all scheduled consultations and track active confirmations in real-time.
                       </p>
                     </div>
-                    <Button 
-                      onClick={handleGoogleSignIn}
-                      className="bg-zinc-950 dark:bg-zinc-900 border border-zinc-900 dark:border-zinc-800 text-white hover:bg-zinc-800 font-bold px-4 h-10 rounded-xl flex items-center gap-2 flex-shrink-0 text-xs w-full sm:w-auto justify-center transition-all active:scale-95"
-                    >
-                      <img src="https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png" alt="Google Logo" className="h-4.5 w-4.5 bg-white p-0.5 rounded-full" />
-                      Sign in with Google
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-2.5 shrink-0 w-full sm:w-auto">
+                      <Button 
+                        onClick={() => {
+                          setBookingAuthDefaultMode('signin');
+                          setBookingAuthOpen(true);
+                        }}
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-black px-4.5 h-10 rounded-xl flex items-center gap-1.5 text-xs justify-center transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Mail className="h-4 w-4 shrink-0" />
+                        Sign In / Register
+                      </Button>
+                      <Button 
+                        onClick={handleGoogleSignIn}
+                        className="bg-zinc-950 dark:bg-zinc-900 border border-zinc-900 dark:border-zinc-800 text-white hover:bg-zinc-800 font-bold px-4 h-10 rounded-xl flex items-center gap-2 text-xs justify-center transition-all active:scale-95 cursor-pointer"
+                      >
+                        <img src="https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png" alt="Google Logo" className="h-4.5 w-4.5 bg-white p-0.5 rounded-full shrink-0" />
+                        Google Login
+                      </Button>
+                    </div>
                   </div>
                 )}
 
@@ -1699,7 +1795,7 @@ export default function Booking() {
                 Reservation Pass
               </div>
               <div style={{ fontSize: '13px', fontWeight: '600', color: '#111827', marginTop: '2px' }}>
-                {date ? format(date, 'MMM d, yyyy') : ''}
+                {printData.dateFormatted}
               </div>
             </div>
           </div>
@@ -1710,7 +1806,7 @@ export default function Booking() {
               Unique Reference Code
             </span>
             <div style={{ fontSize: '32px', fontWeight: '900', color: '#ea580c', letterSpacing: '0.15em', marginTop: '4px' }}>
-              {orderNumber}
+              {printData.orderNumber}
             </div>
             <p style={{ fontSize: '11px', color: '#6b7280', margin: '8px 0 0 0' }}>
               *Always supply this code to representative lines when demanding schedule adjustments.
@@ -1727,13 +1823,13 @@ export default function Booking() {
               </h3>
               <div>
                 <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#6b7280' }}>Full Name:</span> <strong style={{ color: '#111827' }}>{formData.userName}</strong>
+                  <span style={{ color: '#6b7280' }}>Full Name:</span> <strong style={{ color: '#111827' }}>{printData.userName}</strong>
                 </p>
                 <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#6b7280' }}>Email Address:</span> <strong style={{ color: '#111827' }}>{formData.userEmail}</strong>
+                  <span style={{ color: '#6b7280' }}>Email Address:</span> <strong style={{ color: '#111827' }}>{printData.userEmail}</strong>
                 </p>
                 <p style={{ margin: '0', fontSize: '13px' }}>
-                  <span style={{ color: '#6b7280' }}>Phone Number:</span> <strong style={{ color: '#111827' }}>{formData.userPhone || 'Not provided'}</strong>
+                  <span style={{ color: '#6b7280' }}>Phone Number:</span> <strong style={{ color: '#111827' }}>{printData.userPhone}</strong>
                 </p>
               </div>
             </div>
@@ -1745,16 +1841,16 @@ export default function Booking() {
               </h3>
               <div>
                 <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#6b7280' }}>Type of Service:</span> <strong style={{ color: '#111827' }}>{formData.serviceTitle || 'General Consultation'}</strong>
+                  <span style={{ color: '#6b7280' }}>Type of Service:</span> <strong style={{ color: '#111827' }}>{printData.serviceTitle}</strong>
                 </p>
                 <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#6b7280' }}>Date Assigned:</span> <strong style={{ color: '#ea580c' }}>{date ? format(date, 'EEEE, MMMM d, yyyy') : 'N/A'}</strong>
+                  <span style={{ color: '#6b7280' }}>Date Assigned:</span> <strong style={{ color: '#ea580c' }}>{printData.dateDayFormatted}</strong>
                 </p>
                 <p style={{ margin: '0 0 6px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#6b7280' }}>Assigned Hour slot:</span> <strong style={{ color: '#111827' }}>{formData.time}</strong>
+                  <span style={{ color: '#6b7280' }}>Assigned Hour slot:</span> <strong style={{ color: '#111827' }}>{printData.time}</strong>
                 </p>
                 <p style={{ margin: '0', fontSize: '13px' }}>
-                  <span style={{ color: '#6b7280' }}>Assigned Specialist:</span> <strong style={{ color: '#111827' }}>{formData.teamMemberName || 'First Available Specialist'}</strong>
+                  <span style={{ color: '#6b7280' }}>Assigned Specialist:</span> <strong style={{ color: '#111827' }}>{printData.teamMemberName}</strong>
                 </p>
               </div>
             </div>
@@ -1762,13 +1858,13 @@ export default function Booking() {
           </div>
 
           {/* Notes Section */}
-          {formData.notes && (
+          {printData.notes && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px', marginBottom: '25px' }}>
               <h3 style={{ fontSize: '12px', textTransform: 'uppercase', color: '#9ca3af', fontWeight: 'bold', margin: '0 0 8px 0', letterSpacing: '0.05em' }}>
                 Special Client Notes & Requirements
               </h3>
               <p style={{ fontSize: '13px', color: '#374151', margin: '0', fontStyle: 'italic', background: '#f9fafb', padding: '10px', borderRadius: '8px', borderLeft: '3px solid #ea580c' }}>
-                "{formData.notes}"
+                "{printData.notes}"
               </p>
             </div>
           )}
@@ -1795,6 +1891,12 @@ export default function Booking() {
 
         </div>
       </div>
+
+      <AuthDialog 
+        isOpen={bookingAuthOpen} 
+        onClose={() => setBookingAuthOpen(false)} 
+        defaultMode={bookingAuthDefaultMode} 
+      />
     </div>
   );
 }
