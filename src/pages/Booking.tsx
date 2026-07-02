@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer } from 'lucide-react';
@@ -442,16 +442,7 @@ export default function Booking() {
     };
   }, [user]);
 
-  const handleGoogleSignIn = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      toast.success("Successfully signed in! Your previous bookings have loaded automatically below.");
-    } catch (error) {
-      console.error("Status check authentication failure:", error);
-      toast.error("Failed to sign in securely. Please try again.");
-    }
-  };
+
 
   const handleCheckStatus = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1336,26 +1327,19 @@ export default function Booking() {
                         Automated Booking Status Control!
                       </h4>
                       <p className="text-xs text-muted-foreground font-semibold max-w-md leading-relaxed">
-                        Sign in using Google or any valid email account to sync all scheduled consultations and track active confirmations in real-time.
+                        Sign in using any valid email account to sync all scheduled consultations and track active confirmations in real-time.
                       </p>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2.5 shrink-0 w-full sm:w-auto">
+                    <div className="flex justify-end shrink-0 w-full sm:w-auto">
                       <Button 
                         onClick={() => {
                           setBookingAuthDefaultMode('signin');
                           setBookingAuthOpen(true);
                         }}
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-black px-4.5 h-10 rounded-xl flex items-center gap-1.5 text-xs justify-center transition-all active:scale-95 cursor-pointer"
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-black px-5 h-10 rounded-xl flex items-center gap-1.5 text-xs justify-center transition-all active:scale-95 cursor-pointer w-full sm:w-auto"
                       >
                         <Mail className="h-4 w-4 shrink-0" />
                         Sign In / Register
-                      </Button>
-                      <Button 
-                        onClick={handleGoogleSignIn}
-                        className="bg-zinc-950 dark:bg-zinc-900 border border-zinc-900 dark:border-zinc-800 text-white hover:bg-zinc-800 font-bold px-4 h-10 rounded-xl flex items-center gap-2 text-xs justify-center transition-all active:scale-95 cursor-pointer"
-                      >
-                        <img src="https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png" alt="Google Logo" className="h-4.5 w-4.5 bg-white p-0.5 rounded-full shrink-0" />
-                        Google Login
                       </Button>
                     </div>
                   </div>

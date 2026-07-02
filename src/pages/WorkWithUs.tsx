@@ -5,8 +5,6 @@ import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { 
   onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   updateProfile,
@@ -172,11 +170,9 @@ export default function WorkWithUs() {
       toast.success('Signed in successfully!');
     } catch (error: any) {
       console.error('Portal sign in error:', error);
-      let errorMsg = 'Failed to sign in. Please verify your email and password.';
-      if (error?.code === 'auth/user-not-found' || error?.code === 'auth/wrong-password') {
+      let errorMsg = `Failed to sign in: ${error.message || error}`;
+      if (error?.code === 'auth/user-not-found' || error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
         errorMsg = 'Incorrect email or password.';
-      } else if (error?.code === 'auth/invalid-credential') {
-        errorMsg = 'Invalid email or password.';
       }
       toast.error(errorMsg);
     } finally {
@@ -244,7 +240,7 @@ export default function WorkWithUs() {
       toast.success('Registration completed! Welcome to Grefas.');
     } catch (error: any) {
       console.error('Registration completion error:', error);
-      let errorMsg = 'Failed to complete registration.';
+      let errorMsg = `Failed to complete registration: ${error.message || error}`;
       if (error?.code === 'auth/email-already-in-use') {
         errorMsg = 'An account already exists with this email address.';
       } else if (error?.code === 'auth/invalid-email') {
@@ -318,34 +314,6 @@ export default function WorkWithUs() {
       age--;
     }
     return Math.max(0, age);
-  };
-
-  const handleGoogleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      const result = await signInWithPopup(auth, provider);
-      
-      // Log login activity
-      if (result.user) {
-        try {
-          await addDoc(collection(db, 'activity_logs'), {
-            userId: result.user.uid,
-            userEmail: result.user.email,
-            userName: result.user.displayName || 'Grefas Client',
-            type: 'login',
-            description: `Client logged in securely via Google Authentication.`,
-            createdAt: new Date().toISOString()
-          });
-        } catch (logErr) {
-          console.warn('Login activity logging failed:', logErr);
-        }
-      }
-
-      toast.success('Authenticated successfully!');
-    } catch (error) {
-      console.error('Sign-in failed:', error);
-      toast.error('Authentication failed. Please try again.');
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -731,22 +699,7 @@ export default function WorkWithUs() {
                 )}
 
                 {portalMode !== 'verify_otp' && portalMode !== 'forgot_password' && (
-                  <>
-                    <div className="relative flex items-center justify-center my-4">
-                      <div className="border-t border-border w-full"></div>
-                      <span className="absolute bg-card px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Or Connect With</span>
-                    </div>
-
-                    <Button
-                      type="button"
-                      onClick={handleGoogleLogin}
-                      variant="outline"
-                      className="w-full h-10 text-xs font-bold border-border hover:bg-muted text-foreground flex items-center justify-center gap-2 rounded-xl cursor-pointer"
-                    >
-                      <LogIn className="h-4 w-4 text-orange-600" />
-                      Continue with Google
-                    </Button>
-                  </>
+                  <div className="pt-2"></div>
                 )}
               </div>
             </motion.div>

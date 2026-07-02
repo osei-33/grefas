@@ -11,8 +11,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInte
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
 import { compressImage, blobToBase64 } from '@/lib/utils';
 import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
+  signInWithEmailAndPassword, 
   onAuthStateChanged, 
   signOut,
   User
@@ -793,60 +792,31 @@ export default function Admin() {
 }
 
 function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const handleGoogleLogin = async () => {
-    if (isLoggingIn) return;
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) {
+      toast.error('Please enter your email and password.');
+      return;
+    }
     setIsLoggingIn(true);
-    const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const user = userCredential.user;
       
-      // Check if user exists in Firestore by UID
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      
-      if (!userDoc.exists()) {
-        // Check if there is a pre-authorized user by email
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '==', user.email));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          // Found pre-authorized user by email. Link it to this UID.
-          const existingData = querySnapshot.docs[0].data();
-          const existingId = querySnapshot.docs[0].id;
-          
-          await setDoc(doc(db, 'users', user.uid), {
-            ...existingData,
-            uid: user.uid,
-            updatedAt: serverTimestamp()
-          });
-          
-          // Delete the temporary entry that only had email
-          if (existingId !== user.uid) {
-            await deleteDoc(doc(db, 'users', existingId));
-          }
-        } else {
-          // New user, create as guest
-          await setDoc(doc(db, 'users', user.uid), {
-            email: user.email,
-            role: isAdminEmail(user.email) ? "admin" : "guest",
-            createdAt: serverTimestamp()
-          });
-        }
+      if (!isAdminEmail(user.email)) {
+        toast.error('Access Denied: This account is not authorized as an Admin.');
+        // Sign out if not admin
+        await signOut(auth);
+      } else {
+        toast.success('Admin logged in successfully!');
       }
-      
-      toast.success('Logged in successfully');
     } catch (error: any) {
       console.error(error);
-      if (error.code === 'auth/popup-blocked') {
-        toast.error('Login popup was blocked by your browser. Please allow popups for this site.');
-      } else if (error.code === 'auth/cancelled-popup-request') {
-        // Ignore this one as it's usually triggered by the user closing the popup or a double click
-      } else {
-        toast.error('Login failed. Make sure you are an authorized admin.');
-      }
+      toast.error(error.message || 'Incorrect email address or password.');
     } finally {
       setIsLoggingIn(false);
     }
@@ -856,26 +826,52 @@ function Login() {
     <div className="flex min-h-[70vh] items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md bg-card border-border">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl text-foreground">Admin Login</CardTitle>
-          <CardDescription className="text-muted-foreground">Sign in with your Google account to manage the website.</CardDescription>
+          <CardTitle className="text-2xl text-foreground">Admin Portal</CardTitle>
+          <CardDescription className="text-muted-foreground">Sign in with your secure administrator credentials.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button 
-            onClick={handleGoogleLogin}
-            disabled={isLoggingIn}
-            className="w-full bg-orange-600 hover:bg-orange-700 text-white"
-          >
-            {isLoggingIn ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Signing in...
-              </>
-            ) : (
-              'Sign in with Google'
-            )}
-          </Button>
+          <form onSubmit={handleEmailLogin} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Admin Email</label>
+              <Input
+                type="email"
+                placeholder="admin@grefas.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoggingIn}
+                required
+                className="h-11 rounded-xl bg-muted/40 border-border/80 focus:ring-orange-500/20"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Password</label>
+              <Input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoggingIn}
+                required
+                className="h-11 rounded-xl bg-muted/40 border-border/80 focus:ring-orange-500/20"
+              />
+            </div>
+            <Button 
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full bg-orange-600 hover:bg-orange-700 text-white font-extrabold h-11 rounded-xl uppercase tracking-wider text-xs"
+            >
+              {isLoggingIn ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Authenticating...
+                </>
+              ) : (
+                'Sign In as Admin'
+              )}
+            </Button>
+          </form>
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            Authorized admins only.
+            Authorized admin credentials only.
           </p>
         </CardContent>
       </Card>

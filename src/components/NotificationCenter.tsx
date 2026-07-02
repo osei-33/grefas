@@ -8,6 +8,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
+import AuthDialog from './AuthDialog';
 
 const isAdminEmail = (email: string | null) => {
   if (!email) return false;
@@ -24,6 +25,7 @@ export default function NotificationCenter() {
   const [role, setRole] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [permission, setPermission] = useState<string>('default');
+  const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
 
   const hasMountedRef = React.useRef(false);
   const existingDocIdsRef = React.useRef<Set<string>>(new Set());
@@ -315,16 +317,13 @@ export default function NotificationCenter() {
                       </div>
                       <Button 
                         size="sm" 
-                        className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                        className="w-full bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs h-9 rounded-xl"
                         onClick={() => {
                           setIsOpen(false);
-                          // Navigate to login or trigger login popup
-                          import('firebase/auth').then(({ signInWithPopup, GoogleAuthProvider }) => {
-                            signInWithPopup(auth, new GoogleAuthProvider());
-                          });
+                          setIsAuthDialogOpen(true);
                         }}
                       >
-                        Sign In with Google
+                        Sign In / Register
                       </Button>
                     </div>
                   ) : notifications.length === 0 ? (
@@ -388,6 +387,7 @@ export default function NotificationCenter() {
           </>
         )}
       </AnimatePresence>
+      <AuthDialog isOpen={isAuthDialogOpen} onClose={() => setIsAuthDialogOpen(false)} />
     </div>
   );
 }
