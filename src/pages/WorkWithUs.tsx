@@ -171,7 +171,9 @@ export default function WorkWithUs() {
     } catch (error: any) {
       console.error('Portal sign in error:', error);
       let errorMsg = `Failed to sign in: ${error.message || error}`;
-      if (error?.code === 'auth/user-not-found' || error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
+      if (error?.code === 'auth/operation-not-allowed') {
+        errorMsg = 'Email/Password sign-in is currently disabled. Please enable the "Email/Password" provider in your Firebase Console under Authentication > Sign-in method.';
+      } else if (error?.code === 'auth/user-not-found' || error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
         errorMsg = 'Incorrect email or password.';
       }
       toast.error(errorMsg);
@@ -241,7 +243,9 @@ export default function WorkWithUs() {
     } catch (error: any) {
       console.error('Registration completion error:', error);
       let errorMsg = `Failed to complete registration: ${error.message || error}`;
-      if (error?.code === 'auth/email-already-in-use') {
+      if (error?.code === 'auth/operation-not-allowed') {
+        errorMsg = 'Email/Password registration is currently disabled. Please enable the "Email/Password" provider in your Firebase Console under Authentication > Sign-in method.';
+      } else if (error?.code === 'auth/email-already-in-use') {
         errorMsg = 'An account already exists with this email address.';
       } else if (error?.code === 'auth/invalid-email') {
         errorMsg = 'The email address is invalid.';

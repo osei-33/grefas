@@ -816,7 +816,11 @@ function Login() {
       }
     } catch (error: any) {
       console.error(error);
-      toast.error(error.message || 'Incorrect email address or password.');
+      let msg = error.message || 'Incorrect email address or password.';
+      if (error.code === 'auth/operation-not-allowed') {
+        msg = 'Email/Password sign-in is currently disabled. Please enable the "Email/Password" provider in your Firebase Console under Authentication > Sign-in method.';
+      }
+      toast.error(msg);
     } finally {
       setIsLoggingIn(false);
     }

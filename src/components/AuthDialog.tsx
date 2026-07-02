@@ -110,7 +110,9 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = 'signin' }: 
       } catch (error: any) {
         console.error("Sign up failure:", error);
         let msg = `Could not register your profile: ${error.message || error}`;
-        if (error.code === 'auth/email-already-in-use') {
+        if (error.code === 'auth/operation-not-allowed') {
+          msg = "Email/Password registration is currently disabled. Please enable the 'Email/Password' provider in your Firebase Console under Authentication > Sign-in method.";
+        } else if (error.code === 'auth/email-already-in-use') {
           msg = "This email is already registered. Try logging in instead!";
         } else if (error.code === 'auth/invalid-email') {
           msg = "The email address is invalid.";
@@ -131,7 +133,9 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = 'signin' }: 
       } catch (error: any) {
         console.error("Sign in failure:", error);
         let msg = `Sign-in failed: ${error.message || error}`;
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        if (error.code === 'auth/operation-not-allowed') {
+          msg = "Email/Password sign-in is currently disabled. Please enable the 'Email/Password' provider in your Firebase Console under Authentication > Sign-in method.";
+        } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
           msg = "Incorrect email address or password.";
         }
         toast.error(msg);
