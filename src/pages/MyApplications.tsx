@@ -344,6 +344,27 @@ export default function MyApplications() {
                               Registered: {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'N/A'}
                             </span>
                           </div>
+
+                          {/* Applied Roles Badges */}
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {(app.roleTypes && Array.isArray(app.roleTypes)) ? (
+                              app.roleTypes.map((role: string, index: number) => (
+                                <span key={index} className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-orange-500/10">
+                                  {role}
+                                </span>
+                              ))
+                            ) : app.roleType ? (
+                              app.roleType.split(', ').map((role: string, index: number) => (
+                                <span key={index} className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-orange-500/10">
+                                  {role}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="bg-zinc-100 dark:bg-zinc-800 text-muted-foreground text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                No Role Specified
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {/* Contacts Summary */}

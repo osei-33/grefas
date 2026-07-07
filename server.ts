@@ -907,6 +907,146 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
     }
   });
 
+  app.post("/api/letters/send-email", async (req, res) => {
+    const {
+      recipientEmail,
+      recipientName,
+      recipientAddress,
+      date,
+      subject,
+      salutation,
+      body,
+      signatoryName,
+      signatoryTitle,
+      letterheadType,
+      logoUrl,
+      settings
+    } = req.body;
+
+    if (!recipientEmail || !recipientName || !subject || !body) {
+      return res.status(400).json({ error: "Missing required fields: recipientEmail, recipientName, subject, or body" });
+    }
+
+    if (!resend) {
+      return res.status(503).json({ error: "Email server (Resend API Key) is not configured in environment variables." });
+    }
+
+    // Determine titles & subtitles based on letterheadType
+    let headerTitle = "GREFAS ENTERTAINMENT & CONSULT";
+    let headerSubtitle = "Theatre, Film Casting, Artiste Management, Production & Business Consulting";
+
+    if (letterheadType === 'entertainment') {
+      headerTitle = settings?.letterheadEntTitle || "GREFAS ENTERTAINMENT & PRODUCTIONS";
+      headerSubtitle = settings?.letterheadEntSubtitle || "Skit & Movie Production, Casting Services, Creative Arts and Artiste Management";
+    } else if (letterheadType === 'consult') {
+      headerTitle = settings?.letterheadConsultTitle || "GREFAS BUSINESS & STRATEGY CONSULT";
+      headerSubtitle = settings?.letterheadConsultSubtitle || "Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting";
+    } else {
+      headerTitle = settings?.letterheadJointTitle || "GREFAS ENTERTAINMENT & CONSULT";
+      headerSubtitle = settings?.letterheadJointSubtitle || "Theatre, Film Casting, Artiste Management, Production & Business Consulting";
+    }
+
+    const companyAddress = settings?.address || "Accra, Ghana";
+    const companyPhone = settings?.phone || "+233 24 412 3456";
+    const companyEmail = settings?.email || "info@grefas.com";
+
+    const formattedDate = date 
+      ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    // Format paragraphs
+    const formattedParagraphs = body
+      .split('\n\n')
+      .map((p: string) => p.trim())
+      .filter((p: string) => p.length > 0)
+      .map((p: string) => `<p style="margin: 0 0 16px 0; text-align: justify; text-indent: 24px; line-height: 1.6;">${p.replace(/\n/g, '<br/>')}</p>`)
+      .join('');
+
+    const logoHtml = logoUrl 
+      ? `<img src="${logoUrl}" style="max-height: 70px; max-width: 130px; object-fit: contain; margin-bottom: 8px;" alt="Grefas Logo" />`
+      : `<div style="font-size: 20px; font-weight: 800; color: #ea580c; border: 2px solid #ea580c; padding: 4px 10px; display: inline-block; letter-spacing: 1px; font-family: sans-serif; margin-bottom: 8px;">GREFAS</div>`;
+
+    try {
+      await resend.emails.send({
+        from: "Grefas Consult <notifications@resend.dev>",
+        to: recipientEmail,
+        subject: `OFFICIAL CORRESPONDENCE: ${subject}`,
+        html: `
+          <div style="font-family: 'Times New Roman', Times, Georgia, serif; color: #1c1917; max-width: 650px; margin: 20px auto; border: 1px solid #e7e5e4; border-radius: 8px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            <!-- Branded Header Letterhead -->
+            <div style="border-bottom: 3px solid #ea580c; padding: 24px; background-color: #fcfcfc;">
+              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+                <tr>
+                  <td width="30%" valign="top">
+                    ${logoHtml}
+                  </td>
+                  <td width="70%" align="right" valign="top" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                    <h2 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 800; color: #1c1917; text-transform: uppercase; letter-spacing: -0.2px;">${headerTitle}</h2>
+                    <p style="margin: 0 0 8px 0; font-size: 8px; font-weight: 700; color: #ea580c; text-transform: uppercase; letter-spacing: 0.5px;">${headerSubtitle}</p>
+                    <p style="margin: 0; font-size: 9px; color: #57534e; line-height: 1.4;">
+                      ${companyAddress}<br/>
+                      Phone: ${companyPhone} | Email: ${companyEmail}<br/>
+                      Website: <a href="https://grefas.com" style="color: #ea580c; text-decoration: none;">www.grefas.com</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Letter Sheet Body -->
+            <div style="padding: 40px; font-size: 14px; line-height: 1.6;">
+              <!-- Metadata Block -->
+              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 24px;">
+                <tr>
+                  <td width="60%" valign="top">
+                    <p style="margin: 0 0 4px 0; font-size: 11px; font-weight: bold; color: #ea580c; text-transform: uppercase; font-family: sans-serif;">To Recipient</p>
+                    <h3 style="margin: 0 0 4px 0; font-size: 15px; font-weight: bold; color: #1c1917;">${recipientName}</h3>
+                    <p style="margin: 0; font-size: 12px; color: #44403c; white-space: pre-line; line-height: 1.4;">${recipientAddress || 'Address N/A'}</p>
+                  </td>
+                  <td width="40%" align="right" valign="top" style="font-family: sans-serif; font-size: 12px; color: #57534e;">
+                    <strong>Date:</strong> ${formattedDate}
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Subject Header -->
+              <div style="border-top: 1px solid #d6d3d1; border-bottom: 1px solid #d6d3d1; padding: 10px 0; text-align: center; font-weight: bold; font-size: 15px; text-transform: uppercase; color: #1c1917; margin-bottom: 24px; background-color: #fafaf9; letter-spacing: 0.5px;">
+                RE: ${subject}
+              </div>
+
+              <!-- Salutation -->
+              <div style="font-weight: bold; margin-bottom: 16px; font-size: 14px;">
+                ${salutation || 'Dear Sir/Madam,'}
+              </div>
+
+              <!-- Paragraphs -->
+              <div style="color: #292524; font-size: 14px;">
+                ${formattedParagraphs}
+              </div>
+
+              <!-- Sign-off Block -->
+              <div style="margin-top: 36px; padding-top: 12px; page-break-inside: avoid;">
+                <p style="margin: 0 0 40px 0;">Yours sincerely,</p>
+                <p style="margin: 0; font-weight: bold; color: #1c1917;">${signatoryName || 'Grice Asante'}</p>
+                <p style="margin: 2px 0 0 0; font-size: 12px; color: #57534e;">${signatoryTitle || 'CEO & Founder'}</p>
+              </div>
+            </div>
+
+            <!-- Footer Section -->
+            <div style="background-color: #fafaf9; border-top: 1px solid #f5f5f4; padding: 16px; text-align: center; font-family: sans-serif; font-size: 10px; color: #a8a29e;">
+              This is an official document of ${headerTitle}. All rights reserved. Registered in Ghana.
+            </div>
+          </div>
+        `
+      });
+
+      res.json({ status: "ok", message: "Branded official email sent successfully via Resend!" });
+    } catch (error: any) {
+      console.error("Resend official letter failure:", error);
+      res.status(500).json({ error: error.message || "Failed to dispatch official email via Resend." });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

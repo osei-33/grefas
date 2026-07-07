@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import * as LucideIcons from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, onSnapshot, query, orderBy, addDoc, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, where, getDocs, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
@@ -35,6 +35,7 @@ export default function Services() {
     passportPhoto: '', // Custom Base64 encoded passport size photo
     // Step 2: Project Requirements / Casting Specifications
     roleType: 'Actor / Actress',
+    roleTypes: ['Actor / Actress'] as string[],
     experienceLevel: 'Intermediate',
     preferredGenres: [] as string[],
     availability: 'Part-time',
@@ -42,6 +43,7 @@ export default function Services() {
     bio: '',
     signature: ''
   });
+  const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [printableData, setPrintableData] = useState<any | null>(null);
   const [lastSubmittedSnapshot, setLastSubmittedSnapshot] = useState<any | null>(null);
@@ -1098,6 +1100,7 @@ export default function Services() {
         emailAddress: '',
         passportPhoto: '',
         roleType: 'Actor / Actress',
+        roleTypes: ['Actor / Actress'] as string[],
         experienceLevel: 'Intermediate',
         preferredGenres: [] as string[],
         availability: 'Part-time',
@@ -1123,6 +1126,29 @@ export default function Services() {
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'services');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch dynamic roles from settings/global
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().intakeRoles && docSnap.data().intakeRoles.length > 0) {
+        setAvailableRoles(docSnap.data().intakeRoles);
+      } else {
+        setAvailableRoles([
+          "Actor / Actress",
+          "Skit Performer",
+          "Creative Writer",
+          "Crew / Technical",
+          "Video Editor",
+          "Cameraman",
+          "Sound Engineer",
+          "Director",
+          "Finance Officer",
+          "Admin Support"
+        ]);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -1805,23 +1831,39 @@ export default function Services() {
                         <div className="space-y-2 sm:col-span-2">
                           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                             <LucideIcons.Clapperboard className="h-3.5 w-3.5 text-orange-600" />
-                            Production Role Interest
+                            Production Role Interest (Select all that apply)
                           </label>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {['Actor / Actress', 'Skit Performer', 'Creative Writer', 'Crew / Technical'].map((role) => (
-                              <button
-                                key={role}
-                                type="button"
-                                onClick={() => handleInputChange('roleType', role)}
-                                className={`p-3.5 border rounded-xl text-center capitalize transition duration-300 font-bold cursor-pointer text-xs ${
-                                  formData.roleType === role
-                                    ? 'border-orange-600 bg-orange-600/5 text-orange-600 dark:text-orange-400 font-black shadow-xs'
-                                    : 'border-border/80 hover:bg-muted text-foreground'
-                                }`}
-                              >
-                                {role}
-                              </button>
-                            ))}
+                            {availableRoles.map((role) => {
+                              const isChecked = (formData.roleTypes || []).includes(role) || formData.roleType === role;
+                              return (
+                                <button
+                                  key={role}
+                                  type="button"
+                                  onClick={() => {
+                                    const currentRoles = formData.roleTypes || (formData.roleType ? [formData.roleType] : []);
+                                    let newRoles: string[];
+                                    if (currentRoles.includes(role)) {
+                                      newRoles = currentRoles.filter(r => r !== role);
+                                    } else {
+                                      newRoles = [...currentRoles, role];
+                                    }
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      roleTypes: newRoles,
+                                      roleType: newRoles.join(', ')
+                                    }));
+                                  }}
+                                  className={`p-3.5 border rounded-xl text-center capitalize transition duration-300 font-bold cursor-pointer text-xs ${
+                                    isChecked
+                                      ? 'border-orange-600 bg-orange-600/5 text-orange-600 dark:text-orange-400 font-black shadow-xs'
+                                      : 'border-border/80 hover:bg-muted text-foreground'
+                                  }`}
+                                >
+                                  {role}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
 

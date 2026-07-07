@@ -21,7 +21,13 @@ import {
   Check,
   Building,
   RefreshCw,
-  Pencil
+  Pencil,
+  Send,
+  Mail,
+  MessageSquare,
+  Share2,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
@@ -42,6 +48,8 @@ interface Letter {
   recipientType: 'organisation' | 'individual' | 'institution';
   recipientName: string;
   recipientAddress: string;
+  recipientPhone?: string;
+  recipientEmail?: string;
   date: string;
   subject: string;
   salutation: string;
@@ -102,6 +110,8 @@ export default function ManageLetters() {
   const [selectedCastCrewId, setSelectedCastCrewId] = useState<string>('');
   const [recipientName, setRecipientName] = useState('');
   const [recipientAddress, setRecipientAddress] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+  const [recipientEmail, setRecipientEmail] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [subject, setSubject] = useState('');
   const [salutation, setSalutation] = useState('Dear Sir/Madam,');
@@ -111,6 +121,11 @@ export default function ManageLetters() {
   const [letterheadType, setLetterheadType] = useState<'entertainment' | 'consult' | 'joint'>('joint');
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.05);
+
+  // Dispatch / Direct Send states
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [selectedLetterForSend, setSelectedLetterForSend] = useState<Letter | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // AI Assistant states
   const [aiPrompt, setAiPrompt] = useState('');
@@ -126,6 +141,8 @@ export default function ManageLetters() {
     setRecipientType(letter.recipientType);
     setRecipientName(letter.recipientName);
     setRecipientAddress(letter.recipientAddress || '');
+    setRecipientPhone(letter.recipientPhone || '');
+    setRecipientEmail(letter.recipientEmail || '');
     setDate(letter.date);
     setSubject(letter.subject);
     setSalutation(letter.salutation || 'Dear Sir/Madam,');
@@ -143,6 +160,8 @@ export default function ManageLetters() {
     setRecipientType('organisation');
     setRecipientName('');
     setRecipientAddress('');
+    setRecipientPhone('');
+    setRecipientEmail('');
     setDate(new Date().toISOString().split('T')[0]);
     setSubject('');
     setSalutation('Dear Sir/Madam,');
@@ -235,9 +254,9 @@ export default function ManageLetters() {
     if (member) {
       setRecipientType('individual');
       setRecipientName(member.fullName);
-      setRecipientAddress(
-        `${member.address || ''}\nContact: ${member.contact || ''}\nEmail: ${member.emailAddress || ''}`.trim()
-      );
+      setRecipientAddress(member.address || '');
+      setRecipientPhone(member.contact || '');
+      setRecipientEmail(member.emailAddress || '');
       setLetterheadType('entertainment');
     }
   };
@@ -254,6 +273,8 @@ export default function ManageLetters() {
         recipientType,
         recipientName,
         recipientAddress,
+        recipientPhone,
+        recipientEmail,
         date,
         subject,
         salutation,
@@ -278,6 +299,8 @@ export default function ManageLetters() {
       // Reset composer form partially
       setRecipientName('');
       setRecipientAddress('');
+      setRecipientPhone('');
+      setRecipientEmail('');
       setSubject('');
       setBody('');
       setAiPrompt('');
@@ -683,6 +706,147 @@ export default function ManageLetters() {
     toast.success('Official letter layout rendered! Printing window triggered.');
   };
 
+  const updateLetterContactInfo = async (letterId: string, phone: string, email: string) => {
+    if (!letterId || letterId === 'draft') return;
+    try {
+      await updateDoc(doc(db, 'letters', letterId), {
+        recipientPhone: phone,
+        recipientEmail: email,
+        updatedAt: serverTimestamp()
+      });
+      // Also update selectedLetterForSend in state to stay in sync
+      setSelectedLetterForSend(prev => prev ? { ...prev, recipientPhone: phone, recipientEmail: email } : null);
+    } catch (err) {
+      console.error("Failed to update letter contacts in db:", err);
+    }
+  };
+
+  const handleSendOfficialEmail = async (letter: Letter, customEmail?: string) => {
+    const emailToUse = customEmail !== undefined ? customEmail : letter.recipientEmail;
+    if (!emailToUse?.trim()) {
+      toast.error("Please provide a recipient email address.");
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const response = await fetch('/api/letters/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipientEmail: emailToUse.trim(),
+          recipientName: letter.recipientName,
+          recipientAddress: letter.recipientAddress,
+          date: letter.date,
+          subject: letter.subject,
+          salutation: letter.salutation,
+          body: letter.body,
+          signatoryName: letter.signatoryName,
+          signatoryTitle: letter.signatoryTitle,
+          letterheadType: letter.letterheadType,
+          logoUrl: settings.logoUrl,
+          settings: settings
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Server responded with an error');
+      }
+
+      toast.success(`Official branded email successfully sent to ${emailToUse.trim()}!`);
+      
+      // Persist the email back to firestore if it changed
+      if (letter.id && letter.id !== 'draft' && emailToUse !== letter.recipientEmail) {
+        await updateLetterContactInfo(letter.id, letter.recipientPhone || '', emailToUse);
+      }
+    } catch (err: any) {
+      toast.error(`Email Dispatch Failed: ${err.message}`);
+      console.error("Direct email dispatch failed:", err);
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const handleSendWhatsApp = (letter: Letter, customPhone?: string) => {
+    const phoneToUse = customPhone !== undefined ? customPhone : letter.recipientPhone;
+    if (!phoneToUse?.trim()) {
+      toast.error("Please provide a recipient phone number.");
+      return;
+    }
+
+    // Persist the phone number back to firestore if it changed
+    if (letter.id && letter.id !== 'draft' && phoneToUse !== letter.recipientPhone) {
+      updateLetterContactInfo(letter.id, phoneToUse, letter.recipientEmail || '');
+    }
+
+    const cleanPhone = phoneToUse.replace(/[^0-9]/g, '');
+    
+    // Format letterbody for text
+    const textBody = letter.body.split('\n\n').map(p => p.trim()).filter(p => p.length > 0).join('\n\n');
+
+    let headerTitle = "GREFAS ENTERTAINMENT & CONSULT";
+    if (letter.letterheadType === 'entertainment') {
+      headerTitle = settings.letterheadEntTitle || "GREFAS ENTERTAINMENT & PRODUCTIONS";
+    } else if (letter.letterheadType === 'consult') {
+      headerTitle = settings.letterheadConsultTitle || "GREFAS BUSINESS & STRATEGY CONSULT";
+    }
+
+    const messageText = `*${headerTitle.toUpperCase()}*
+Official Business Correspondence
+
+*Date:* ${new Date(letter.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+*To:* ${letter.recipientName}
+${letter.recipientAddress ? `*Address:* ${letter.recipientAddress.replace(/\n/g, ', ')}` : ''}
+
+*SUBJECT: RE: ${letter.subject.toUpperCase()}*
+
+${letter.salutation || 'Dear Sir/Madam,'}
+
+${textBody}
+
+Yours sincerely,
+*${letter.signatoryName}*
+${letter.signatoryTitle}`;
+
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(messageText)}`;
+    
+    window.open(whatsappUrl, '_blank');
+    toast.success('Opening WhatsApp Web/App with pre-filled letter text!');
+  };
+
+  const handleCopyLetterToClipboard = (letter: Letter) => {
+    // Format letterbody for text
+    const textBody = letter.body.split('\n\n').map(p => p.trim()).filter(p => p.length > 0).join('\n\n');
+
+    let headerTitle = "GREFAS ENTERTAINMENT & CONSULT";
+    if (letter.letterheadType === 'entertainment') {
+      headerTitle = settings.letterheadEntTitle || "GREFAS ENTERTAINMENT & PRODUCTIONS";
+    } else if (letter.letterheadType === 'consult') {
+      headerTitle = settings.letterheadConsultTitle || "GREFAS BUSINESS & STRATEGY CONSULT";
+    }
+
+    const messageText = `${headerTitle.toUpperCase()}
+Official Business Correspondence
+
+Date: ${new Date(letter.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+To: ${letter.recipientName}
+${letter.recipientAddress ? `Address: ${letter.recipientAddress.replace(/\n/g, ', ')}` : ''}
+
+SUBJECT: RE: ${letter.subject.toUpperCase()}
+
+${letter.salutation || 'Dear Sir/Madam,'}
+
+${textBody}
+
+Yours sincerely,
+${letter.signatoryName}
+${letter.signatoryTitle}`;
+
+    navigator.clipboard.writeText(messageText);
+    toast.success('Letter plain text copied to clipboard!');
+  };
+
   const filteredLetters = letters.filter(letter => {
     const matchesSearch = 
       letter.recipientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -849,6 +1013,19 @@ export default function ManageLetters() {
                               className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-200"
                             >
                               <Printer className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              id={`btn-dispatch-${letter.id}`}
+                              size="icon"
+                              variant="outline"
+                              title="Direct Dispatch (Email/WhatsApp)"
+                              onClick={() => {
+                                setSelectedLetterForSend(letter);
+                                setSendModalOpen(true);
+                              }}
+                              className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                            >
+                              <Send className="h-4 w-4" />
                             </Button>
                             <Button
                               id={`btn-delete-${letter.id}`}
@@ -1060,6 +1237,34 @@ export default function ManageLetters() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
+                    <label className="text-xs font-bold text-foreground block">WhatsApp Phone Number</label>
+                    <Input
+                      id="input-recipient-phone"
+                      type="text"
+                      placeholder="e.g. +233244123456"
+                      value={recipientPhone}
+                      onChange={(e) => setRecipientPhone(e.target.value)}
+                      className="bg-muted/30 text-xs h-9"
+                    />
+                    <p className="text-[10px] text-muted-foreground">For direct WhatsApp dispatch. Include country code (e.g. +233).</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-foreground block">Recipient Email Address</label>
+                    <Input
+                      id="input-recipient-email"
+                      type="email"
+                      placeholder="e.g. recipient@example.com"
+                      value={recipientEmail}
+                      onChange={(e) => setRecipientEmail(e.target.value)}
+                      className="bg-muted/30 text-xs h-9"
+                    />
+                    <p className="text-[10px] text-muted-foreground">For official branded letter email dispatch.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
                     <label className="text-xs font-bold text-foreground block">Letter Subject *</label>
                     <Input
                       id="input-letter-subject"
@@ -1260,30 +1465,62 @@ export default function ManageLetters() {
                 <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <Eye className="h-4 w-4 text-orange-600" /> Interactive Letter Sheet Preview
                 </h3>
-                <Button
-                  id="btn-quick-preview-print"
-                  size="sm"
-                  onClick={() => {
-                    triggerSafePrint({
-                      id: 'draft',
-                      recipientType,
-                      recipientName: recipientName || '[Recipient Name]',
-                      recipientAddress: recipientAddress || '[Recipient Address]',
-                      date,
-                      subject: subject || '[Subject Line]',
-                      salutation,
-                      body: body || 'Dear Sir, [Your compiled body paragraphs will be formatted here. Complete your draft to view exact line dimensions and column scales.]',
-                      signatoryName,
-                      signatoryTitle,
-                      letterheadType,
-                      watermarkEnabled,
-                      watermarkOpacity
-                    });
-                  }}
-                  className="bg-orange-600 hover:bg-orange-700 text-white text-[10px] h-8 font-bold flex items-center gap-1"
-                >
-                  <Printer className="h-3 w-3" /> Print Preview
-                </Button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    id="btn-quick-preview-print"
+                    size="sm"
+                    onClick={() => {
+                      triggerSafePrint({
+                        id: 'draft',
+                        recipientType,
+                        recipientName: recipientName || '[Recipient Name]',
+                        recipientAddress: recipientAddress || '[Recipient Address]',
+                        recipientPhone,
+                        recipientEmail,
+                        date,
+                        subject: subject || '[Subject Line]',
+                        salutation,
+                        body: body || 'Dear Sir, [Your compiled body paragraphs will be formatted here. Complete your draft to view exact line dimensions and column scales.]',
+                        signatoryName,
+                        signatoryTitle,
+                        letterheadType,
+                        watermarkEnabled,
+                        watermarkOpacity
+                      });
+                    }}
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-[10px] h-8 font-bold flex items-center gap-1"
+                  >
+                    <Printer className="h-3 w-3" /> Print Preview
+                  </Button>
+                  <Button
+                    id="btn-quick-preview-send"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedLetterForSend({
+                        id: editingLetterId || 'draft',
+                        recipientType,
+                        recipientName: recipientName || '[Recipient Name]',
+                        recipientAddress: recipientAddress || '[Recipient Address]',
+                        recipientPhone,
+                        recipientEmail,
+                        date,
+                        subject: subject || '[Subject Line]',
+                        salutation,
+                        body: body || '',
+                        signatoryName,
+                        signatoryTitle,
+                        letterheadType,
+                        watermarkEnabled,
+                        watermarkOpacity
+                      });
+                      setSendModalOpen(true);
+                    }}
+                    className="border-green-200 text-green-600 hover:text-green-700 hover:bg-green-50 text-[10px] h-8 font-bold flex items-center gap-1"
+                  >
+                    <Send className="h-3 w-3" /> Direct Send
+                  </Button>
+                </div>
               </div>
 
               {/* Simulation of Printable Letter */}
@@ -1403,6 +1640,162 @@ export default function ManageLetters() {
                 className="text-xs font-semibold"
               >
                 Delete Archive
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Direct Dispatch Center Modal */}
+      {sendModalOpen && selectedLetterForSend && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-2xl w-full shadow-2xl animate-in zoom-in-95 duration-200 text-left flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center border-b border-border pb-3 mb-4">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Send className="h-5 w-5 text-orange-600" /> Direct Dispatch Hub
+              </h3>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setSendModalOpen(false);
+                  setSelectedLetterForSend(null);
+                }}
+                className="h-8 w-8 p-0"
+              >
+                ✕
+              </Button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-1 space-y-4">
+              <div className="p-3 bg-muted/30 rounded-lg border border-border">
+                <p className="text-xs font-semibold text-foreground">
+                  Letter: <span className="font-bold text-orange-600">{selectedLetterForSend.subject}</span>
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Recipient: {selectedLetterForSend.recipientName} ({selectedLetterForSend.recipientType})
+                </p>
+              </div>
+
+              {/* Editable Contact Info Section */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted/25 p-4 rounded-xl border border-border">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-foreground flex items-center gap-1">
+                    <MessageSquare className="h-3.5 w-3.5 text-green-600" /> WhatsApp Number
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. +233244123456"
+                    value={selectedLetterForSend.recipientPhone || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedLetterForSend(prev => prev ? { ...prev, recipientPhone: val } : null);
+                    }}
+                    className="bg-background text-xs h-9"
+                  />
+                  <p className="text-[9px] text-muted-foreground">Ensure international prefix is included.</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-foreground flex items-center gap-1">
+                    <Mail className="h-3.5 w-3.5 text-blue-500" /> Recipient Email
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="e.g. director@example.com"
+                    value={selectedLetterForSend.recipientEmail || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedLetterForSend(prev => prev ? { ...prev, recipientEmail: val } : null);
+                    }}
+                    className="bg-background text-xs h-9"
+                  />
+                  <p className="text-[9px] text-muted-foreground">Required for both server and local emails.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* WhatsApp Bento Card */}
+                <div className="border border-border rounded-xl p-4 space-y-3 flex flex-col justify-between bg-green-50/5 dark:bg-green-950/5">
+                  <div>
+                    <h4 className="text-xs font-bold text-green-600 flex items-center gap-1.5">
+                      <MessageSquare className="h-4 w-4" /> WhatsApp Dispatch
+                    </h4>
+                    <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                      Send a markdown-formatted message directly to the recipient's WhatsApp. Bold headers, signatory details, and structured paragraphs will be preserved.
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-2">
+                    <Button
+                      onClick={() => handleSendWhatsApp(selectedLetterForSend)}
+                      disabled={!selectedLetterForSend.recipientPhone}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 h-9"
+                    >
+                      <ExternalLink className="h-4 w-4" /> Open WhatsApp Direct
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleCopyLetterToClipboard(selectedLetterForSend)}
+                      className="w-full text-[10px] h-8 font-semibold flex items-center justify-center gap-1"
+                    >
+                      <Copy className="h-3.5 w-3.5" /> Copy Message Text
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Email Bento Card */}
+                <div className="border border-border rounded-xl p-4 space-y-3 flex flex-col justify-between bg-blue-50/5 dark:bg-blue-950/5">
+                  <div>
+                    <h4 className="text-xs font-bold text-blue-500 flex items-center gap-1.5">
+                      <Mail className="h-4 w-4" /> Email Dispatch
+                    </h4>
+                    <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                      Choose between dispatching a professionally branded official HTML letterhead email via Grefas Mail server, or opening your default local mail app.
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-2">
+                    <Button
+                      onClick={() => handleSendOfficialEmail(selectedLetterForSend)}
+                      disabled={isSendingEmail || !selectedLetterForSend.recipientEmail}
+                      className="w-full bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 h-9"
+                    >
+                      {isSendingEmail ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Dispatching...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" /> Send Branded HTML Email
+                        </>
+                      )}
+                    </Button>
+                    
+                    <a
+                      href={`mailto:${selectedLetterForSend.recipientEmail || ''}?subject=${encodeURIComponent(`OFFICIAL CORRESPONDENCE: ${selectedLetterForSend.subject}`)}&body=${encodeURIComponent(
+                        `${selectedLetterForSend.salutation || 'Dear Sir/Madam,'}\n\n${selectedLetterForSend.body.split('\n\n').join('\n\n')}\n\nYours sincerely,\n${selectedLetterForSend.signatoryName}\n${selectedLetterForSend.signatoryTitle}`
+                      )}`}
+                      className={`w-full inline-flex items-center justify-center gap-1 text-[10px] h-8 border border-border rounded-lg font-semibold hover:bg-muted text-foreground transition-colors ${
+                        !selectedLetterForSend.recipientEmail ? 'pointer-events-none opacity-50' : ''
+                      }`}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Open Local Email client
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-border pt-4 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSendModalOpen(false);
+                  setSelectedLetterForSend(null);
+                }}
+                className="text-xs font-semibold"
+              >
+                Close Hub
               </Button>
             </div>
           </div>

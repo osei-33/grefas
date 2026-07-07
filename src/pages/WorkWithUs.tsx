@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -67,6 +67,8 @@ export default function WorkWithUs() {
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [emailAddress, setEmailAddress] = useState('');
   const [roleType, setRoleType] = useState('Actor / Actress');
+  const [roleTypes, setRoleTypes] = useState<string[]>(['Actor / Actress']);
+  const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [experienceLevel, setExperienceLevel] = useState('Intermediate');
   const [availability, setAvailability] = useState('Full-time');
   const [portfolioLink, setPortfolioLink] = useState('');
@@ -82,6 +84,29 @@ export default function WorkWithUs() {
         setEmailAddress(authUser.email || '');
       }
       setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch dynamic roles from settings/global
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().intakeRoles && docSnap.data().intakeRoles.length > 0) {
+        setAvailableRoles(docSnap.data().intakeRoles);
+      } else {
+        setAvailableRoles([
+          "Actor / Actress",
+          "Skit Performer",
+          "Creative Writer",
+          "Crew / Technical",
+          "Video Editor",
+          "Cameraman",
+          "Sound Engineer",
+          "Director",
+          "Finance Officer",
+          "Admin Support"
+        ]);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -116,6 +141,13 @@ export default function WorkWithUs() {
             setWhatsappNumber(latest.whatsappNumber || '');
             setEmailAddress(latest.emailAddress || user.email || '');
             setRoleType(latest.roleType || 'Actor / Actress');
+            if (latest.roleTypes && Array.isArray(latest.roleTypes)) {
+              setRoleTypes(latest.roleTypes);
+            } else if (latest.roleType) {
+              setRoleTypes(latest.roleType.split(', ').map((s: string) => s.trim()));
+            } else {
+              setRoleTypes(['Actor / Actress']);
+            }
             setExperienceLevel(latest.experienceLevel || 'Intermediate');
             setAvailability(latest.availability || 'Full-time');
             setPortfolioLink(latest.portfolioLink || '');
@@ -332,12 +364,18 @@ export default function WorkWithUs() {
     if (!emailAddress.trim()) return toast.error('Email Address is required.');
     if (!signature.trim()) return toast.error('Signature confirmation is required.');
 
+    if (!roleTypes || roleTypes.length === 0) {
+      return toast.error('Please select at least one role applied for.');
+    }
+
     const age = calculateAge(dateOfBirth);
     if (age < 12) {
       return toast.error('Applicants must be at least 12 years of age to participate.');
     }
 
     setSubmitting(true);
+
+    const joinedRoleType = roleTypes.join(', ');
 
     const intakeData = {
       fullName: fullName.trim(),
@@ -347,7 +385,8 @@ export default function WorkWithUs() {
       address: address.trim(),
       whatsappNumber: whatsappNumber.trim(),
       emailAddress: emailAddress.trim().toLowerCase(),
-      roleType,
+      roleType: joinedRoleType,
+      roleTypes,
       experienceLevel,
       availability,
       portfolioLink: portfolioLink.trim(),
@@ -365,16 +404,16 @@ export default function WorkWithUs() {
       // 1. Save application to 'service_intakes'
       await addDoc(collection(db, 'service_intakes'), intakeData);
 
-      // 2. Dispatch a notification to admin
-      await addDoc(collection(db, 'notifications'), {
-        userId: 'admin',
-        userEmail: 'admin',
-        title: 'New Candidate Career Application',
-        message: `A new application to work with Grefas has been submitted by ${fullName.trim()} for the role of ${roleType}. Check the service intakes desk to review and issue an official contract letter.`,
-        type: 'service_intake_alert',
-        read: false,
-        createdAt: new Date().toISOString()
-      });
+                      // 2. Dispatch a notification to admin
+                      await addDoc(collection(db, 'notifications'), {
+                        userId: 'admin',
+                        userEmail: 'admin',
+                        title: 'New Candidate Career Application',
+                        message: `A new application to work with Grefas has been submitted by ${fullName.trim()} for the role of ${joinedRoleType}. Check the service intakes desk to review and issue an official contract letter.`,
+                        type: 'service_intake_alert',
+                        read: false,
+                        createdAt: new Date().toISOString()
+                      });
 
       // 3. Try to notify via backend if proxy exists
       try {
@@ -387,21 +426,21 @@ export default function WorkWithUs() {
         console.warn('API notify intake skipped or failed:', err);
       }
 
-      // 4. Record application submission activity log
-      if (user) {
-        try {
-          await addDoc(collection(db, 'activity_logs'), {
-            userId: user.uid,
-            userEmail: user.email,
-            userName: fullName.trim(),
-            type: 'application_submission',
-            description: `Submitted a casting career application for the role of ${roleType}.`,
-            createdAt: new Date().toISOString()
-          });
-        } catch (logErr) {
-          console.warn('Failed to log application submission:', logErr);
-        }
-      }
+            // 4. Record application submission activity log
+            if (user) {
+              try {
+                await addDoc(collection(db, 'activity_logs'), {
+                  userId: user.uid,
+                  userEmail: user.email,
+                  userName: fullName.trim(),
+                  type: 'application_submission',
+                  description: `Submitted a casting career application for the roles: ${joinedRoleType}.`,
+                  createdAt: new Date().toISOString()
+                });
+              } catch (logErr) {
+                console.warn('Failed to log application submission:', logErr);
+              }
+            }
 
       toast.success('Your application was submitted successfully!');
       setShowSuccess(true);
@@ -901,24 +940,37 @@ export default function WorkWithUs() {
                       <h3 className="text-xs font-black text-orange-600 uppercase tracking-wider border-b pb-1">2. Role Profile & Portfolio</h3>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Role Applied For</label>
-                          <select
-                            value={roleType}
-                            onChange={(e) => setRoleType(e.target.value)}
-                            className="w-full bg-background border border-border text-xs rounded-lg h-9 px-3 font-semibold focus:border-orange-500 text-foreground"
-                          >
-                            <option value="Actor / Actress">Actor / Actress</option>
-                            <option value="Skit Performer">Skit Performer</option>
-                            <option value="Creative Writer">Creative Writer</option>
-                            <option value="Crew / Technical">Crew / Technical</option>
-                            <option value="Video Editor">Video Editor</option>
-                            <option value="Cameraman">Cameraman</option>
-                            <option value="Sound Engineer">Sound Engineer</option>
-                            <option value="Director">Director</option>
-                            <option value="Finance Officer">Finance Officer</option>
-                            <option value="Admin Support">Admin Support</option>
-                          </select>
+                        <div className="space-y-1.5 col-span-1 sm:col-span-3">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Role(s) Applied For (Select all that apply)</label>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-1">
+                            {availableRoles.map((role) => {
+                              const isChecked = roleTypes.includes(role);
+                              return (
+                                <label 
+                                  key={role} 
+                                  className={`flex items-center space-x-2 p-2 rounded-lg border text-[11px] font-semibold cursor-pointer transition-all ${
+                                    isChecked 
+                                      ? 'border-orange-500 bg-orange-500/10 text-orange-600 dark:bg-orange-950/20' 
+                                      : 'border-border bg-card text-muted-foreground hover:bg-muted/50'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      if (isChecked) {
+                                        setRoleTypes(roleTypes.filter(r => r !== role));
+                                      } else {
+                                        setRoleTypes([...roleTypes, role]);
+                                      }
+                                    }}
+                                    className="accent-orange-600 h-3.5 w-3.5 rounded shrink-0 cursor-pointer"
+                                  />
+                                  <span className="truncate">{role}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
                         </div>
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Experience Level</label>

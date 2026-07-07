@@ -1567,6 +1567,11 @@ function AdminServiceRequests() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Dynamic role states
+  const [intakeRoles, setIntakeRoles] = useState<string[]>([]);
+  const [newRole, setNewRole] = useState('');
+  const [isManagingRoles, setIsManagingRoles] = useState(false);
+
   useEffect(() => {
     const q = query(collection(db, 'service_intakes'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -1578,6 +1583,59 @@ function AdminServiceRequests() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Fetch dynamic roles
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().intakeRoles && docSnap.data().intakeRoles.length > 0) {
+        setIntakeRoles(docSnap.data().intakeRoles);
+      } else {
+        setIntakeRoles([
+          "Actor / Actress",
+          "Skit Performer",
+          "Creative Writer",
+          "Crew / Technical",
+          "Video Editor",
+          "Cameraman",
+          "Sound Engineer",
+          "Director",
+          "Finance Officer",
+          "Admin Support"
+        ]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddRole = async () => {
+    const trimmed = newRole.trim();
+    if (!trimmed) {
+      toast.error('Role name cannot be empty');
+      return;
+    }
+    if (intakeRoles.some(r => r.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error('This role already exists');
+      return;
+    }
+    const updatedRoles = [...intakeRoles, trimmed];
+    try {
+      await setDoc(doc(db, 'settings', 'global'), { intakeRoles: updatedRoles }, { merge: true });
+      toast.success('Intake role added successfully!');
+      setNewRole('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/global');
+    }
+  };
+
+  const handleDeleteRole = async (roleToDelete: string) => {
+    const updatedRoles = intakeRoles.filter(r => r !== roleToDelete);
+    try {
+      await setDoc(doc(db, 'settings', 'global'), { intakeRoles: updatedRoles }, { merge: true });
+      toast.success('Intake role deleted successfully!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/global');
+    }
+  };
 
   const handleDelete = async (id: string) => {
     try {
@@ -1595,7 +1653,7 @@ function AdminServiceRequests() {
       return;
     }
 
-    const headers = ['Full Name', 'Date of Birth', 'Age', 'Contact phone', 'WhatsApp number', 'Email address', 'Address/Residence', 'Registered At'];
+    const headers = ['Full Name', 'Date of Birth', 'Age', 'Contact phone', 'WhatsApp number', 'Email address', 'Address/Residence', 'Roles Applied', 'Registered At'];
     const rows = intakes.map(item => [
       item.fullName || '',
       item.dateOfBirth || '',
@@ -1604,6 +1662,7 @@ function AdminServiceRequests() {
       item.whatsappNumber || '',
       item.emailAddress || '',
       item.address || '',
+      item.roleType || '',
       item.createdAt || ''
     ]);
 
@@ -1628,7 +1687,8 @@ function AdminServiceRequests() {
       (item.emailAddress || '').toLowerCase().includes(query) ||
       (item.contact || '').toLowerCase().includes(query) ||
       (item.whatsappNumber || '').toLowerCase().includes(query) ||
-      (item.address || '').toLowerCase().includes(query)
+      (item.address || '').toLowerCase().includes(query) ||
+      (item.roleType || '').toLowerCase().includes(query)
     );
   });
 
@@ -1644,7 +1704,19 @@ function AdminServiceRequests() {
             Review and manage structured service form submissions and demographic intake details.
           </p>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Button
+            onClick={() => setIsManagingRoles(!isManagingRoles)}
+            size="sm"
+            variant={isManagingRoles ? "default" : "outline"}
+            className={`text-xs font-semibold flex items-center gap-1.5 h-9 ${
+              isManagingRoles ? 'bg-orange-600 hover:bg-orange-700 text-white border-orange-600' : ''
+            }`}
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            <span>{isManagingRoles ? "View Intakes Desk" : "Configure Intake Roles"}</span>
+          </Button>
+
           <Button
             onClick={exportIntakesToCSV}
             size="sm"
@@ -1657,203 +1729,291 @@ function AdminServiceRequests() {
         </div>
       </div>
 
-      <div className="flex items-center space-x-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by client name, email, phone or address..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-9 text-xs"
-          />
-        </div>
-        {searchQuery && (
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setSearchQuery('')}
-            className="text-xs h-9 px-3"
-          >
-            Clear
-          </Button>
-        )}
-      </div>
+      {isManagingRoles ? (
+        <Card className="border border-border bg-card p-6 rounded-xl space-y-6">
+          <div>
+            <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+              <Briefcase className="h-5 w-5 text-orange-600" />
+              <span>Configure Client Intake Roles</span>
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Add or remove roles that clients can choose from on the casting and career desk registration pages.
+            </p>
+          </div>
 
-      {loading ? (
-        <div className="flex min-h-[250px] items-center justify-center border border-dashed rounded-lg bg-card/50">
-          <div className="text-center space-y-2">
-            <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto" />
-            <p className="text-xs text-muted-foreground">Loading service intakes...</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Add Role Form */}
+            <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-4 h-fit">
+              <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Add New Role</h3>
+              <div className="space-y-2">
+                <Input
+                  placeholder="e.g. Script Supervisor"
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  className="bg-background text-xs h-9"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddRole();
+                    }
+                  }}
+                />
+                <Button
+                  onClick={handleAddRole}
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold h-9"
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Add Role
+                </Button>
+              </div>
+            </div>
+
+            {/* Roles List */}
+            <div className="md:col-span-2 space-y-3">
+              <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Active Intake Roles ({intakeRoles.length})</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[450px] overflow-y-auto pr-2">
+                {intakeRoles.map((role, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:border-orange-500/30 transition-colors">
+                    <span className="text-xs font-semibold text-foreground">{role}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteRole(role)}
+                      className="h-7 w-7 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                      title={`Delete ${role}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      ) : filteredIntakes.length === 0 ? (
-        <div className="flex min-h-[250px] flex-col items-center justify-center text-center rounded-xl border border-dashed border-border p-8 bg-card bg-opacity-40">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/20 text-orange-600">
-            <FileText className="h-6 w-6" />
-          </div>
-          <h3 className="mt-4 text-sm font-semibold text-foreground">No Intakes Found</h3>
-          <p className="mt-2 text-xs text-muted-foreground max-w-sm">
-            {searchQuery ? "No client registrations match your keyword query. Try searching for a different name, residency, or contact number." : "Clients who register via the service consultation intake form will appear here dynamically."}
-          </p>
-        </div>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredIntakes.map((item) => (
-            <Card key={item.id} className="border border-border/60 bg-card hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
-              <CardHeader className="pb-3 border-b border-border/40">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {item.passportPhoto ? (
-                      <div className="h-12 w-12 rounded-lg overflow-hidden border border-border shrink-0 bg-muted">
-                        <img src={item.passportPhoto} className="h-full w-full object-cover" alt="Passport" />
+        <>
+          <div className="flex items-center space-x-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by client name, email, phone, address or role..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
+            {searchQuery && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSearchQuery('')}
+                className="text-xs h-9 px-3"
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-[250px] items-center justify-center border border-dashed rounded-lg bg-card/50">
+              <div className="text-center space-y-2">
+                <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto" />
+                <p className="text-xs text-muted-foreground">Loading service intakes...</p>
+              </div>
+            </div>
+          ) : filteredIntakes.length === 0 ? (
+            <div className="flex min-h-[250px] flex-col items-center justify-center text-center rounded-xl border border-dashed border-border p-8 bg-card bg-opacity-40">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/20 text-orange-600">
+                <FileText className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-sm font-semibold text-foreground">No Intakes Found</h3>
+              <p className="mt-2 text-xs text-muted-foreground max-w-sm mx-auto">
+                {searchQuery ? "No client registrations match your keyword query. Try searching for a different name, residency, or contact number." : "Clients who register via the service consultation intake form will appear here dynamically."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredIntakes.map((item) => (
+                <Card key={item.id} className="border border-border/60 bg-card hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
+                  <CardHeader className="pb-3 border-b border-border/40">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {item.passportPhoto ? (
+                          <div className="h-12 w-12 rounded-lg overflow-hidden border border-border shrink-0 bg-muted">
+                            <img src={item.passportPhoto} className="h-full w-full object-cover" alt="Passport" />
+                          </div>
+                        ) : (
+                          <div className="h-12 w-12 rounded-lg border border-border/80 shrink-0 bg-muted flex items-center justify-center text-muted-foreground">
+                            <UserIcon className="h-5 w-5 opacity-55" />
+                          </div>
+                        )}
+                        <div className="min-w-0 space-y-1">
+                          <CardTitle className="text-sm font-bold truncate max-w-[140px]" title={item.fullName}>
+                            {item.fullName}
+                          </CardTitle>
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground flex-wrap">
+                            <span className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 font-bold px-1.5 py-0.5 rounded font-mono shrink-0">
+                              {item.age} Yrs
+                            </span>
+                            <span className="font-mono text-[10px]">{item.dateOfBirth}</span>
+                          </div>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="h-12 w-12 rounded-lg border border-border/80 shrink-0 bg-muted flex items-center justify-center text-muted-foreground">
-                        <UserIcon className="h-5 w-5 opacity-55" />
-                      </div>
-                    )}
-                    <div className="min-w-0 space-y-1">
-                      <CardTitle className="text-sm font-bold truncate max-w-[140px]" title={item.fullName}>
-                        {item.fullName}
-                      </CardTitle>
-                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground flex-wrap">
-                        <span className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 font-bold px-1.5 py-0.5 rounded font-mono shrink-0">
-                          {item.age} Yrs
-                        </span>
-                        <span className="font-mono text-[10px]">{item.dateOfBirth}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteId(item.id)}
+                        className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-3.5 text-xs">
+                    {/* Applied Roles */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">Roles Applied:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {(item.roleTypes && Array.isArray(item.roleTypes)) ? (
+                          item.roleTypes.map((role: string, index: number) => (
+                            <span key={index} className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded">
+                              {role}
+                            </span>
+                          ))
+                        ) : item.roleType ? (
+                          item.roleType.split(', ').map((role: string, index: number) => (
+                            <span key={index} className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded">
+                              {role}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="bg-zinc-100 dark:bg-zinc-800 text-muted-foreground text-[10px] font-semibold px-2 py-0.5 rounded">
+                            No Role Specified
+                          </span>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDeleteId(item.id)}
-                    className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-3.5 text-xs">
-                {/* Contact phone */}
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Phone className="h-3.5 w-3.5 shrink-0 text-orange-600/70" />
-                  <a href={`tel:${item.contact}`} className="hover:text-foreground hover:underline transition-all">
-                    {item.contact}
-                  </a>
-                </div>
 
-                {/* WhatsApp */}
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <MessageCircle className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                  <a 
-                    href={`https://wa.me/${item.whatsappNumber.replace(/[^0-9]/g, '')}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="hover:text-emerald-500 hover:underline inline-flex items-center gap-1 transition-all"
-                  >
-                    <span>{item.whatsappNumber}</span>
-                    <span className="text-[9px] font-bold text-emerald-500 uppercase bg-emerald-100 dark:bg-emerald-950/40 px-1 rounded">Text</span>
-                  </a>
-                </div>
+                    {/* Contact phone */}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Phone className="h-3.5 w-3.5 shrink-0 text-orange-600/70" />
+                      <a href={`tel:${item.contact}`} className="hover:text-foreground hover:underline transition-all">
+                        {item.contact}
+                      </a>
+                    </div>
 
-                {/* Email address */}
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Mail className="h-3.5 w-3.5 shrink-0 text-orange-600/70" />
-                  <a href={`mailto:${item.emailAddress}`} className="hover:text-foreground hover:underline transition-all truncate" title={item.emailAddress}>
-                    {item.emailAddress}
-                  </a>
-                </div>
-
-                {/* Address */}
-                <div className="flex items-start gap-2 text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5 shrink-0 text-orange-600/70 mt-0.5" />
-                  <span className="line-clamp-2" title={item.address}>{item.address}</span>
-                </div>
-
-                {/* Creation date */}
-                <div className="pt-3 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
-                  <span>Registered:</span>
-                  <span>{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A'}</span>
-                </div>
-
-                {/* Application Assessment Status */}
-                <div className="pt-3 border-t border-border/40 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-muted-foreground flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5 text-orange-600" /> Assessment Status
-                    </span>
-                    <span className={`px-2 py-0.5 font-bold uppercase rounded-full text-[9px] ${
-                      item.status === 'Approved' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
-                      item.status === 'In Review' ? 'text-amber-800 bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400' :
-                      item.status === 'Rejected' ? 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400' :
-                      'bg-slate-100 text-slate-800 dark:bg-slate-950/40 dark:text-slate-400'
-                    }`}>
-                      {item.status || 'Pending'}
-                    </span>
-                  </div>
-                  
-                  {/* Status Selection Row */}
-                  <div className="flex flex-wrap items-center gap-1 pt-1">
-                    {['Pending', 'In Review', 'Approved', 'Rejected'].map((statusOption) => (
-                      <button
-                        key={statusOption}
-                        disabled={item.status === statusOption || (statusOption === 'Pending' && !item.status)}
-                        onClick={async () => {
-                          try {
-                            await updateDoc(doc(db, 'service_intakes', item.id), {
-                              status: statusOption
-                            });
-
-                            // Record status change activity log
-                            try {
-                              await addDoc(collection(db, 'activity_logs'), {
-                                userId: item.userId || null,
-                                userEmail: item.emailAddress || null,
-                                userName: item.fullName || 'Unknown Client',
-                                type: 'status_change',
-                                description: `Application status changed to "${statusOption}" by Admin.`,
-                                createdAt: new Date().toISOString()
-                              });
-                            } catch (logErr) {
-                              console.warn('Failed to log status change activity:', logErr);
-                            }
-
-                            // Send SMS notification via the backend
-                            try {
-                              await fetch('/api/notify-intake-status', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  fullName: item.fullName,
-                                  contact: item.contact,
-                                  status: statusOption
-                                })
-                              });
-                            } catch (smsErr) {
-                              console.warn('Failed to dispatch status update SMS:', smsErr);
-                            }
-
-                            toast.success(`Applicant status updated to "${statusOption}"`);
-                          } catch (err) {
-                            handleFirestoreError(err, OperationType.UPDATE, `service_intakes/${item.id}`);
-                          }
-                        }}
-                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition duration-200 cursor-pointer border ${
-                          item.status === statusOption || (statusOption === 'Pending' && !item.status)
-                            ? 'bg-orange-600 border-orange-600 text-white shadow-xs'
-                            : 'bg-muted/40 border-border hover:bg-muted text-muted-foreground'
-                        }`}
+                    {/* WhatsApp */}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MessageCircle className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      <a 
+                        href={`https://wa.me/${item.whatsappNumber.replace(/[^0-9]/g, '')}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="hover:text-emerald-500 hover:underline inline-flex items-center gap-1 transition-all"
                       >
-                        {statusOption}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                        <span>{item.whatsappNumber}</span>
+                        <span className="text-[9px] font-bold text-emerald-500 uppercase bg-emerald-100 dark:bg-emerald-950/40 px-1 rounded">Text</span>
+                      </a>
+                    </div>
+
+                    {/* Email address */}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Mail className="h-3.5 w-3.5 shrink-0 text-orange-600/70" />
+                      <a href={`mailto:${item.emailAddress}`} className="hover:text-foreground hover:underline transition-all truncate" title={item.emailAddress}>
+                        {item.emailAddress}
+                      </a>
+                    </div>
+
+                    {/* Address */}
+                    <div className="flex items-start gap-2 text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-orange-600/70 mt-0.5" />
+                      <span className="line-clamp-2" title={item.address}>{item.address}</span>
+                    </div>
+
+                    {/* Creation date */}
+                    <div className="pt-3 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                      <span>Registered:</span>
+                      <span>{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A'}</span>
+                    </div>
+
+                    {/* Application Assessment Status */}
+                    <div className="pt-3 border-t border-border/40 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5 text-orange-600" /> Assessment Status
+                        </span>
+                        <span className={`px-2 py-0.5 font-bold uppercase rounded-full text-[9px] ${
+                          item.status === 'Approved' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                          item.status === 'In Review' ? 'text-amber-800 bg-amber-100 dark:bg-amber-950/40 dark:text-amber-400' :
+                          item.status === 'Rejected' ? 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400' :
+                          'bg-slate-100 text-slate-800 dark:bg-slate-950/40 dark:text-slate-400'
+                        }`}>
+                          {item.status || 'Pending'}
+                        </span>
+                      </div>
+                      
+                      {/* Status Selection Row */}
+                      <div className="flex flex-wrap items-center gap-1 pt-1">
+                        {['Pending', 'In Review', 'Approved', 'Rejected'].map((statusOption) => (
+                          <button
+                            key={statusOption}
+                            disabled={item.status === statusOption || (statusOption === 'Pending' && !item.status)}
+                            onClick={async () => {
+                              try {
+                                await updateDoc(doc(db, 'service_intakes', item.id), {
+                                  status: statusOption
+                                });
+
+                                // Record status change activity log
+                                try {
+                                  await addDoc(collection(db, 'activity_logs'), {
+                                    userId: item.userId || null,
+                                    userEmail: item.emailAddress || null,
+                                    userName: item.fullName || 'Unknown Client',
+                                    type: 'status_change',
+                                    description: `Application status changed to "${statusOption}" by Admin.`,
+                                    createdAt: new Date().toISOString()
+                                  });
+                                } catch (logErr) {
+                                  console.warn('Failed to log status change activity:', logErr);
+                                }
+
+                                // Send SMS notification via the backend
+                                try {
+                                  await fetch('/api/notify-intake-status', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      fullName: item.fullName,
+                                      contact: item.contact,
+                                      status: statusOption
+                                    })
+                                  });
+                                } catch (smsErr) {
+                                  console.warn('Failed to dispatch status update SMS:', smsErr);
+                                }
+
+                                toast.success(`Applicant status updated to "${statusOption}"`);
+                              } catch (err) {
+                                handleFirestoreError(err, OperationType.UPDATE, `service_intakes/${item.id}`);
+                              }
+                            }}
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition duration-200 cursor-pointer border ${
+                              item.status === statusOption || (statusOption === 'Pending' && !item.status)
+                                ? 'bg-orange-600 border-orange-600 text-white shadow-xs'
+                                : 'bg-muted/40 border-border hover:bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {statusOption}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {deleteId && (
@@ -3583,9 +3743,108 @@ function ManageSettings() {
     letterheadEntTitle: 'GREFAS ENTERTAINMENT & PRODUCTIONS',
     letterheadEntSubtitle: 'Skit & Movie Production, Casting Services, Creative Arts and Artiste Management',
     letterheadConsultTitle: 'GREFAS BUSINESS & STRATEGY CONSULT',
-    letterheadConsultSubtitle: 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting'
+    letterheadConsultSubtitle: 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting',
+    homeCarouselImages: []
   });
   const [loading, setLoading] = useState(true);
+
+  const [isUploadingCarousel, setIsUploadingCarousel] = useState(false);
+  const [carouselUploadProgress, setCarouselUploadProgress] = useState(0);
+  const [newCarouselUrl, setNewCarouselUrl] = useState('');
+
+  const handleCarouselUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Only image uploads are supported.');
+      return;
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error('Image is too large. Maximum size allowed is 25MB.');
+      return;
+    }
+
+    setIsUploadingCarousel(true);
+    setCarouselUploadProgress(0);
+
+    try {
+      toast.loading('Optimizing carousel image format...', { id: 'carousel-img-compress' });
+      const compressedBlob = await compressImage(file, 1920, 1080, 0.8);
+      toast.dismiss('carousel-img-compress');
+
+      const cleanFileName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+      const storageRef = ref(storage, `home_carousel/${Date.now()}_${cleanFileName}`);
+      
+      const uploadTask = uploadBytesResumable(storageRef, compressedBlob, {
+        contentType: 'image/jpeg'
+      });
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setCarouselUploadProgress(Math.round(progress));
+        },
+        async (error) => {
+          console.warn('Carousel image upload failed, falling back to local base64:', error);
+          try {
+            toast.loading('Saving optimized photo locally...', { id: 'carousel-img-fallback' });
+            const extraCompressedBlob = await compressImage(file, 1024, 576, 0.7);
+            const base64String = await blobToBase64(extraCompressedBlob);
+            if (base64String) {
+              setSettings((prev: any) => ({
+                ...prev,
+                homeCarouselImages: [...(prev.homeCarouselImages || []), base64String]
+              }));
+              toast.dismiss('carousel-img-fallback');
+              toast.success('Optimized locally! Carousel photo applied.');
+            } else {
+              throw new Error('Failed to convert optimized image to base64');
+            }
+          } catch (fallbackError) {
+            console.error('Local photo fallback failed:', fallbackError);
+            toast.dismiss('carousel-img-fallback');
+            toast.error('Image upload failed & fallback failed.');
+          } finally {
+            setIsUploadingCarousel(false);
+          }
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          setSettings((prev: any) => ({
+            ...prev,
+            homeCarouselImages: [...(prev.homeCarouselImages || []), downloadURL]
+          }));
+          setIsUploadingCarousel(false);
+          toast.success('Optimized carousel photo uploaded instantly!');
+        }
+      );
+    } catch (error) {
+      console.error('Carousel image upload compression failed:', error);
+      toast.dismiss('carousel-img-compress');
+      toast.error('Could not optimize or upload carousel photo.');
+      setIsUploadingCarousel(false);
+    }
+  };
+
+  const handleAddCarouselUrl = () => {
+    if (!newCarouselUrl.trim()) return;
+    setSettings((prev: any) => ({
+      ...prev,
+      homeCarouselImages: [...(prev.homeCarouselImages || []), newCarouselUrl.trim()]
+    }));
+    setNewCarouselUrl('');
+    toast.success('New carousel image link added!');
+  };
+
+  const handleRemoveCarouselImage = (indexToRemove: number) => {
+    setSettings((prev: any) => ({
+      ...prev,
+      homeCarouselImages: (prev.homeCarouselImages || []).filter((_: any, idx: number) => idx !== indexToRemove)
+    }));
+    toast.success('Carousel image removed. Remember to click "Save All Settings"!');
+  };
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
@@ -3615,7 +3874,8 @@ function ManageSettings() {
           letterheadEntTitle: data.letterheadEntTitle || 'GREFAS ENTERTAINMENT & PRODUCTIONS',
           letterheadEntSubtitle: data.letterheadEntSubtitle || 'Skit & Movie Production, Casting Services, Creative Arts and Artiste Management',
           letterheadConsultTitle: data.letterheadConsultTitle || 'GREFAS BUSINESS & STRATEGY CONSULT',
-          letterheadConsultSubtitle: data.letterheadConsultSubtitle || 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting'
+          letterheadConsultSubtitle: data.letterheadConsultSubtitle || 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting',
+          homeCarouselImages: data.homeCarouselImages || []
         });
       }
       setLoading(false);
@@ -3702,6 +3962,109 @@ function ManageSettings() {
                 placeholder="https://images.unsplash.com/..."
                 className="bg-muted/50 border-border"
               />
+            </div>
+
+            {/* Homepage Animated Pictures (Hero Carousel) Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+              <div>
+                <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                  <ImageIcon className="h-5 w-5 text-orange-600" /> Homepage Animated Pictures (Carousel)
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Configure, upload, or arrange the background slides rendered in the animated carousel on the main homepage.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-foreground block">Current Slides ({settings.homeCarouselImages?.length || 0})</label>
+                
+                {(!settings.homeCarouselImages || settings.homeCarouselImages.length === 0) ? (
+                  <div className="bg-muted/30 border border-dashed border-border p-6 rounded-xl text-center space-y-2">
+                    <p className="text-xs text-muted-foreground">No custom pictures uploaded. The homepage is currently showing the 4 default fallback pictures.</p>
+                    <div className="flex flex-wrap justify-center gap-2 text-[10px] text-muted-foreground/75">
+                      <span>• Wedding/Corporate Setup</span>
+                      <span>• Live Concert</span>
+                      <span>• Corporate Event Panel</span>
+                      <span>• Production Backdrop</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {settings.homeCarouselImages.map((imgUrl: string, idx: number) => (
+                      <div key={idx} className="relative group/carousel border border-border rounded-xl overflow-hidden bg-zinc-950 aspect-[16/9] shadow-sm">
+                        <img 
+                          src={imgUrl} 
+                          alt={`Carousel Slide ${idx + 1}`} 
+                          className="w-full h-full object-cover group-hover/carousel:scale-105 transition-transform duration-300"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/carousel:opacity-100 transition-opacity flex items-center justify-center">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            title="Delete picture"
+                            onClick={() => handleRemoveCarouselImage(idx)}
+                            className="h-8 w-8 rounded-full shadow-lg"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="absolute bottom-1.5 left-1.5 bg-black/60 backdrop-blur-xs px-2 py-0.5 rounded text-[9px] font-bold text-white">
+                          Slide {idx + 1}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border border-border">
+                {/* Method A: Direct Image Link */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-foreground block">Option A: Add via Web Image Link</label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      placeholder="e.g. https://images.unsplash.com/..."
+                      value={newCarouselUrl}
+                      onChange={(e) => setNewCarouselUrl(e.target.value)}
+                      className="bg-background border-border text-xs h-9"
+                    />
+                    <Button 
+                      type="button" 
+                      onClick={handleAddCarouselUrl}
+                      disabled={!newCarouselUrl.trim()}
+                      className="bg-orange-600 hover:bg-orange-700 text-white font-semibold text-xs h-9 shrink-0 px-4"
+                    >
+                      <Plus className="h-4 w-4 mr-1" /> Add URL
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Paste a direct, high-quality image link to append it instantly to your slides collection.</p>
+                </div>
+
+                {/* Method B: Upload from Device */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-foreground block">Option B: Upload from Device</label>
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex-1">
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleCarouselUpload}
+                        disabled={isUploadingCarousel}
+                        className="bg-background border-border text-xs h-9 cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-orange-500/10 file:text-orange-600 hover:file:bg-orange-500/20"
+                      />
+                    </div>
+                    {isUploadingCarousel && (
+                      <div className="flex items-center gap-1 text-xs text-orange-600 font-bold shrink-0">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {carouselUploadProgress}%
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Upload an image file directly. It will be compressed automatically on-the-fly for rapid page loading.</p>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2">

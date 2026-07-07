@@ -173,19 +173,30 @@ export default function Home() {
   const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
   const scale = useTransform(scrollYProgress, [0, 1], [1, 1.1]);
 
-  const slides = [
+  const [customCarouselImages, setCustomCarouselImages] = useState<string[]>([]);
+
+  const defaultSlides = [
     "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=1920",
     "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=1920",
     "https://images.unsplash.com/photo-1515187029135-18ee286d815b?auto=format&fit=crop&q=80&w=1920",
     "https://images.unsplash.com/photo-1505236858219-8359eb29e329?auto=format&fit=crop&q=80&w=1920"
   ];
 
+  const slides = customCarouselImages.length > 0 ? customCarouselImages : defaultSlides;
+
   useEffect(() => {
+    if (slides.length <= 1) return;
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [slides.length]);
+
+  useEffect(() => {
+    if (currentSlide >= slides.length) {
+      setCurrentSlide(0);
+    }
+  }, [slides.length, currentSlide]);
 
   useEffect(() => {
     const errorPath = 'settings/global';
@@ -197,15 +208,22 @@ export default function Home() {
         setVacancyTitle(data.vacancyAlertTitle || 'We are Hiring! Active Vacancy Available');
         setVacancyMessage(data.vacancyAlertMessage || 'We are currently looking for brilliant talent to join our team. Click below to view open roles and apply!');
         setVacancyBtnText(data.vacancyButtonText || 'Apply Now');
+        if (data.homeCarouselImages && Array.isArray(data.homeCarouselImages) && data.homeCarouselImages.length > 0) {
+          setCustomCarouselImages(data.homeCarouselImages);
+        } else {
+          setCustomCarouselImages([]);
+        }
       } else {
         setQuote("Excellence is not an act, but a habit.");
         setVacancyActive(false);
+        setCustomCarouselImages([]);
       }
       setLoadingQuote(false);
     }, (error) => {
       console.debug("Home quote feed issue (handled):", error);
       setQuote("Excellence is not an act, but a habit.");
       setVacancyActive(false);
+      setCustomCarouselImages([]);
       setLoadingQuote(false);
       // Pass to internal handler which handles offline suppressions
       handleFirestoreError(error, OperationType.GET, errorPath);
