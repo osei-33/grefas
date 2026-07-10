@@ -681,13 +681,13 @@ async function startServer() {
   });
 
   app.post("/api/notify-intake-status", async (req, res) => {
-    const { fullName, contact, status } = req.body;
+    const { fullName, contact, status, emailAddress, emailNotificationsEnabled } = req.body;
 
-    if (!fullName || !contact || !status) {
+    if (!fullName || !status) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const results = { sms: "skipped" };
+    const results = { sms: "skipped", email: "skipped" };
 
     if (contact) {
       try {
@@ -706,6 +706,68 @@ async function startServer() {
       } catch (smsErr: any) {
         console.error("Failed to send status update SMS:", smsErr);
         results.sms = `failed: ${smsErr.message}`;
+      }
+    }
+
+    if (resend && emailAddress && emailNotificationsEnabled !== false) {
+      try {
+        let statusColor = "#9333ea"; // Default violet
+        let explanation = "";
+
+        if (status === "Approved") {
+          statusColor = "#10b981"; // Emerald
+          explanation = "Congratulations! Our casting directors have approved your application. The casting team will reach out to you directly via WhatsApp or phone to finalize audition schedules.";
+        } else if (status === "In Review") {
+          statusColor = "#d97706"; // Amber
+          explanation = "Your application is currently being actively reviewed by our coordinators. We are comparing local portfolios for specific roles.";
+        } else if (status === "Rejected") {
+          statusColor = "#ef4444"; // Red
+          explanation = "Thank you for registering. Unfortunately, casting spaces for current slots are fully booked. We have stored your portfolio in the Grefas Archives for potential upcoming movie sequels.";
+        } else {
+          explanation = `Your current registration status has been updated to: ${status}.`;
+        }
+
+        await resend.emails.send({
+          from: "Grefas Casting <notifications@resend.dev>",
+          to: emailAddress,
+          subject: `Audition Status Updated: ${status} - Grefas Entertainment`,
+          html: `
+            <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+              <div style="background: linear-gradient(135deg, #18181b 0%, #27272a 100%); padding: 24px; text-align: center; border-bottom: 4px solid #ea580c;">
+                <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.025em;">GREFAS CASTING</h1>
+                <p style="color: #ffedd5; margin: 4px 0 0 0; font-size: 12px; text-transform: uppercase; tracking-wider; font-weight: 700;">Application Status Update</p>
+              </div>
+              <div style="padding: 32px;">
+                <h2 style="margin-top: 0; font-size: 20px; color: #111827; font-weight: 800;">Status Modified</h2>
+                <p>Hello <strong>${fullName}</strong>,</p>
+                <p>We are writing to inform you that your Movie & Skit registration status has been updated by Grefas Entertainment directors.</p>
+                
+                <div style="background-color: #f9fafb; border: 1px solid #f3f4f6; padding: 20px; border-radius: 8px; margin: 24px 0; text-align: center;">
+                  <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Current Stage</span>
+                  <div style="display: inline-block; background-color: ${statusColor}15; color: ${statusColor}; border: 1px solid ${statusColor}30; padding: 8px 16px; border-radius: 9999px; font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">
+                    ● ${status}
+                  </div>
+                  <p style="font-size: 13px; color: #4b5563; line-height: 1.6; margin-top: 12px; margin-bottom: 0; font-weight: 500;">
+                    ${explanation}
+                  </p>
+                </div>
+
+                <p>You can view your detailed records or duplicate print drafts by logging into the <strong>My Applications</strong> portal.</p>
+
+                <p style="margin-top: 32px; font-size: 13px; color: #71717a;">Warm regards,<br>The Grefas Entertainment Team</p>
+              </div>
+              <div style="background-color: #f3f4f6; padding: 16px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="margin: 0; font-size: 11px; color: #9ca3af;">
+                  You received this email because you opted into application status updates on your Grefas profile settings.
+                </p>
+              </div>
+            </div>
+          `
+        });
+        results.email = "sent";
+      } catch (emailErr: any) {
+        console.error("Failed to send status update email:", emailErr);
+        results.email = `failed: ${emailErr.message}`;
       }
     }
 
@@ -895,15 +957,178 @@ ${tone ? `Tone: ${tone}` : "Tone: Professional, authoritative, and polite"}
 Please generate ONLY the letter body paragraphs. DO NOT generate any letterhead, date, recipient address, salutation (like "Dear ..."), or sign-off (like "Sincerely ...") as these will be added automatically by the system.
 Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and fully developed.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
+      let responseText = "";
+      try {
+        console.log("Attempting letter generation with gemini-3.5-flash...");
+        const response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+        });
+        responseText = response.text || "";
+      } catch (firstErr: any) {
+        console.warn("First model gemini-3.5-flash failed/unavailable. Trying stable fallback gemini-flash-latest...", firstErr.message || firstErr);
+        try {
+          const response = await ai.models.generateContent({
+            model: "gemini-flash-latest",
+            contents: prompt,
+          });
+          responseText = response.text || "";
+        } catch (secondErr: any) {
+          console.warn("Second model gemini-flash-latest failed. Trying lightweight fallback gemini-3.1-flash-lite...", secondErr.message || secondErr);
+          try {
+            const response = await ai.models.generateContent({
+              model: "gemini-3.1-flash-lite",
+              contents: prompt,
+            });
+            responseText = response.text || "";
+          } catch (thirdErr: any) {
+            console.warn("All Gemini models failed or quota exceeded. Invoking professional local fallback text generator...", thirdErr.message || thirdErr);
+            // Bulletproof local fallback generator
+            const contextText = additionalContext ? `In regard to ${additionalContext}, we want to reiterate our commitment to excellence.` : "We are writing to officially outline our terms and look forward to a highly successful cooperation.";
+            responseText = `We are pleased to write to you on behalf of Grefas Entertainment & Productions concerning our ongoing discussions and mutual interests in the creative industry. As we move forward with our strategic plans, we want to express our sincere appreciation for your interest and proposed engagement with our organization.
+
+${contextText} Our team is fully dedicated to ensuring that all aspects of this undertaking are executed with the highest standards of professionalism and artistic integrity. We believe that this collaboration will yield exceptional results and create outstanding value for both parties.
+
+To facilitate the next steps, we propose that we schedule a formal review session to finalize the details and establish a clear timeline for our upcoming projects. Please review the attached contract guidelines, and let us know your availability at your earliest convenience so we can proceed accordingly.`;
+          }
+        }
+      }
+
+      res.json({ text: responseText });
+    } catch (err: any) {
+      console.error("Gemini letter generation experienced an unhandled exception. Yielding local fallback:", err);
+      const contextText = additionalContext ? `In regard to ${additionalContext}, we want to reiterate our commitment to excellence.` : "We are writing to officially outline our terms and look forward to a highly successful cooperation.";
+      const responseText = `We are pleased to write to you on behalf of Grefas Entertainment & Productions concerning our ongoing discussions and mutual interests in the creative industry. As we move forward with our strategic plans, we want to express our sincere appreciation for your interest and proposed engagement with our organization.
+
+${contextText} Our team is fully dedicated to ensuring that all aspects of this undertaking are executed with the highest standards of professionalism and artistic integrity. We believe that this collaboration will yield exceptional results and create outstanding value for both parties.
+
+To facilitate the next steps, we propose that we schedule a formal review session to finalize the details and establish a clear timeline for our upcoming projects. Please review the attached contract guidelines, and let us know your availability at your earliest convenience so we can proceed accordingly.`;
+      res.json({ text: responseText, isFallback: true });
+    }
+  });
+
+  app.post("/api/gallery/generate-image", async (req, res) => {
+    const { prompt } = req.body;
+
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({ error: "Prompt is required." });
+    }
+
+    // Dynamic SVG image fallback function
+    const generateFallbackSVG = (imagePrompt: string): string => {
+      const colors = [
+        { start: "#ff7e5f", end: "#feb47b" }, // Sunrise
+        { start: "#6a11cb", end: "#2575fc" }, // Royal Blue
+        { start: "#ff007f", end: "#7f00ff" }, // Cosmic neon
+        { start: "#111111", end: "#e65c00" }, // Grefas Signature black-orange
+        { start: "#3a7bd5", end: "#3a6073" }  // Steel blue
+      ];
+      const color = colors[imagePrompt.length % colors.length];
+      
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="100%" height="100%">
+        <defs>
+          <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:${color.start};stop-opacity:1" />
+            <stop offset="100%" style="stop-color:${color.end};stop-opacity:1" />
+          </linearGradient>
+          <filter id="shadow">
+            <feDropShadow dx="2" dy="4" stdDeviation="4" flood-opacity="0.5"/>
+          </filter>
+        </defs>
+        <rect width="600" height="600" fill="url(#grad)" />
+        <circle cx="300" cy="300" r="220" fill="none" stroke="white" stroke-opacity="0.1" stroke-width="40" />
+        <circle cx="300" cy="300" r="180" fill="none" stroke="white" stroke-opacity="0.15" stroke-width="2" />
+        <path d="M150 150 L450 450" stroke="white" stroke-opacity="0.05" stroke-width="10" />
+        <path d="M450 150 L150 450" stroke="white" stroke-opacity="0.05" stroke-width="10" />
+        <rect x="30" y="30" width="540" height="540" rx="16" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="2" />
+        <text x="300" y="80" font-family="'Inter', system-ui, sans-serif" font-weight="900" font-size="16" fill="white" letter-spacing="4" fill-opacity="0.8" text-anchor="middle">GREFAS ENTERTAINMENT</text>
+        <text x="300" y="300" font-family="'Inter', system-ui, sans-serif" font-weight="800" font-size="28" fill="white" text-anchor="middle" filter="url(#shadow)" style="text-transform: uppercase; letter-spacing: 2px;">
+          ${imagePrompt.length > 35 ? imagePrompt.substring(0, 32) + '...' : imagePrompt}
+        </text>
+        <rect x="230" y="480" width="140" height="36" rx="18" fill="black" fill-opacity="0.3" stroke="white" stroke-opacity="0.3" stroke-width="1" />
+        <text x="300" y="502" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="1">GALLERY CONCEPT</text>
+      </svg>`;
+      
+      return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+    };
+
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn("GEMINI_API_KEY environment variable is not configured. Yielding local fallback poster image.");
+      return res.json({ success: true, url: generateFallbackSVG(prompt), isFallback: true });
+    }
+
+    try {
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
       });
 
-      res.json({ text: response.text });
+      let response;
+      try {
+        console.log("Attempting image generation with gemini-3.1-flash-lite-image...");
+        response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite-image',
+          contents: {
+            parts: [
+              {
+                text: `Generate a high-quality, professional image for a consulting and entertainment business gallery. Topic: ${prompt}. The image should be vibrant and modern.`,
+              },
+            ],
+          },
+          config: {
+            imageConfig: {
+              aspectRatio: "1:1"
+            }
+          }
+        });
+      } catch (firstErr: any) {
+        console.warn("First model gemini-3.1-flash-lite-image failed. Trying fallback gemini-3.1-flash-image...", firstErr.message || firstErr);
+        try {
+          response = await ai.models.generateContent({
+            model: 'gemini-3.1-flash-image',
+            contents: {
+              parts: [
+                {
+                  text: `Generate a high-quality, professional image for a consulting and entertainment business gallery. Topic: ${prompt}. The image should be vibrant and modern.`,
+                },
+              ],
+            },
+            config: {
+              imageConfig: {
+                aspectRatio: "1:1"
+              }
+            }
+          });
+        } catch (secondErr: any) {
+          console.warn("Both Gemini image models failed or quota was exceeded. Generating beautiful local abstract poster image...", secondErr.message || secondErr);
+          return res.json({ success: true, url: generateFallbackSVG(prompt), isFallback: true });
+        }
+      }
+
+      let imageUrl = '';
+      if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData) {
+            imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+            break;
+          }
+        }
+      }
+
+      if (imageUrl) {
+        res.json({ success: true, url: imageUrl });
+      } else {
+        console.warn("No inline data in response. Generating fallback SVG poster.");
+        res.json({ success: true, url: generateFallbackSVG(prompt), isFallback: true });
+      }
     } catch (err: any) {
-      console.error("Gemini letter generation failed:", err);
-      res.status(500).json({ error: err.message || "Failed to generate letter content" });
+      console.error("Gemini image generation failed entirely. Yielding local fallback poster:", err);
+      res.json({ success: true, url: generateFallbackSVG(prompt), isFallback: true });
     }
   });
 
@@ -918,6 +1143,7 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
       body,
       signatoryName,
       signatoryTitle,
+      signatorySignature,
       letterheadType,
       logoUrl,
       settings
@@ -1026,7 +1252,8 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
 
               <!-- Sign-off Block -->
               <div style="margin-top: 36px; padding-top: 12px; page-break-inside: avoid;">
-                <p style="margin: 0 0 40px 0;">Yours sincerely,</p>
+                <p style="margin: 0 0 12px 0;">Yours sincerely,</p>
+                ${signatorySignature ? `<div style="margin: 8px 0;"><img src="${signatorySignature}" style="max-height: 55px; max-width: 170px; object-fit: contain;" alt="Signature" /></div>` : '<div style="height: 35px;"></div>'}
                 <p style="margin: 0; font-weight: bold; color: #1c1917;">${signatoryName || 'Grice Asante'}</p>
                 <p style="margin: 2px 0 0 0; font-size: 12px; color: #57534e;">${signatoryTitle || 'CEO & Founder'}</p>
               </div>

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,7 +27,9 @@ import {
   MessageSquare,
   Share2,
   Copy,
-  ExternalLink
+  ExternalLink,
+  PenTool,
+  Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
@@ -60,6 +62,7 @@ interface Letter {
   watermarkEnabled: boolean;
   watermarkOpacity: number;
   createdAt?: any;
+  signatorySignature?: string;
 }
 
 interface Settings {
@@ -122,6 +125,114 @@ export default function ManageLetters() {
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.05);
 
+  // Digital Signature states for letters
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [signatureMode, setSignatureMode] = useState<'draw' | 'upload'>('draw');
+  const [signatorySignature, setSignatorySignature] = useState('');
+
+  // Set line properties when canvas is available
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.5;
+      }
+    }
+  }, [activeTab, signatorySignature, signatureMode]);
+
+  const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    if ('touches' in e) {
+      if (e.touches.length === 0) return { x: 0, y: 0 };
+      const touch = e.touches[0];
+      return {
+        x: (touch.clientX - rect.left) * scaleX,
+        y: (touch.clientY - rect.top) * scaleY
+      };
+    } else {
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+      };
+    }
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCoordinates(e);
+    ctx.beginPath();
+    ctx.moveTo(coords.x, coords.y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCoordinates(e);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    saveSignatureImage();
+  };
+
+  const saveSignatureImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    setSignatorySignature(dataUrl);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    setSignatorySignature('');
+  };
+
+  const handleSignatureFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Invalid file type. Please upload an image file for the signature.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target && typeof event.target.result === 'string') {
+        setSignatorySignature(event.target.result);
+        toast.success('Signature image uploaded and captured successfully!');
+      }
+    };
+    reader.onerror = () => {
+      toast.error('Failed to read the signature file.');
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Dispatch / Direct Send states
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [selectedLetterForSend, setSelectedLetterForSend] = useState<Letter | null>(null);
@@ -152,6 +263,7 @@ export default function ManageLetters() {
     setLetterheadType(letter.letterheadType || 'joint');
     setWatermarkEnabled(letter.watermarkEnabled !== undefined ? letter.watermarkEnabled : true);
     setWatermarkOpacity(letter.watermarkOpacity !== undefined ? letter.watermarkOpacity : 0.05);
+    setSignatorySignature(letter.signatorySignature || '');
     setActiveTab('compose');
   };
 
@@ -171,6 +283,7 @@ export default function ManageLetters() {
     setLetterheadType('joint');
     setWatermarkEnabled(true);
     setWatermarkOpacity(0.05);
+    setSignatorySignature('');
     setAiPrompt('');
     setSelectedCastCrewId('');
     setActiveTab('compose');
@@ -284,6 +397,7 @@ export default function ManageLetters() {
         letterheadType,
         watermarkEnabled,
         watermarkOpacity,
+        signatorySignature,
         ...(editingLetterId ? {} : { createdAt: serverTimestamp() }),
         updatedAt: serverTimestamp()
       };
@@ -304,6 +418,7 @@ export default function ManageLetters() {
       setSubject('');
       setBody('');
       setAiPrompt('');
+      setSignatorySignature('');
       setEditingLetterId(null);
       
       // Navigate to list
@@ -577,10 +692,12 @@ export default function ManageLetters() {
               font-size: 11pt;
             }
             .sign-off-valediction {
-              margin-bottom: 45px;
+              margin-bottom: 20px;
             }
             .signature-space {
-              height: 50px;
+              min-height: 55px;
+              display: flex;
+              align-items: center;
             }
             .signatory-name {
               font-weight: bold;
@@ -658,7 +775,9 @@ export default function ManageLetters() {
             <!-- Sign-off -->
             <div class="sign-off-block">
               <div class="sign-off-valediction">Yours sincerely,</div>
-              <div class="signature-space"></div>
+              <div class="signature-space">
+                ${letter.signatorySignature ? `<img src="${letter.signatorySignature}" style="max-height: 55px; max-width: 170px; object-fit: contain; margin: 4px 0;" alt="Signature" />` : ''}
+              </div>
               <p class="signatory-name">${letter.signatoryName}</p>
               <p class="signatory-title">${letter.signatoryTitle}</p>
             </div>
@@ -1392,6 +1511,137 @@ ${letter.signatoryTitle}`;
                   </div>
                 </div>
 
+                {/* Signatory Digital Signature Section */}
+                <div className="border border-border/80 rounded-xl p-4 bg-muted/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-foreground">Signatory Signature Option</p>
+                      <p className="text-[10px] text-muted-foreground">Affix a hand-drawn or uploaded signature to this letter</p>
+                    </div>
+                  </div>
+
+                  {/* Signature Mode Selector */}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSignatureMode('draw')}
+                      className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition duration-300 border flex items-center gap-1 cursor-pointer ${
+                        signatureMode === 'draw'
+                          ? 'bg-orange-600 border-orange-600 text-white shadow-xs'
+                          : 'bg-card border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <PenTool className="h-3 w-3" /> Draw Signature
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSignatureMode('upload')}
+                      className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition duration-300 border flex items-center gap-1 cursor-pointer ${
+                        signatureMode === 'upload'
+                          ? 'bg-orange-600 border-orange-600 text-white shadow-xs'
+                          : 'bg-card border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <Upload className="h-3 w-3" /> Upload Signature Image
+                    </button>
+                  </div>
+
+                  {signatureMode === 'draw' ? (
+                    <div className="relative border border-border bg-white rounded-lg overflow-hidden p-1 shadow-xs">
+                      <canvas
+                        ref={canvasRef}
+                        width={600}
+                        height={120}
+                        className="w-full h-[120px] bg-slate-50 rounded cursor-crosshair touch-none"
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={stopDrawing}
+                        onMouseLeave={stopDrawing}
+                        onTouchStart={startDrawing}
+                        onTouchMove={draw}
+                        onTouchEnd={stopDrawing}
+                      />
+                      
+                      <div className="absolute bottom-2 right-2 flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={clearSignature}
+                          variant="outline"
+                          className="h-7 text-[10px] font-bold text-red-600 border-red-200 hover:bg-red-50 hover:border-red-400 bg-white/95 backdrop-blur-xs flex items-center gap-1 shadow-xs"
+                        >
+                          Clear
+                        </Button>
+                      </div>
+
+                      {!signatorySignature && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none opacity-40">
+                          <span className="text-[10px] font-medium text-muted-foreground">Sign inside this box</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {signatorySignature ? (
+                        <div className="relative border border-border bg-white rounded-lg p-3 flex flex-col items-center justify-center min-h-[120px]">
+                          <img 
+                            src={signatorySignature} 
+                            alt="Uploaded Signature" 
+                            className="max-h-[80px] max-w-full object-contain mx-auto"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => setSignatorySignature('')}
+                            variant="outline"
+                            className="mt-2 h-7 text-[10px] font-bold text-red-600 border-red-200 hover:bg-red-50 hover:border-red-400 bg-white flex items-center gap-1 shadow-xs"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ) : (
+                        <div 
+                          className="border border-dashed border-border hover:border-orange-500/60 transition-colors duration-300 rounded-lg p-4 bg-white/80 text-center cursor-pointer min-h-[120px] flex flex-col items-center justify-center"
+                          onClick={() => document.getElementById('letter-signature-upload')?.click()}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const files = e.dataTransfer.files;
+                            if (files && files.length > 0) {
+                              handleSignatureFile(files[0]);
+                            }
+                          }}
+                        >
+                          <p className="text-[11px] font-bold text-foreground">Drag & Drop Signature Image, or click to browse</p>
+                          <p className="text-[9px] text-muted-foreground mt-0.5">PNG, JPEG, or SVG formats are supported</p>
+                          <input 
+                            type="file"
+                            id="letter-signature-upload"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = e.target.files;
+                              if (files && files.length > 0) {
+                                handleSignatureFile(files[0]);
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {signatorySignature && (
+                    <div className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <span>✓ Signature Captured Successfully</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Logo & Watermark Settings */}
                 <div className="bg-muted/30 p-4 rounded-xl space-y-3">
                   <p className="text-[10px] uppercase font-black tracking-wider text-muted-foreground flex items-center gap-1">
@@ -1601,7 +1851,19 @@ ${letter.signatoryTitle}`;
 
                   {/* Sign off */}
                   <div className="pt-4 text-xs">
-                    <p className="mb-8">Yours sincerely,</p>
+                    <p className="mb-2">Yours sincerely,</p>
+                    {signatorySignature ? (
+                      <div className="my-2 bg-white/90 p-1.5 rounded border border-border/40 inline-block shadow-2xs">
+                        <img 
+                          src={signatorySignature} 
+                          alt="Signature" 
+                          className="max-h-12 max-w-[150px] object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-8"></div>
+                    )}
                     <p className="font-bold">{signatoryName}</p>
                     <p className="text-neutral-500 text-[10px]">{signatoryTitle}</p>
                   </div>

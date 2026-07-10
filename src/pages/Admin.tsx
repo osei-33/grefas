@@ -32,7 +32,6 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { GoogleGenAI } from "@google/genai";
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import ManageBlog from './ManageBlog';
 import SmsDashboard from '@/components/SmsDashboard';
@@ -1977,19 +1976,33 @@ function AdminServiceRequests() {
                                   console.warn('Failed to log status change activity:', logErr);
                                 }
 
-                                // Send SMS notification via the backend
+                                // Send SMS and Email notifications via the backend
                                 try {
+                                  let emailNotificationsEnabled = true;
+                                  if (item.userId) {
+                                    try {
+                                      const userDoc = await getDoc(doc(db, 'users', item.userId));
+                                      if (userDoc.exists()) {
+                                        emailNotificationsEnabled = userDoc.data().emailNotificationsEnabled !== false;
+                                      }
+                                    } catch (fetchProfileErr) {
+                                      console.warn('Failed to fetch applicant preference:', fetchProfileErr);
+                                    }
+                                  }
+
                                   await fetch('/api/notify-intake-status', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
                                       fullName: item.fullName,
                                       contact: item.contact,
-                                      status: statusOption
+                                      status: statusOption,
+                                      emailAddress: item.emailAddress,
+                                      emailNotificationsEnabled
                                     })
                                   });
-                                } catch (smsErr) {
-                                  console.warn('Failed to dispatch status update SMS:', smsErr);
+                                } catch (notifyErr) {
+                                  console.warn('Failed to dispatch status update notifications:', notifyErr);
                                 }
 
                                 toast.success(`Applicant status updated to "${statusOption}"`);
@@ -2959,40 +2972,29 @@ function ManageGallery() {
 
     setIsGenerating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: (process.env as any).GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [
-            {
-              text: `Generate a high-quality, professional image for a consulting and entertainment business gallery. Topic: ${generationPrompt}. The image should be vibrant and modern.`,
-            },
-          ],
+      const response = await fetch('/api/gallery/generate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
         },
-        config: {
-          imageConfig: {
-            aspectRatio: "1:1"
-          }
-        }
+        body: JSON.stringify({ prompt: generationPrompt })
       });
 
-      let imageUrl = '';
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-          break;
-        }
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${response.status}`);
       }
 
-      if (imageUrl) {
-        setNewItem({ ...newItem, url: imageUrl, title: generationPrompt });
+      const data = await response.json();
+      if (data.success && data.url) {
+        setNewItem({ ...newItem, url: data.url, title: generationPrompt });
         toast.success('Image generated successfully!');
       } else {
-        toast.error('Failed to generate image. Please try a different prompt.');
+        toast.error(data.error || 'Failed to generate image. Please try a different prompt.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error('Error generating image');
+      toast.error(error.message || 'Error generating image');
     } finally {
       setIsGenerating(false);
     }

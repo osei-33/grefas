@@ -3,13 +3,14 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, query, where, onSnapshot, getDocs, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, doc, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   FileText, Clock, CheckCircle2, AlertTriangle, Play, MessageCircle, MapPin, 
-  Phone, Mail, Calendar, Sparkles, LogIn, ArrowRight, Loader2, LogOut, Printer, X
+  Phone, Mail, Calendar, Sparkles, LogIn, ArrowRight, Loader2, LogOut, Printer, X,
+  Bell
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
@@ -20,13 +21,15 @@ export default function MyApplications() {
   const [authLoading, setAuthLoading] = useState(true);
   const [applications, setApplications] = useState<any[]>([]);
   const [loadingApps, setLoadingApps] = useState(false);
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
+  const [updatingNotifications, setUpdatingNotifications] = useState(false);
   
   // Controls print preview modal
   const [previewApp, setPreviewApp] = useState<any | null>(null);
   const [appAuthOpen, setAppAuthOpen] = useState(false);
   const [appAuthDefaultMode, setAppAuthDefaultMode] = useState<'signin' | 'signup'>('signin');
 
-  // Track Auth state
+  // Track Auth state & Fetch Notification Preferences
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (authUser) => {
       setUser(authUser);
@@ -34,6 +37,45 @@ export default function MyApplications() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Fetch email notification settings when user logs in
+  useEffect(() => {
+    if (!user) return;
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        // Default to true if not explicitly set
+        setEmailNotificationsEnabled(data.emailNotificationsEnabled !== false);
+      }
+    }, (error) => {
+      console.warn('Failed to load user email preferences:', error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleToggleNotifications = async (enabled: boolean) => {
+    if (!user) return;
+    setUpdatingNotifications(true);
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      await setDoc(userDocRef, {
+        emailNotificationsEnabled: enabled,
+        email: user.email || '',
+        fullName: user.displayName || 'Authorized Talent',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      setEmailNotificationsEnabled(enabled);
+      toast.success(enabled ? 'Email updates successfully activated!' : 'Email updates successfully silenced.');
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+      toast.error('Could not save notification preferences.');
+    } finally {
+      setUpdatingNotifications(false);
+    }
+  };
 
   // Fetch applications when logged in
   useEffect(() => {
@@ -278,11 +320,48 @@ export default function MyApplications() {
                 variant="outline"
                 size="sm"
                 onClick={handleSignOut}
-                className="text-muted-foreground border-border hover:text-red-500 hover:bg-red-500/5 rounded-xl text-xs font-semibold gap-1.5 self-stretch sm:self-auto"
+                className="text-muted-foreground border-border hover:text-red-500 hover:bg-red-500/5 rounded-xl text-xs font-semibold gap-1.5 self-stretch sm:self-auto cursor-pointer"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 <span>Sign Out</span>
               </Button>
+            </div>
+
+            {/* Email Notification Toggle (User Profile Settings) */}
+            <div className="bg-card border border-border/80 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-orange-600" />
+                  <h3 className="text-sm font-bold text-foreground">Status Updates Email Notifications</h3>
+                </div>
+                <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
+                  Receive real-time automated email alerts as soon as the directors update your casting registration stage (e.g. Approved, In Review, Rejected).
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-3 self-end md:self-auto shrink-0">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                  emailNotificationsEnabled ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'
+                }`}>
+                  {emailNotificationsEnabled ? 'Active' : 'Muted'}
+                </span>
+                
+                <button
+                  type="button"
+                  disabled={updatingNotifications}
+                  onClick={() => handleToggleNotifications(!emailNotificationsEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden disabled:opacity-50 ${
+                    emailNotificationsEnabled ? 'bg-orange-600' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      emailNotificationsEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {loadingApps ? (

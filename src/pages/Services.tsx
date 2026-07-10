@@ -55,6 +55,7 @@ export default function Services() {
   // Digital Signature Canvas references & drawing states
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [signatureMode, setSignatureMode] = useState<'draw' | 'upload'>('draw');
 
   // Set line properties when canvas is available
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function Services() {
         ctx.lineWidth = 2.5;
       }
     }
-  }, [currentStep, formData.signature]);
+  }, [currentStep, formData.signature, signatureMode]);
 
   const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current;
@@ -136,14 +137,37 @@ export default function Services() {
 
   const clearSignature = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
     setFormData(prev => ({
       ...prev,
       signature: ''
     }));
+  };
+
+  const handleSignatureFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Invalid file type. Please upload an image file for your signature.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target && typeof event.target.result === 'string') {
+        setFormData(prev => ({
+          ...prev,
+          signature: event.target!.result as string
+        }));
+        toast.success('Signature image uploaded and captured successfully!');
+      }
+    };
+    reader.onerror = () => {
+      toast.error('Failed to read the signature file.');
+    };
+    reader.readAsDataURL(file);
   };
 
   // Check for saved draft on mount
@@ -1988,56 +2012,152 @@ export default function Services() {
                         <div className="space-y-2 sm:col-span-2 border-t border-border/40 pt-6">
                           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                             <LucideIcons.PenTool className="h-4 w-4 text-orange-600 shrink-0" />
-                            Talent Digital Signature Consent
+                            Talent Signature Consent (Sign or Upload Image)
                           </label>
-                          <p className="text-[11px] text-muted-foreground leading-relaxed">
-                            Please sign inside the canvas box below using your mouse, trackpad, or touch screen. This signature is required to verify your application and will be affixed to your printed audition form.
+                          <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">
+                            Please draw your signature inside the canvas box below, or switch to the upload option to upload a clear image of your signature.
                           </p>
-                          
-                          <div className="relative border border-border/80 bg-white rounded-xl overflow-hidden p-1.5 shadow-xs">
-                            <canvas
-                              ref={canvasRef}
-                              width={600}
-                              height={180}
-                              className="w-full h-[180px] bg-slate-50 rounded-lg cursor-crosshair touch-none"
-                              onMouseDown={startDrawing}
-                              onMouseMove={draw}
-                              onMouseUp={stopDrawing}
-                              onMouseLeave={stopDrawing}
-                              onTouchStart={startDrawing}
-                              onTouchMove={draw}
-                              onTouchEnd={stopDrawing}
-                            />
-                            
-                            {/* Floating controls in canvas */}
-                            <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={clearSignature}
-                                variant="outline"
-                                className="h-8 text-[11px] font-bold uppercase tracking-wider text-red-600 border-red-200 hover:bg-red-50 hover:border-red-400 bg-white/95 backdrop-blur-xs flex items-center gap-1 shadow-xs"
-                              >
-                                <LucideIcons.Trash2 className="h-3 w-3" />
-                                <span>Clear Signature</span>
-                              </Button>
-                            </div>
 
-                            {/* Blank state indicator or signature preview status */}
-                            {!formData.signature && (
-                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none opacity-40">
-                                <div className="text-center">
-                                  <LucideIcons.Signature className="h-8 w-8 mx-auto text-muted-foreground/80 mb-1" />
-                                  <span className="text-[10px] font-medium text-muted-foreground">Sign Here</span>
-                                </div>
-                              </div>
-                            )}
+                          {/* Signature Mode Selector */}
+                          <div className="flex gap-2 mb-4">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSignatureMode('draw');
+                              }}
+                              className={`px-4 py-2 text-xs font-bold rounded-lg transition duration-300 border flex items-center gap-1.5 cursor-pointer ${
+                                signatureMode === 'draw'
+                                  ? 'bg-orange-600 border-orange-600 text-white shadow-sm'
+                                  : 'bg-background border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                              }`}
+                            >
+                              <LucideIcons.PenTool className="h-3.5 w-3.5" />
+                              Draw Signature
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSignatureMode('upload');
+                              }}
+                              className={`px-4 py-2 text-xs font-bold rounded-lg transition duration-300 border flex items-center gap-1.5 cursor-pointer ${
+                                signatureMode === 'upload'
+                                  ? 'bg-orange-600 border-orange-600 text-white shadow-sm'
+                                  : 'bg-background border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+                              }`}
+                            >
+                              <LucideIcons.Upload className="h-3.5 w-3.5" />
+                              Upload Signature Image
+                            </button>
                           </div>
+                          
+                          {signatureMode === 'draw' ? (
+                            <div className="relative border border-border/80 bg-white rounded-xl overflow-hidden p-1.5 shadow-xs">
+                              <canvas
+                                ref={canvasRef}
+                                width={600}
+                                height={180}
+                                className="w-full h-[180px] bg-slate-50 rounded-lg cursor-crosshair touch-none"
+                                onMouseDown={startDrawing}
+                                onMouseMove={draw}
+                                onMouseUp={stopDrawing}
+                                onMouseLeave={stopDrawing}
+                                onTouchStart={startDrawing}
+                                onTouchMove={draw}
+                                onTouchEnd={stopDrawing}
+                              />
+                              
+                              {/* Floating controls in canvas */}
+                              <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={clearSignature}
+                                  variant="outline"
+                                  className="h-8 text-[11px] font-bold uppercase tracking-wider text-red-600 border-red-200 hover:bg-red-50 hover:border-red-400 bg-white/95 backdrop-blur-xs flex items-center gap-1 shadow-xs"
+                                >
+                                  <LucideIcons.Trash2 className="h-3 w-3" />
+                                  <span>Clear Signature</span>
+                                </Button>
+                              </div>
+
+                              {/* Blank state indicator or signature preview status */}
+                              {!formData.signature && (
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none opacity-40">
+                                  <div className="text-center">
+                                    <LucideIcons.Signature className="h-8 w-8 mx-auto text-muted-foreground/80 mb-1" />
+                                    <span className="text-[10px] font-medium text-muted-foreground">Sign Here</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {formData.signature ? (
+                                <div className="relative border border-border bg-slate-50 rounded-xl p-4 flex flex-col items-center justify-center min-h-[180px] group">
+                                  <div className="bg-white border border-border/85 p-4 rounded-lg shadow-xs max-w-[300px]">
+                                    <img 
+                                      src={formData.signature} 
+                                      alt="Uploaded Signature" 
+                                      className="max-h-[110px] max-w-full object-contain mx-auto"
+                                    />
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => {
+                                      setFormData(prev => ({ ...prev, signature: '' }));
+                                    }}
+                                    variant="outline"
+                                    className="mt-3 text-[11px] font-bold uppercase tracking-wider text-red-600 border-red-200 hover:bg-red-50 hover:border-red-400 bg-white flex items-center gap-1 shadow-xs"
+                                  >
+                                    <LucideIcons.Trash2 className="h-3 w-3" />
+                                    <span>Remove Signature</span>
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div 
+                                  className="border-2 border-dashed border-border hover:border-orange-500/60 transition-colors duration-300 rounded-xl p-6 bg-muted/20 text-center cursor-pointer min-h-[180px] flex flex-col items-center justify-center"
+                                  onClick={() => document.getElementById('signature-file-upload')?.click()}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const files = e.dataTransfer.files;
+                                    if (files && files.length > 0) {
+                                      handleSignatureFile(files[0]);
+                                    }
+                                  }}
+                                >
+                                  <LucideIcons.UploadCloud className="h-10 w-10 text-orange-500 mb-2 stroke-[1.5]" />
+                                  <p className="text-xs font-bold text-foreground">Drag & Drop Signature Image</p>
+                                  <p className="text-[10px] text-muted-foreground mt-1 max-w-xs">Supports PNG, JPEG, or SVG formats (transparent background is recommended)</p>
+                                  <span className="mt-3 inline-block bg-orange-600 text-white font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg shadow-xs hover:bg-orange-700 transition">
+                                    Browse Files
+                                  </span>
+                                  <input 
+                                    type="file"
+                                    id="signature-file-upload"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const files = e.target.files;
+                                      if (files && files.length > 0) {
+                                        handleSignatureFile(files[0]);
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
                           
                           {formData.signature && (
                             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] uppercase tracking-wider animate-pulse px-1">
                               <LucideIcons.CheckCircle2 className="h-3.5 w-3.5" />
-                              <span>Digital Signature Captured & Locked</span>
+                              <span>Signature Captured & Locked</span>
                             </div>
                           )}
                         </div>
