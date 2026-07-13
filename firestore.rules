@@ -282,7 +282,9 @@ service cloud.firestore {
                     request.resource.data.address is string && request.resource.data.address.size() > 0 &&
                     request.resource.data.whatsappNumber is string && request.resource.data.whatsappNumber.size() > 0 &&
                     request.resource.data.emailAddress is string && request.resource.data.emailAddress.size() > 0;
-      allow update, delete: if isStaff();
+      allow update: if isStaff() || (isAuthenticated() && (resource.data.userId == request.auth.uid || ('email' in request.auth.token && resource.data.emailAddress == request.auth.token.email)) &&
+                    (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['fullName', 'userId', 'userEmail', 'emailAddress', 'status', 'price'])));
+      allow delete: if isStaff();
     }
 
     match /testimonials/{testimonialId} {

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -108,6 +108,71 @@ export default function Admin() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Session inactivity/expiration management
+  const lastActivityRef = useRef<number>(Date.now());
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(900); // 15 mins
+  const [showSessionWarning, setShowSessionWarning] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!user || role === 'guest') return;
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+      // Keep state values accurate but don't force state changes if not needed
+      setSecondsRemaining(900);
+      setShowSessionWarning(false);
+    };
+
+    // User interactions to reset inactivity timer
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(event => {
+      window.addEventListener(event, resetTimer);
+    });
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - lastActivityRef.current) / 1000);
+      const remaining = Math.max(0, 900 - elapsed);
+      setSecondsRemaining(remaining);
+
+      if (remaining <= 120 && remaining > 0) {
+        setShowSessionWarning(true);
+      } else if (remaining === 0) {
+        clearInterval(timer);
+        setShowSessionWarning(false);
+        // Secure automatic logout when the countdown reaches zero
+        (async () => {
+          try {
+            await signOut(auth);
+            toast.error('Session Expired', {
+              description: 'Your administrator session has expired due to inactivity to safeguard company data.',
+              duration: 10000,
+              icon: <AlertCircle className="h-5 w-5 text-red-500 animate-bounce" />,
+            });
+            navigate('/admin');
+          } catch (err) {
+            console.error("Session auto-logout failed:", err);
+          }
+        })();
+      } else {
+        setShowSessionWarning(false);
+      }
+    }, 1000);
+
+    return () => {
+      events.forEach(event => {
+        window.removeEventListener(event, resetTimer);
+      });
+      clearInterval(timer);
+    };
+  }, [user, role, navigate]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const isActive = (path: string) => {
     if (path === '/admin') {
@@ -786,6 +851,70 @@ export default function Admin() {
           <Route path="*" element={<div className="flex h-full items-center justify-center text-muted-foreground">Access Denied or Page Not Found</div>} />
         </Routes>
       </main>
+
+      {/* Security Session Expiry Warning Modal */}
+      {showSessionWarning && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-in fade-in duration-200">
+          <div className="bg-card border border-amber-500/30 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 text-center">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="h-14 w-14 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 animate-pulse border border-amber-500/20">
+                <AlertCircle className="h-8 w-8 text-amber-500" />
+              </div>
+              
+              <div className="space-y-1.5">
+                <h3 className="text-base font-bold text-foreground">
+                  Security Session Warning
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Your administrator session is about to expire due to inactivity. For security reasons, you will be logged out automatically.
+                </p>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-muted rounded-full h-2 overflow-hidden border border-border/40 my-1">
+                <div 
+                  className={`h-full transition-all duration-1000 ease-linear rounded-full ${
+                    secondsRemaining < 45 ? 'bg-red-500 animate-pulse' : 'bg-amber-500'
+                  }`} 
+                  style={{ width: `${(secondsRemaining / 120) * 100}%` }}
+                />
+              </div>
+
+              {/* Monospace countdown */}
+              <div className={`text-3xl font-black font-mono tracking-wider ${
+                secondsRemaining < 45 ? 'text-red-500 animate-pulse' : 'text-amber-500'
+              }`}>
+                {formatTime(secondsRemaining)}
+              </div>
+
+              <div className="flex w-full gap-3 pt-2">
+                <Button 
+                  variant="outline" 
+                  size="default" 
+                  onClick={handleLogout}
+                  className="flex-1 text-xs font-semibold h-10 border-border hover:bg-muted"
+                >
+                  Sign Out
+                </Button>
+                <Button 
+                  onClick={() => {
+                    lastActivityRef.current = Date.now();
+                    setSecondsRemaining(900);
+                    setShowSessionWarning(false);
+                    toast.success("Session Extended", {
+                      description: "Your session has been securely extended.",
+                      duration: 3000
+                    });
+                  }}
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold h-10"
+                >
+                  Extend Session
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1566,6 +1695,193 @@ function AdminServiceRequests() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Billing and Payment Plan States
+  const [editingBillingIntake, setEditingBillingIntake] = useState<any | null>(null);
+  const [billingPrice, setBillingPrice] = useState<number>(0);
+  const [billingPlanType, setBillingPlanType] = useState<string>('full');
+  const [installments, setInstallments] = useState<any[]>([]);
+  const [momoRefCode, setMomoRefCode] = useState<Record<string, string>>({});
+
+  // Confirmation modal state for manual payment
+  const [confirmPaymentModal, setConfirmPaymentModal] = useState<{
+    index: number;
+    inst: any;
+  } | null>(null);
+  const [typedVerifyRef, setTypedVerifyRef] = useState('');
+  const [verifyRefError, setVerifyRefError] = useState('');
+
+  useEffect(() => {
+    if (!editingBillingIntake) {
+      setBillingPrice(0);
+      setBillingPlanType('full');
+      setInstallments([]);
+      return;
+    }
+    
+    if (editingBillingIntake.price) {
+      setBillingPrice(editingBillingIntake.price);
+      setBillingPlanType(editingBillingIntake.paymentPlan?.type || 'full');
+      setInstallments(editingBillingIntake.paymentPlan?.installments || []);
+    } else {
+      setBillingPrice(500);
+      setBillingPlanType('full');
+      setInstallments([
+        {
+          id: 'inst_1',
+          name: 'Full Registration & Consultation',
+          amount: 500,
+          status: 'Unpaid',
+          dueDate: new Date().toISOString().split('T')[0]
+        }
+      ]);
+    }
+  }, [editingBillingIntake]);
+
+  const handleAutoGeneratePlan = (price: number, type: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysLater = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const sixtyDaysLater = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    if (type === 'full') {
+      setInstallments([
+        {
+          id: 'inst_1',
+          name: 'Full Program Payment',
+          amount: price,
+          status: 'Unpaid',
+          dueDate: today
+        }
+      ]);
+    } else if (type === 'installments_2') {
+      const firstAmount = Math.floor(price / 2);
+      const secondAmount = price - firstAmount;
+      setInstallments([
+        {
+          id: 'inst_1',
+          name: 'Deposit / Commitment Fee (50%)',
+          amount: firstAmount,
+          status: 'Unpaid',
+          dueDate: today
+        },
+        {
+          id: 'inst_2',
+          name: 'Final Balance Payment (50%)',
+          amount: secondAmount,
+          status: 'Unpaid',
+          dueDate: thirtyDaysLater
+        }
+      ]);
+    } else if (type === 'installments_3') {
+      const firstAmount = Math.floor(price * 0.4);
+      const secondAmount = Math.floor(price * 0.3);
+      const thirdAmount = price - firstAmount - secondAmount;
+      setInstallments([
+        {
+          id: 'inst_1',
+          name: 'Initial Deposit (40%)',
+          amount: firstAmount,
+          status: 'Unpaid',
+          dueDate: today
+        },
+        {
+          id: 'inst_2',
+          name: 'Second Installment (30%)',
+          amount: secondAmount,
+          status: 'Unpaid',
+          dueDate: thirtyDaysLater
+        },
+        {
+          id: 'inst_3',
+          name: 'Final Balance (30%)',
+          amount: thirdAmount,
+          status: 'Unpaid',
+          dueDate: sixtyDaysLater
+        }
+      ]);
+    }
+  };
+
+  const getAmountPaid = (item: any) => {
+    if (!item.price || !item.paymentPlan || !item.paymentPlan.installments) return 0;
+    return item.paymentPlan.installments
+      .filter((inst: any) => inst.status === 'Paid')
+      .reduce((sum: number, inst: any) => sum + (inst.amount || 0), 0);
+  };
+
+  const handleSaveBillingPlan = async () => {
+    if (!editingBillingIntake) return;
+    try {
+      const priceVal = Number(billingPrice) || 0;
+      
+      const paidAmount = installments
+        .filter((inst: any) => inst.status === 'Paid')
+        .reduce((sum: number, inst: any) => sum + (inst.amount || 0), 0);
+
+      let calcStatus = 'Unpaid';
+      if (priceVal > 0) {
+        if (paidAmount >= priceVal) {
+          calcStatus = 'Fully Paid';
+        } else if (paidAmount > 0) {
+          calcStatus = 'Partially Paid';
+        }
+      }
+
+      await updateDoc(doc(db, 'service_intakes', editingBillingIntake.id), {
+        price: priceVal,
+        paymentStatus: calcStatus,
+        paymentPlan: {
+          type: billingPlanType,
+          installments: installments
+        }
+      });
+
+      // Record activity
+      try {
+        await addDoc(collection(db, 'activity_logs'), {
+          userId: editingBillingIntake.userId || null,
+          userEmail: editingBillingIntake.emailAddress || null,
+          userName: editingBillingIntake.fullName || 'Unknown Client',
+          type: 'billing_update',
+          description: `Assigned pricing GHS ${priceVal} with plan type ${billingPlanType} by Admin.`,
+          createdAt: new Date().toISOString()
+        });
+      } catch (logErr) {
+        console.warn('Failed to log billing update activity:', logErr);
+      }
+
+      // If an installment is newly paid and it wasn't before, trigger an official invoice receipt!
+      const previousPaidAmount = getAmountPaid(editingBillingIntake);
+      if (paidAmount > previousPaidAmount) {
+        try {
+          const balanceDue = Math.max(0, priceVal - paidAmount);
+          await fetch('/api/notify-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fullName: editingBillingIntake.fullName,
+              emailAddress: editingBillingIntake.emailAddress,
+              contact: editingBillingIntake.contact,
+              amountPaid: paidAmount - previousPaidAmount, // new payment
+              paymentPlan: billingPlanType === 'full' ? 'One-time Full' : billingPlanType === 'installments_2' ? '2-Installments (50/50)' : '3-Installments (40/30/30)',
+              paymentMethod: 'Offline/Logged by Director',
+              totalPrice: priceVal,
+              balanceDue: balanceDue,
+              paymentStatus: calcStatus,
+              refId: editingBillingIntake.id
+            })
+          });
+        } catch (apiErr) {
+          console.warn('Failed to dispatch invoice notification email:', apiErr);
+        }
+      }
+
+      toast.success('Billing pricing and installments updated successfully!');
+      setEditingBillingIntake(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `service_intakes/${editingBillingIntake.id}`);
+    }
+  };
+
   // Dynamic role states
   const [intakeRoles, setIntakeRoles] = useState<string[]>([]);
   const [newRole, setNewRole] = useState('');
@@ -1934,6 +2250,68 @@ function AdminServiceRequests() {
                       <span>{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A'}</span>
                     </div>
 
+                    {/* Billing & Fees Section */}
+                    <div className="pt-3 border-t border-border/40 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-muted-foreground flex items-center gap-1.5">
+                          <CreditCard className="h-3.5 w-3.5 text-orange-600" /> Billing & Fees
+                        </span>
+                        {item.price ? (
+                          <span className={`px-2 py-0.5 font-bold text-[9px] uppercase rounded-full ${
+                            (item.paymentPlan?.status === 'Fully Paid' || getAmountPaid(item) >= item.price) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                            getAmountPaid(item) > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' :
+                            'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400'
+                          }`}>
+                            {item.paymentPlan?.status || (getAmountPaid(item) >= item.price ? 'Fully Paid' : 'Unpaid')}
+                          </span>
+                        ) : (
+                          <span className="bg-zinc-100 dark:bg-zinc-800/60 text-muted-foreground text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                            No Price Set
+                          </span>
+                        )}
+                      </div>
+
+                      {item.price ? (
+                        <div className="space-y-1.5 bg-muted/40 p-2 rounded-lg border border-border/30">
+                          <div className="flex justify-between text-[11px] font-medium text-foreground">
+                            <span>Total Price:</span>
+                            <span className="font-bold">GH₵ {item.price.toLocaleString()}</span>
+                          </div>
+                          
+                          {/* Progress bar */}
+                          {(() => {
+                            const paid = getAmountPaid(item);
+                            const percent = Math.min(100, Math.round((paid / item.price) * 100));
+                            return (
+                              <div className="space-y-1">
+                                <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
+                                  <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${percent}%` }} />
+                                </div>
+                                <div className="flex justify-between text-[9px] text-muted-foreground font-mono">
+                                  <span>Paid: GH₵ {paid} ({percent}%)</span>
+                                  <span>Bal: GH₵ {item.price - paid}</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground italic pl-1">
+                          No program fee or invoice setup has been configured for this client.
+                        </p>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditingBillingIntake(item)}
+                        className="w-full h-8 text-[11px] font-bold border-orange-600/30 hover:border-orange-600 hover:bg-orange-600/5 text-orange-600 cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <CreditCard className="h-3.5 w-3.5" />
+                        {item.price ? 'Manage Billing & Payments' : 'Configure Billing & Fee Plan'}
+                      </Button>
+                    </div>
+
                     {/* Application Assessment Status */}
                     <div className="pt-3 border-t border-border/40 space-y-2">
                       <div className="flex items-center justify-between text-xs">
@@ -1957,6 +2335,10 @@ function AdminServiceRequests() {
                             key={statusOption}
                             disabled={item.status === statusOption || (statusOption === 'Pending' && !item.status)}
                             onClick={async () => {
+                              if (statusOption === 'Approved' && getAmountPaid(item) <= 0) {
+                                toast.error('Cannot approve client intake. No payment has been made yet.');
+                                return;
+                              }
                               try {
                                 await updateDoc(doc(db, 'service_intakes', item.id), {
                                   status: statusOption
@@ -2036,6 +2418,361 @@ function AdminServiceRequests() {
           onConfirm={() => handleDelete(deleteId)}
           onCancel={() => setDeleteId(null)}
         />
+      )}
+
+      {editingBillingIntake && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-card w-full max-w-2xl rounded-xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-orange-600" /> Billing & Payment Plan Coordinator
+                </h3>
+                <p className="text-xs text-muted-foreground font-medium">
+                  Client: <span className="text-foreground font-semibold">{editingBillingIntake.fullName}</span> ({editingBillingIntake.emailAddress})
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setEditingBillingIntake(null)}
+                className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {/* Total Price Configuration */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    Total Charge Price (GHS)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs font-bold text-muted-foreground">GH₵</span>
+                    <Input
+                      type="number"
+                      value={billingPrice}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value));
+                        setBillingPrice(val);
+                        handleAutoGeneratePlan(val, billingPlanType);
+                      }}
+                      className="pl-9 font-bold text-xs"
+                      placeholder="e.g. 1000"
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Set the total tuition, audition, casting, or consultation package fee.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    Structured Payment Plan
+                  </label>
+                  <select
+                    value={billingPlanType}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBillingPlanType(val);
+                      handleAutoGeneratePlan(billingPrice, val);
+                    }}
+                    className="w-full h-10 px-3 py-2 rounded-md border border-input bg-background text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="full">Single Payment (Paid in Full)</option>
+                    <option value="installments_2">2 Installments (50% / 50% split)</option>
+                    <option value="installments_3">3 Installments (40% / 30% / 30% split)</option>
+                    <option value="custom">Custom Installments Plan</option>
+                  </select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Select a preset split structure or define a custom billing timeline.
+                  </p>
+                </div>
+              </div>
+
+              {/* Installments Table */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Scheduled Installment Milestones
+                  </h4>
+                  {billingPlanType === 'custom' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newInst = {
+                          id: `inst_${Date.now()}`,
+                          name: `Installment ${installments.length + 1}`,
+                          amount: 0,
+                          status: 'Unpaid',
+                          dueDate: new Date().toISOString().split('T')[0]
+                        };
+                        setInstallments([...installments, newInst]);
+                      }}
+                      className="h-7 text-[10px] px-2 font-bold text-orange-600 border-orange-600/20 hover:bg-orange-600/5 cursor-pointer"
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> Add Milestone
+                    </Button>
+                  )}
+                </div>
+
+                <div className="border border-border/80 rounded-lg overflow-hidden bg-muted/10">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-muted/40 border-b border-border/60 text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+                          <th className="p-3">Milestone Title</th>
+                          <th className="p-3 w-28">Amount (GH₵)</th>
+                          <th className="p-3 w-36">Due Date</th>
+                          <th className="p-3 w-24 text-center">Status</th>
+                          <th className="p-3 w-32 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40 font-medium">
+                        {installments.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="p-4 text-center text-muted-foreground italic text-xs">
+                              No payment milestones scheduled. Configure a total price and plan style to begin.
+                            </td>
+                          </tr>
+                        ) : (
+                          installments.map((inst, index) => (
+                            <tr key={inst.id} className="hover:bg-muted/20 transition-colors">
+                              <td className="p-3">
+                                <Input
+                                  value={inst.name}
+                                  disabled={billingPlanType !== 'custom' && inst.status === 'Paid'}
+                                  onChange={(e) => {
+                                    const updated = [...installments];
+                                    updated[index].name = e.target.value;
+                                    setInstallments(updated);
+                                  }}
+                                  className="h-8 text-xs font-semibold bg-background border-border/60"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <Input
+                                  type="number"
+                                  value={inst.amount}
+                                  disabled={billingPlanType !== 'custom' && inst.status === 'Paid'}
+                                  onChange={(e) => {
+                                    const updated = [...installments];
+                                    updated[index].amount = Math.max(0, Number(e.target.value));
+                                    setInstallments(updated);
+                                  }}
+                                  className="h-8 text-xs font-bold font-mono bg-background border-border/60"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <Input
+                                  type="date"
+                                  value={inst.dueDate}
+                                  disabled={inst.status === 'Paid'}
+                                  onChange={(e) => {
+                                    const updated = [...installments];
+                                    updated[index].dueDate = e.target.value;
+                                    setInstallments(updated);
+                                  }}
+                                  className="h-8 text-xs font-semibold bg-background border-border/60"
+                                />
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                                  inst.status === 'Paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400'
+                                }`}>
+                                  {inst.status}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {inst.status === 'Unpaid' ? (
+                                    <div className="flex items-center gap-1">
+                                      <Input
+                                        placeholder="Momo TXN ID..."
+                                        value={momoRefCode[inst.id] || ''}
+                                        onChange={(e) => setMomoRefCode({ ...momoRefCode, [inst.id]: e.target.value })}
+                                        className="h-7 text-[10px] w-24 bg-background border-border/60 inline-block py-0 px-1.5"
+                                      />
+                                      <Button
+                                        size="sm"
+                                        onClick={async () => {
+                                          const ref = momoRefCode[inst.id]?.trim() || `TXN-CASH-${Math.floor(100000 + Math.random() * 900000)}`;
+                                          setConfirmPaymentModal({ index, inst: { ...inst, transactionId: ref } });
+                                          setTypedVerifyRef('');
+                                          setVerifyRefError('');
+                                        }}
+                                        className="h-7 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 py-0 cursor-pointer"
+                                      >
+                                        Record Pay
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="text-[10px] text-muted-foreground font-mono truncate max-w-[120px]" title={`Ref: ${inst.transactionId}`}>
+                                      Ref: {inst.transactionId}
+                                    </div>
+                                  )}
+                                  
+                                  {billingPlanType === 'custom' && inst.status !== 'Paid' && (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setInstallments(installments.filter((_, i) => i !== index));
+                                      }}
+                                      className="h-7 w-7 text-muted-foreground hover:text-red-500 rounded-lg"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Validation Note */}
+                {(() => {
+                  const sum = installments.reduce((acc, inst) => acc + Number(inst.amount), 0);
+                  const isMatching = sum === billingPrice;
+                  return (
+                    <div className="flex items-center justify-between text-[11px] px-2 py-1.5 rounded-lg border bg-muted/30">
+                      <span className="text-muted-foreground font-medium">
+                        Sum of Milestones: <span className="font-bold font-mono text-foreground">GH₵ {sum.toLocaleString()}</span>
+                      </span>
+                      {isMatching ? (
+                        <span className="text-emerald-600 font-bold flex items-center gap-1">
+                          <CheckCircle className="h-3.5 w-3.5" /> Plan Balance Matches perfectly!
+                        </span>
+                      ) : (
+                        <span className="text-red-500 font-bold flex items-center gap-1">
+                          <AlertCircle className="h-3.5 w-3.5 animate-pulse" /> Balance mismatch of GH₵ {Math.abs(billingPrice - sum).toLocaleString()}!
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="px-6 py-4 border-t border-border/60 bg-muted/20 flex items-center justify-between">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditingBillingIntake(null)}
+                className="h-9 text-xs font-semibold border-border hover:bg-muted cursor-pointer"
+              >
+                Cancel Setup
+              </Button>
+              <Button
+                size="sm"
+                disabled={installments.reduce((acc, inst) => acc + Number(inst.amount), 0) !== billingPrice}
+                onClick={handleSaveBillingPlan}
+                className="h-9 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white px-4 cursor-pointer"
+              >
+                <Save className="h-3.5 w-3.5 mr-1.5" /> Save Plan & Generate Invoices
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Payment Verification Confirmation Modal */}
+      {confirmPaymentModal && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-card w-full max-w-md rounded-xl border border-border shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between bg-muted/25">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-orange-600 flex items-center gap-1.5">
+                <ShieldCheck className="h-4 w-4" /> Verify Payment Reference Code
+              </h4>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setConfirmPaymentModal(null)}
+                className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer rounded-lg"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4">
+              <div className="bg-muted/15 border border-border/40 p-3 rounded-lg text-xs space-y-1">
+                <p className="text-muted-foreground font-semibold">Payment Details:</p>
+                <p className="text-foreground"><span className="font-bold">Milestone:</span> {confirmPaymentModal.inst.name}</p>
+                <p className="text-foreground"><span className="font-bold">Amount:</span> GH₵ {confirmPaymentModal.inst.amount.toLocaleString()}</p>
+                <p className="text-foreground"><span className="font-bold">Proposed Ref Code:</span> <span className="font-mono font-bold text-orange-600 bg-orange-500/10 px-1.5 py-0.5 rounded">{confirmPaymentModal.inst.transactionId}</span></p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Verify Reference Code
+                </label>
+                <p className="text-[11px] text-muted-foreground">
+                  Please type or paste the reference code <strong className="font-mono select-all">{confirmPaymentModal.inst.transactionId}</strong> below to verify and record this manual payment.
+                </p>
+                <Input
+                  placeholder="Type reference code..."
+                  value={typedVerifyRef}
+                  onChange={(e) => {
+                    setTypedVerifyRef(e.target.value);
+                    setVerifyRefError('');
+                  }}
+                  className="h-9 text-xs font-mono tracking-wider font-bold bg-background border-border"
+                />
+                {verifyRefError && (
+                  <p className="text-[10px] text-red-500 font-bold flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" /> {verifyRefError}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3.5 border-t border-border/60 bg-muted/25 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmPaymentModal(null)}
+                className="h-8 text-xs font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (typedVerifyRef.trim() !== confirmPaymentModal.inst.transactionId.trim()) {
+                    setVerifyRefError('Reference code mismatch. Please verify the code.');
+                    return;
+                  }
+                  
+                  // Verification succeeded! Update installments state
+                  const updated = [...installments];
+                  updated[confirmPaymentModal.index].status = 'Paid';
+                  updated[confirmPaymentModal.index].paidAt = new Date().toISOString();
+                  updated[confirmPaymentModal.index].transactionId = confirmPaymentModal.inst.transactionId;
+                  setInstallments(updated);
+                  toast.success(`Milestone "${confirmPaymentModal.inst.name}" verified and recorded as paid!`);
+                  setConfirmPaymentModal(null);
+                }}
+                className="h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-4"
+              >
+                Verify & Record Payment
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -3746,7 +4483,14 @@ function ManageSettings() {
     letterheadEntSubtitle: 'Skit & Movie Production, Casting Services, Creative Arts and Artiste Management',
     letterheadConsultTitle: 'GREFAS BUSINESS & STRATEGY CONSULT',
     letterheadConsultSubtitle: 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting',
-    homeCarouselImages: []
+    homeCarouselImages: [],
+    intakePrice: 50,
+    advertActive: true,
+    advertTitle: 'Grefas Showcase Commercial',
+    advertDescription: 'Explore our latest premium entertainment and casting showcases from Nyinahin-Ashanti.',
+    advertImageUrl: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2Zic3VzbjRraHBhYTRqYWZ1cnpsbHVpZXB0czdrY3I2dnpqdjU1NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKUM3Y5MgX9sLYs/giphy.gif',
+    advertVideoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    advertLink: '/services'
   });
   const [loading, setLoading] = useState(true);
 
@@ -3877,7 +4621,14 @@ function ManageSettings() {
           letterheadEntSubtitle: data.letterheadEntSubtitle || 'Skit & Movie Production, Casting Services, Creative Arts and Artiste Management',
           letterheadConsultTitle: data.letterheadConsultTitle || 'GREFAS BUSINESS & STRATEGY CONSULT',
           letterheadConsultSubtitle: data.letterheadConsultSubtitle || 'Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting',
-          homeCarouselImages: data.homeCarouselImages || []
+          homeCarouselImages: data.homeCarouselImages || [],
+          intakePrice: data.intakePrice !== undefined ? Number(data.intakePrice) : 50,
+          advertActive: data.advertActive !== false,
+          advertTitle: data.advertTitle || 'Grefas Showcase Commercial',
+          advertDescription: data.advertDescription || 'Explore our latest premium entertainment and casting showcases from Nyinahin-Ashanti.',
+          advertImageUrl: data.advertImageUrl || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2Zic3VzbjRraHBhYTRqYWZ1cnpsbHVpZXB0czdrY3I2dnpqdjU1NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKUM3Y5MgX9sLYs/giphy.gif',
+          advertVideoUrl: data.advertVideoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4',
+          advertLink: data.advertLink || '/services'
         });
       }
       setLoading(false);
@@ -3964,6 +4715,23 @@ function ManageSettings() {
                 placeholder="https://images.unsplash.com/..."
                 className="bg-muted/50 border-border"
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2 text-foreground">
+                <CreditCard className="h-4 w-4 text-muted-foreground" /> Casting Intake Registration Fee (GH₵)
+              </label>
+              <Input
+                type="number"
+                value={settings.intakePrice !== undefined ? settings.intakePrice : ''}
+                onChange={(e) => setSettings({ ...settings, intakePrice: Number(e.target.value) })}
+                placeholder="50"
+                className="bg-muted/50 border-border"
+                min="0"
+              />
+              <p className="text-xs text-muted-foreground">
+                The standard registration fee shown to clients on the Movie & Skit registration form, which they must confirm before submitting.
+              </p>
             </div>
 
             {/* Homepage Animated Pictures (Hero Carousel) Section */}
@@ -4286,6 +5054,107 @@ function ManageSettings() {
                   <p className="text-[11px] text-muted-foreground italic">
                     This message will be shown to public visitors on the homepage to invite them to apply through the careers desk.
                   </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Dynamic Advertisement Settings Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                <Megaphone className="h-5 w-5 text-orange-600" /> Homepage Commercial & Advertisement Space
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Manage the promotional animated image and video spotlight shown on the home page.
+              </p>
+              <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium text-sm text-foreground">Activate Advertisement Showcase</p>
+                    <p className="text-xs text-muted-foreground">Toggle whether the partner advertisement section is displayed on the homepage.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${settings.advertActive !== false ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'}`}>
+                      {settings.advertActive !== false ? '● Active' : '○ Hidden'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, advertActive: settings.advertActive !== false ? false : true })}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${settings.advertActive !== false ? 'bg-orange-600' : 'bg-zinc-300 dark:bg-zinc-700'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${settings.advertActive !== false ? 'translate-x-5' : 'translate-x-0'}`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Advertisement Title
+                    </label>
+                    <Input
+                      value={settings.advertTitle || ''}
+                      onChange={(e) => setSettings({ ...settings, advertTitle: e.target.value })}
+                      placeholder="e.g. Grefas Showcase Commercial"
+                      className="bg-background border-border"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Sponsor Campaign Target Link (URL)
+                    </label>
+                    <Input
+                      value={settings.advertLink || ''}
+                      onChange={(e) => setSettings({ ...settings, advertLink: e.target.value })}
+                      placeholder="e.g. /services or custom URL"
+                      className="bg-background border-border"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Advertisement Description / Subtitle
+                  </label>
+                  <Textarea
+                    value={settings.advertDescription || ''}
+                    onChange={(e) => setSettings({ ...settings, advertDescription: e.target.value })}
+                    placeholder="Enter description explaining this partner offer or advertisement campaign..."
+                    rows={2}
+                    className="bg-background border-border"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      Animated Image / GIF URL
+                    </label>
+                    <Input
+                      value={settings.advertImageUrl || ''}
+                      onChange={(e) => setSettings({ ...settings, advertImageUrl: e.target.value })}
+                      placeholder="Paste image / GIF web address link"
+                      className="bg-background border-border font-mono text-xs"
+                    />
+                    <p className="text-[10px] text-muted-foreground italic">
+                      Provide a high-quality GIF or animated visual link.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      Video Commercial URL (MP4 or YouTube Link)
+                    </label>
+                    <Input
+                      value={settings.advertVideoUrl || ''}
+                      onChange={(e) => setSettings({ ...settings, advertVideoUrl: e.target.value })}
+                      placeholder="e.g. https://www.w3schools.com/html/mov_bbb.mp4"
+                      className="bg-background border-border font-mono text-xs"
+                    />
+                    <p className="text-[10px] text-muted-foreground italic">
+                      Provide an MP4 video or standard YouTube video stream link.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

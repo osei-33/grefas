@@ -22,6 +22,14 @@ export default function Home() {
   const [activeTestimonial, setActiveTestimonial] = useState(0);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [submitFeedback, setSubmitFeedback] = useState({ authorName: '', authorRole: '', rating: 5, text: '' });
+  
+  // Dynamic advertisement states
+  const [advertActive, setAdvertActive] = useState<boolean>(true);
+  const [advertTitle, setAdvertTitle] = useState<string>('Grefas Showcase Commercial');
+  const [advertDescription, setAdvertDescription] = useState<string>('Explore our latest premium entertainment and casting showcases from Nyinahin-Ashanti.');
+  const [advertImageUrl, setAdvertImageUrl] = useState<string>('https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2Zic3VzbjRraHBhYTRqYWZ1cnpsbHVpZXB0czdrY3I2dnpqdjU1NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKUM3Y5MgX9sLYs/giphy.gif');
+  const [advertVideoUrl, setAdvertVideoUrl] = useState<string>('https://www.w3schools.com/html/mov_bbb.mp4');
+  const [advertLink, setAdvertLink] = useState<string>('/services');
   const [submitStatus, setSubmitStatus] = useState<{ loading: boolean; success: boolean; error: string | null }>({
     loading: false,
     success: false,
@@ -208,6 +216,15 @@ export default function Home() {
         setVacancyTitle(data.vacancyAlertTitle || 'We are Hiring! Active Vacancy Available');
         setVacancyMessage(data.vacancyAlertMessage || 'We are currently looking for brilliant talent to join our team. Click below to view open roles and apply!');
         setVacancyBtnText(data.vacancyButtonText || 'Apply Now');
+        
+        // Fetch ads
+        setAdvertActive(data.advertActive !== false);
+        setAdvertTitle(data.advertTitle || 'Grefas Showcase Commercial');
+        setAdvertDescription(data.advertDescription || 'Explore our latest premium entertainment and casting showcases from Nyinahin-Ashanti.');
+        setAdvertImageUrl(data.advertImageUrl || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2Zic3VzbjRraHBhYTRqYWZ1cnpsbHVpZXB0czdrY3I2dnpqdjU1NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKUM3Y5MgX9sLYs/giphy.gif');
+        setAdvertVideoUrl(data.advertVideoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4');
+        setAdvertLink(data.advertLink || '/services');
+
         if (data.homeCarouselImages && Array.isArray(data.homeCarouselImages) && data.homeCarouselImages.length > 0) {
           setCustomCarouselImages(data.homeCarouselImages);
         } else {
@@ -524,6 +541,145 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Dynamic Partner & Advert Spotlight Space */}
+      {advertActive && (
+        <section className="bg-background py-20 border-t border-b border-border/40 relative overflow-hidden">
+          {/* Decorative ambient glowing backdrops */}
+          <div className="absolute top-0 right-1/4 w-80 h-80 bg-orange-600/5 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-emerald-600/5 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 relative z-10">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-500/10 text-orange-600 dark:text-orange-400 text-[10px] font-extrabold uppercase tracking-widest rounded-full border border-orange-500/10">
+                  <Megaphone className="h-3 w-3 animate-bounce text-orange-600 shrink-0" />
+                  <span>Featured Partner Commercial</span>
+                </div>
+                <h2 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl">
+                  {advertTitle}
+                </h2>
+                <p className="text-muted-foreground text-sm max-w-2xl leading-relaxed">
+                  {advertDescription}
+                </p>
+              </div>
+
+              {advertLink && (
+                <Button asChild variant="outline" className="border-orange-500/20 hover:bg-orange-500/5 hover:text-orange-600 rounded-xl h-10 px-5 text-xs font-bold uppercase tracking-wider shrink-0">
+                  <a href={advertLink} target="_blank" rel="noopener noreferrer">
+                    Explore Promotion <ArrowRight className="ml-2 h-4 w-4" />
+                  </a>
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+              {/* Column 1: Animated Image / GIF Advert */}
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="group relative bg-muted rounded-3xl overflow-hidden shadow-md hover:shadow-xl border border-border/50 transition-all duration-300 flex flex-col justify-between min-h-[350px] sm:min-h-[400px]"
+              >
+                <div className="absolute inset-0">
+                  <img 
+                    src={advertImageUrl} 
+                    alt="Animated Partner Advert" 
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&q=80&w=600';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
+                </div>
+
+                {/* Top Badge */}
+                <div className="relative p-6 flex justify-between items-start">
+                  <span className="bg-black/40 backdrop-blur-md border border-white/10 text-white font-mono text-[9px] font-bold px-2.5 py-1 rounded-full uppercase tracking-widest">
+                    ANIMATED SPOTLIGHT
+                  </span>
+                </div>
+
+                {/* Bottom Content overlay */}
+                <div className="relative p-6 sm:p-8 space-y-3 mt-auto">
+                  <h3 className="text-xl font-bold text-white tracking-tight">
+                    Premium Visual Billboard
+                  </h3>
+                  <p className="text-zinc-300 text-xs sm:text-sm leading-relaxed max-w-md">
+                    Check out our animated partner campaigns, creative brand alignments, and regional casting events live in Ashanti Region.
+                  </p>
+                  {advertLink && (
+                    <div className="pt-2">
+                      <a 
+                        href={advertLink} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-xs font-bold text-orange-500 hover:text-orange-400 group/link"
+                      >
+                        Visit sponsor campaign
+                        <ArrowRight className="ml-1 h-3.5 w-3.5 transition-transform group-hover/link:translate-x-1" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+
+              {/* Column 2: Video Commercial Spotlight */}
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="group relative bg-zinc-950 rounded-3xl overflow-hidden shadow-md hover:shadow-xl border border-border/50 transition-all duration-300 flex flex-col justify-between min-h-[350px] sm:min-h-[400px]"
+              >
+                {/* Responsive video container */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {advertVideoUrl && (advertVideoUrl.includes('youtube.com') || advertVideoUrl.includes('youtu.be') || advertVideoUrl.includes('vimeo.com')) ? (
+                    <iframe
+                      src={advertVideoUrl.includes('youtube.com') ? advertVideoUrl.replace('watch?v=', 'embed/') : advertVideoUrl}
+                      title="Partner Video Commercial"
+                      className="w-full h-full border-0 absolute inset-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <video
+                      src={advertVideoUrl}
+                      className="w-full h-full object-cover absolute inset-0"
+                      controls
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                    />
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                </div>
+
+                {/* Top Badge Overlay */}
+                <div className="relative p-6 flex justify-between items-start pointer-events-none z-10">
+                  <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white font-mono text-[9px] font-bold px-2.5 py-1 rounded-full uppercase tracking-widest flex items-center gap-1.5">
+                    <Play className="h-3 w-3 fill-orange-500 text-orange-500 shrink-0" />
+                    VIDEO PROMOTIONAL
+                  </span>
+                </div>
+
+                {/* Bottom Content overlay */}
+                <div className="relative p-6 sm:p-8 space-y-2 mt-auto pointer-events-none z-10">
+                  <h3 className="text-lg font-bold text-white tracking-tight drop-shadow-md">
+                    Video Commercial Stream
+                  </h3>
+                  <p className="text-zinc-300 text-xs leading-relaxed max-w-md drop-shadow-sm">
+                    Watch our premium broadcast sponsor trailers, theatrical advertisements, and high-energy movie-making sneak peeks.
+                  </p>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Interactive Guide Video Animation simulation */}
       <section className="bg-zinc-950 py-24 border-t border-zinc-900">

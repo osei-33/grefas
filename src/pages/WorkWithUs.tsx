@@ -34,7 +34,8 @@ import {
   ChevronRight,
   Send,
   Loader2,
-  LogIn
+  LogIn,
+  CreditCard
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
@@ -74,6 +75,8 @@ export default function WorkWithUs() {
   const [portfolioLink, setPortfolioLink] = useState('');
   const [bio, setBio] = useState('');
   const [signature, setSignature] = useState('');
+  const [intakePrice, setIntakePrice] = useState<number>(50);
+  const [priceConfirmed, setPriceConfirmed] = useState<boolean>(false);
 
   // Track Auth state
   useEffect(() => {
@@ -91,8 +94,27 @@ export default function WorkWithUs() {
   // Fetch dynamic roles from settings/global
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
-      if (docSnap.exists() && docSnap.data().intakeRoles && docSnap.data().intakeRoles.length > 0) {
-        setAvailableRoles(docSnap.data().intakeRoles);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.intakeRoles && data.intakeRoles.length > 0) {
+          setAvailableRoles(data.intakeRoles);
+        } else {
+          setAvailableRoles([
+            "Actor / Actress",
+            "Skit Performer",
+            "Creative Writer",
+            "Crew / Technical",
+            "Video Editor",
+            "Cameraman",
+            "Sound Engineer",
+            "Director",
+            "Finance Officer",
+            "Admin Support"
+          ]);
+        }
+        if (data.intakePrice !== undefined) {
+          setIntakePrice(Number(data.intakePrice));
+        }
       } else {
         setAvailableRoles([
           "Actor / Actress",
@@ -106,6 +128,7 @@ export default function WorkWithUs() {
           "Finance Officer",
           "Admin Support"
         ]);
+        setIntakePrice(50);
       }
     });
     return () => unsubscribe();
@@ -373,6 +396,10 @@ export default function WorkWithUs() {
       return toast.error('Applicants must be at least 12 years of age to participate.');
     }
 
+    if (!priceConfirmed) {
+      return toast.error(`Please confirm and agree to the registration fee of GH₵ ${intakePrice} before submitting.`);
+    }
+
     setSubmitting(true);
 
     const joinedRoleType = roleTypes.join(', ');
@@ -397,6 +424,8 @@ export default function WorkWithUs() {
       userId: user?.uid || null,
       userEmail: user?.email || null,
       status: 'Pending',
+      price: intakePrice,
+      priceConfirmed: true,
       createdAt: new Date().toISOString()
     };
 
@@ -1029,6 +1058,35 @@ export default function WorkWithUs() {
                       
                       <div className="p-3 bg-muted/30 border border-muted-foreground/10 rounded-xl space-y-2 text-[11px] text-muted-foreground leading-relaxed">
                         <p>I hereby certify that all statements made in this professional profile are true, complete, and correct to the best of my knowledge. I understand that any false declarations or misrepresentations will lead to immediate cancellation of my candidacy or engagement stubs with Grefas Consult & Entertainment.</p>
+                      </div>
+
+                      {/* Dynamic Casting Intake Price Confirmation Section */}
+                      <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4 space-y-3">
+                        <div className="flex items-start gap-2.5">
+                          <CreditCard className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <h4 className="font-extrabold text-[11px] text-foreground flex items-center gap-1.5 flex-wrap">
+                              <span>Official Registration & Processing Fee</span>
+                              <span className="text-[10px] font-black bg-orange-600 text-white px-2 py-0.5 rounded-full">GH₵ {intakePrice.toLocaleString()}</span>
+                            </h4>
+                            <p className="text-[10px] text-muted-foreground leading-relaxed">
+                              An official casting and demographic intake processing fee of <strong>GH₵ {intakePrice}</strong> is required to submit your audition profile to Grefas Entertainment casting directory.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 p-2 bg-background border border-border/80 rounded-lg hover:bg-muted/30 transition-all duration-300">
+                          <input
+                            type="checkbox"
+                            id="priceConfirmation"
+                            checked={priceConfirmed}
+                            onChange={(e) => setPriceConfirmed(e.target.checked)}
+                            className="h-4 w-4 rounded border-border text-orange-600 focus:ring-orange-600 accent-orange-600 cursor-pointer"
+                          />
+                          <label htmlFor="priceConfirmation" className="text-[10px] font-bold text-foreground cursor-pointer select-none">
+                            I confirm and agree to pay the GH₵ {intakePrice} registration fee to finalize my casting enrollment
+                          </label>
+                        </div>
                       </div>
 
                       <div className="space-y-1.5">

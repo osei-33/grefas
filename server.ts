@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { Resend } from "resend";
+import { jsPDF } from "jspdf";
 import dotenv from "dotenv";
 import compression from "compression";
 import fs from "fs";
@@ -37,6 +38,228 @@ const distPath = path.resolve(process.cwd(), "dist");
 const publicPath = path.resolve(process.cwd(), "public");
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+const getFromEmail = (name: string) => {
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  return `${name} <${fromEmail}>`;
+};
+
+function generatePaymentReceiptPDF(data: {
+  fullName: string;
+  emailAddress: string;
+  contact?: string;
+  amountPaid: number;
+  paymentPlan?: string;
+  paymentMethod?: string;
+  totalPrice?: number;
+  balanceDue?: number;
+  paymentStatus?: string;
+  refId: string;
+}): Buffer {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  // Margins & Dimensions: A4 is 210 x 297 mm
+  const margin = 20;
+  const pageWidth = 210;
+  const contentWidth = pageWidth - (margin * 2);
+
+  // Outer Border
+  doc.setDrawColor(31, 41, 55); // #1f2937 (dark grey)
+  doc.setLineWidth(0.5);
+  doc.rect(margin, margin, contentWidth, 257);
+
+  // Header Banner
+  doc.setFillColor(22, 163, 74); // #16a34a (green)
+  doc.rect(margin, margin, contentWidth, 35, 'F');
+
+  // Header Text
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.text("GREFAS ENTERTAINMENT", margin + 10, margin + 15);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text("OFFICIAL FINANCE DIVISION - GHANA", margin + 10, margin + 22);
+  doc.text("Email: grefasconsult@gmail.com | Phone: +233 (0) 54 123 4567", margin + 10, margin + 27);
+
+  // Receipt Details Title
+  doc.setTextColor(31, 41, 55);
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text("OFFICIAL PAYMENT RECEIPT", margin + 10, margin + 50);
+
+  // Underline
+  doc.setDrawColor(22, 163, 74);
+  doc.setLineWidth(1);
+  doc.line(margin + 10, margin + 53, margin + 85, margin + 53);
+
+  // Date and Receipt ID
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  const dateStr = new Date().toLocaleString('en-US', { timeZone: 'UTC' }) + " UTC";
+  doc.text(`Date Issued: ${dateStr}`, margin + 10, margin + 60);
+  doc.text(`Transaction Reference: ${data.refId || 'N/A'}`, margin + 10, margin + 65);
+
+  // Client Information Section
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(17, 24, 39);
+  doc.text("CLIENT INFORMATION", margin + 10, margin + 80);
+  
+  doc.setDrawColor(229, 231, 235); // light grey border
+  doc.setLineWidth(0.3);
+  doc.line(margin + 10, margin + 83, margin + contentWidth - 10, margin + 83);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(75, 85, 99);
+  
+  let y = margin + 90;
+  doc.text("Full Name:", margin + 10, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(17, 24, 39);
+  doc.text(data.fullName, margin + 50, y);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(75, 85, 99);
+  y += 7;
+  doc.text("Email Address:", margin + 10, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(17, 24, 39);
+  doc.text(data.emailAddress, margin + 50, y);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(75, 85, 99);
+  y += 7;
+  doc.text("Contact Phone:", margin + 10, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(17, 24, 39);
+  doc.text(data.contact || 'N/A', margin + 50, y);
+
+  // Payment Breakdown Section
+  y += 15;
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(17, 24, 39);
+  doc.text("PAYMENT DETAILS", margin + 10, y);
+  doc.line(margin + 10, y + 3, margin + contentWidth - 10, y + 3);
+
+  y += 10;
+  // Let's create a table-like layout
+  doc.setFillColor(243, 244, 246); // extremely light grey background
+  doc.rect(margin + 10, y, contentWidth - 20, 8, 'F');
+  
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(55, 65, 81);
+  doc.text("Description", margin + 15, y + 5.5);
+  doc.text("Amount", margin + contentWidth - 40, y + 5.5);
+
+  y += 12;
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(31, 41, 55);
+  doc.text("Casting & Talent Service Enrollment Milestone", margin + 15, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.text(`GHS ${Number(data.amountPaid).toFixed(2)}`, margin + contentWidth - 40, y);
+
+  y += 10;
+  doc.setDrawColor(229, 231, 235);
+  doc.line(margin + 10, y, margin + contentWidth - 10, y);
+
+  y += 5;
+  // Right aligned summary values
+  const rightLabelX = margin + contentWidth - 75;
+  const rightValueX = margin + contentWidth - 40;
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text("Payment Method:", rightLabelX, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(17, 24, 39);
+  doc.text(data.paymentMethod || 'Mobile Money', rightValueX, y);
+
+  y += 6;
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text("Payment Plan:", rightLabelX, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(17, 24, 39);
+  doc.text(data.paymentPlan || 'One-time Full', rightValueX, y);
+
+  y += 6;
+  doc.setFont('Helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);
+  doc.text("Total Agreed Price:", rightLabelX, y);
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(17, 24, 39);
+  doc.text(`GHS ${Number(data.totalPrice || 0).toFixed(2)}`, rightValueX, y);
+
+  y += 6;
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(22, 163, 74);
+  doc.text("Amount Received:", rightLabelX, y);
+  doc.text(`GHS ${Number(data.amountPaid).toFixed(2)}`, rightValueX, y);
+
+  y += 6;
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(239, 68, 68);
+  doc.text("Balance Outstanding:", rightLabelX, y);
+  doc.text(`GHS ${Number(data.balanceDue || 0).toFixed(2)}`, rightValueX, y);
+
+  y += 6;
+  doc.setFont('Helvetica', 'bold');
+  doc.setTextColor(31, 41, 55);
+  doc.text("Payment Status:", rightLabelX, y);
+  const statusColor = data.paymentStatus === 'Fully Paid' ? [22, 163, 74] : [217, 119, 6];
+  doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+  doc.text((data.paymentStatus || 'Partially Paid').toUpperCase(), rightValueX, y);
+
+  // Acknowledgment text
+  y += 20;
+  doc.setFillColor(249, 250, 251);
+  doc.setDrawColor(229, 231, 235);
+  doc.rect(margin + 10, y, contentWidth - 20, 22, 'FD');
+  
+  doc.setFont('Helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(55, 65, 81);
+  doc.text("ACKNOWLEDGEMENT & LEGAL NOTICE:", margin + 14, y + 5);
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(107, 114, 128);
+  doc.text("This official document confirms receipt of the stated amount for Grefas Consult Casting Division.", margin + 14, y + 10);
+  doc.text("All payments are non-refundable and subject to the standard terms & conditions of enrollment.", margin + 14, y + 14);
+  doc.text("Thank you for choosing Grefas Entertainment.", margin + 14, y + 18);
+
+  // Signatures
+  y += 28;
+  doc.setDrawColor(156, 163, 175);
+  doc.line(margin + 15, y, margin + 65, y);
+  doc.line(margin + contentWidth - 65, y, margin + contentWidth - 15, y);
+
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(107, 114, 128);
+  doc.text("Authorized Signature", margin + 25, y + 4);
+  doc.text("Finance Director", margin + contentWidth - 50, y + 4);
+
+  // Footer
+  doc.setFont('Helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(156, 163, 175);
+  doc.text("This is a system-generated official payment receipt issued by Grefas Consult & Entertainment, Ghana.", margin + 10, margin + 250);
+
+  // Get buffer
+  const arrayBuffer = doc.output('arraybuffer');
+  return Buffer.from(arrayBuffer);
+}
 
 // SMS Logging System
 interface SmsLog {
@@ -230,7 +453,7 @@ async function startServer() {
 
     try {
       await resend.emails.send({
-        from: "Grefas SMS Alert <notifications@resend.dev>",
+        from: getFromEmail("Grefas SMS Alert"),
         to: recipientEmails,
         subject: `[CRITICAL ALERT] Arkesel SMS Credit Balance Low`,
         html: `
@@ -475,7 +698,7 @@ async function startServer() {
         const displayNotes = notes ? notes.trim() : 'No special notes provided.';
 
         await resend.emails.send({
-          from: "Grefas Consult <notifications@resend.dev>", // Note: In production, use a verified domain
+          from: getFromEmail("Grefas Consult"),
           to: email,
           subject: `Booking Confirmation ${orderNumber ? `[#${orderNumber}]` : ''} - Grefas Consult & Entertainment`,
           html: `
@@ -586,7 +809,7 @@ async function startServer() {
     if (resend) {
       try {
         await resend.emails.send({
-          from: "Grefas Consult <notifications@resend.dev>",
+          from: getFromEmail("Grefas Consult"),
           to: email,
           subject: "Reminder: Upcoming Booking - Grefas Consult & Entertainment",
           html: `
@@ -640,7 +863,7 @@ async function startServer() {
     if (resend) {
       try {
         await resend.emails.send({
-          from: "Grefas Consult <notifications@resend.dev>",
+          from: getFromEmail("Grefas Consult"),
           to: recipientEmail,
           replyTo: senderEmail,
           subject: subject || `Grefas Message: ${senderName}`,
@@ -728,7 +951,7 @@ async function startServer() {
         }
 
         await resend.emails.send({
-          from: "Grefas Casting <notifications@resend.dev>",
+          from: getFromEmail("Grefas Casting"),
           to: emailAddress,
           subject: `Audition Status Updated: ${status} - Grefas Entertainment`,
           html: `
@@ -774,6 +997,133 @@ async function startServer() {
     res.json({ status: "ok", results });
   });
 
+  app.post("/api/notify-payment", async (req, res) => {
+    const {
+      fullName,
+      emailAddress,
+      contact,
+      amountPaid,
+      paymentPlan,
+      paymentMethod,
+      totalPrice,
+      balanceDue,
+      paymentStatus,
+      refId
+    } = req.body;
+
+    if (!fullName || !amountPaid || !emailAddress) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const results = { sms: "skipped", email: "skipped" };
+
+    // SMS Confirmation
+    if (contact) {
+      try {
+        const msg = `Payment Received! Hello ${fullName}, your payment of GHS ${amountPaid} has been received. Balance Due: GHS ${balanceDue}. Thank you! - Grefas`;
+        results.sms = await sendSMS(contact, msg);
+      } catch (smsErr: any) {
+        console.error("Failed to send payment receipt SMS:", smsErr);
+        results.sms = `failed: ${smsErr.message}`;
+      }
+    }
+
+    // Email Receipt
+    if (resend && emailAddress) {
+      try {
+        const pdfBuffer = generatePaymentReceiptPDF({
+          fullName,
+          emailAddress,
+          contact,
+          amountPaid,
+          paymentPlan,
+          paymentMethod,
+          totalPrice,
+          balanceDue,
+          paymentStatus,
+          refId
+        });
+
+        await resend.emails.send({
+          from: getFromEmail("Grefas Finance"),
+          to: emailAddress,
+          subject: `OFFICIAL RECEIPT: GHS ${amountPaid} Payment Acknowledged - Grefas Entertainment`,
+          html: `
+            <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+              <div style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 24px; text-align: center; border-bottom: 4px solid #166534;">
+                <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.025em;">GREFAS FINANCE</h1>
+                <p style="color: #dcfce7; margin: 4px 0 0 0; font-size: 12px; text-transform: uppercase; tracking-wider; font-weight: 700;">Official Payment Receipt</p>
+              </div>
+              <div style="padding: 32px;">
+                <h2 style="margin-top: 0; font-size: 20px; color: #111827; font-weight: 800; text-align: center;">Payment Successful!</h2>
+                <p>Hello <strong>${fullName}</strong>,</p>
+                <p>We have successfully received and processed your payment of <strong>GHS ${amountPaid}</strong>. We have generated an official PDF receipt for your records and attached it directly to this email.</p>
+                <p>Please see the details of your official invoice transaction below.</p>
+                
+                <div style="background-color: #f9fafb; border: 1px solid #f3f4f6; padding: 20px; border-radius: 8px; margin: 24px 0;">
+                  <h3 style="margin-top: 0; font-size: 14px; color: #111827; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 12px; font-weight: 700;">Receipt & Balance Summary</h3>
+                  <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a; width: 45%;"><strong>Reference Code:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">${refId || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Payment Method:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">${paymentMethod || 'Mobile Money'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Payment Plan:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">${paymentPlan || 'One-time Full'}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #f3f4f6;">
+                      <td style="padding: 10px 0 6px 0; color: #71717a;"><strong>Total Assigned Price:</strong></td>
+                      <td style="padding: 10px 0 6px 0; color: #1f2937; font-weight: 600; font-size: 14px;">GHS ${totalPrice || '0.00'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #16a34a; font-weight: bold;"><strong>Amount Received:</strong></td>
+                      <td style="padding: 6px 0; color: #16a34a; font-weight: bold; font-size: 15px;">GHS ${amountPaid}</td>
+                    </tr>
+                    <tr style="border-top: 1px dashed #e5e7eb;">
+                      <td style="padding: 10px 0; color: #71717a; font-weight: bold;"><strong>Balance Outstanding:</strong></td>
+                      <td style="padding: 10px 0; color: #ef4444; font-weight: bold; font-size: 14px;">GHS ${balanceDue || '0.00'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #71717a;"><strong>Payment Status:</strong></td>
+                      <td style="padding: 6px 0; color: #1f2937; font-weight: 600;">
+                        <span style="color: ${paymentStatus === 'Fully Paid' ? '#16a34a' : '#d97706'}">${paymentStatus || 'Partially Paid'}</span>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+
+                <p>Thank you for partnering with us. Your registration status and digital payment invoice receipts can be accessed live on your Grefas member page under the <strong>My Applications</strong> portal.</p>
+
+                <p style="margin-top: 32px; font-size: 13px; color: #71717a;">With appreciation,<br>The Grefas Finance Team</p>
+              </div>
+              <div style="background-color: #f3f4f6; padding: 16px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="margin: 0; font-size: 11px; color: #9ca3af;">
+                  Grefas Consult & Entertainment &bull; Accra, Ghana
+                </p>
+              </div>
+            </div>
+          `,
+          attachments: [
+            {
+              filename: `Grefas_Official_Receipt_${refId || 'Payment'}.pdf`,
+              content: pdfBuffer,
+            }
+          ]
+        });
+        results.email = "sent";
+      } catch (emailErr: any) {
+        console.error("Failed to send payment confirmation email:", emailErr);
+        results.email = `failed: ${emailErr.message}`;
+      }
+    }
+
+    res.json({ status: "ok", results });
+  });
+
   app.post("/api/notify-intake", async (req, res) => {
     const { 
       fullName, 
@@ -809,7 +1159,7 @@ async function startServer() {
       try {
         // 1. Send warning/confirmation email to the applicant
         await resend.emails.send({
-          from: "Grefas Casting <notifications@resend.dev>",
+          from: getFromEmail("Grefas Casting"),
           to: emailAddress,
           subject: "Casting Registration Received - Grefas Entertainment",
           html: `
@@ -865,7 +1215,7 @@ async function startServer() {
         // 2. Alert admins
         const adminReceipts = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"];
         await resend.emails.send({
-          from: "Grefas Casting Alerts <notifications@resend.dev>",
+          from: getFromEmail("Grefas Casting Alerts"),
           to: adminReceipts,
           subject: `[ALERT] New Casting Application - ${fullName}`,
           html: `
@@ -1194,7 +1544,7 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
 
     try {
       await resend.emails.send({
-        from: "Grefas Consult <notifications@resend.dev>",
+        from: getFromEmail("Grefas Consult"),
         to: recipientEmail,
         subject: `OFFICIAL CORRESPONDENCE: ${subject}`,
         html: `
