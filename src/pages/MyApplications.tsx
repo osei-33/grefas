@@ -1215,7 +1215,7 @@ export default function MyApplications() {
                             <span>Print Profile Draft</span>
                           </Button>
                           
-                          {app.price > 0 && (
+                          {app.price !== undefined && Number(app.price) > 0 && (
                             <Button
                               variant="outline"
                               size="sm"
