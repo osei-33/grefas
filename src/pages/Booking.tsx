@@ -1710,6 +1710,21 @@ export default function Booking() {
                 </button>
               </div>
             </div>
+
+            <div className="flex flex-col items-center justify-center bg-muted/40 border border-border rounded-xl p-4 w-full">
+              <div className="bg-white p-2.5 rounded-lg border border-zinc-200/50 shadow-sm dark:bg-white">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(orderNumber)}`} 
+                  className="h-28 w-28 object-contain" 
+                  alt="Booking Pass Verification QR" 
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground text-center mt-2 font-black uppercase tracking-widest">
+                Verification Pass QR Code
+              </p>
+            </div>
+
             <p className="text-[10px] text-muted-foreground text-center uppercase tracking-widest font-bold">
               Please save this number for reference
             </p>
@@ -1784,17 +1799,30 @@ export default function Booking() {
             </div>
           </div>
 
-          {/* Large Ticket Badge for Reference */}
-          <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '12px', padding: '18px', textAlign: 'center', marginBottom: '25px' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', color: '#6b7280', fontWeight: 'bold', letterSpacing: '0.1em' }}>
-              Unique Reference Code
-            </span>
-            <div style={{ fontSize: '32px', fontWeight: '900', color: '#ea580c', letterSpacing: '0.15em', marginTop: '4px' }}>
-              {printData.orderNumber}
+          {/* Large Ticket Badge for Reference with QR Code */}
+          <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '12px', padding: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
+            <div style={{ textAlign: 'left', flex: 1 }}>
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', color: '#6b7280', fontWeight: 'bold', letterSpacing: '0.1em' }}>
+                Unique Reference Code
+              </span>
+              <div style={{ fontSize: '32px', fontWeight: '900', color: '#ea580c', letterSpacing: '0.15em', marginTop: '4px' }}>
+                {printData.orderNumber}
+              </div>
+              <p style={{ fontSize: '11px', color: '#6b7280', margin: '8px 0 0 0' }}>
+                *Always supply this code to representative lines when demanding schedule adjustments.
+              </p>
             </div>
-            <p style={{ fontSize: '11px', color: '#6b7280', margin: '8px 0 0 0' }}>
-              *Always supply this code to representative lines when demanding schedule adjustments.
-            </p>
+            <div style={{ marginLeft: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'white', padding: '8px', borderRadius: '8px', border: '1px solid #fee2e2' }}>
+              <img 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(printData.orderNumber)}`} 
+                style={{ width: '90px', height: '90px', display: 'block' }} 
+                alt="Verification QR" 
+                referrerPolicy="no-referrer"
+              />
+              <span style={{ fontSize: '8px', textTransform: 'uppercase', color: '#ea580c', fontWeight: '900', marginTop: '4px', letterSpacing: '0.05em' }}>
+                Scan to Verify
+              </span>
+            </div>
           </div>
 
           {/* Grid Layout of Details */}

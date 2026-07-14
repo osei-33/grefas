@@ -20,6 +20,7 @@ export default function Services() {
   const [services, setServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('All');
+  const [globalSettings, setGlobalSettings] = useState<any>(null);
   
   const [currentStep, setCurrentStep] = useState(1);
   const [draftInfo, setDraftInfo] = useState<{ savedAt: string; data: any } | null>(null);
@@ -582,13 +583,52 @@ export default function Services() {
                 padding: 15px;
               }
             }
+            /* High fidelity watermark background styling */
+            .watermark-container {
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              pointer-events: none;
+              z-index: 1;
+            }
+            .watermark {
+              width: 360px;
+              height: auto;
+              max-height: 360px;
+              object-fit: contain;
+              transform: rotate(-15deg);
+              opacity: 0.04;
+            }
+            .printable-wrapper {
+              position: relative;
+              z-index: 10;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+            }
           </style>
         </head>
         <body>
           <div class="no-print no-print-btn-bar">
             <button class="print-btn" onclick="window.print()">Print Document</button>
           </div>
-          <div class="border-box">
+
+          <!-- Watermark Background -->
+          <div class="watermark-container">
+            ${(globalSettings && globalSettings.logoUrl)
+              ? `<img src="${globalSettings.logoUrl}" class="watermark" alt="Watermark Logo" referrerPolicy="no-referrer" />`
+              : `<div class="watermark" style="font-family: sans-serif; font-size: 40px; font-weight: 900; color: #000; opacity: 0.03; text-align: center;">GREFAS CONSULT</div>`
+            }
+          </div>
+
+          <div class="printable-wrapper">
+            <div class="border-box">
             <div>
               <div class="header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #000 !important; padding-bottom: 15px; margin-bottom: 25px; text-align: left;">
                 <div style="flex: 1; text-align: left;">
@@ -724,15 +764,24 @@ export default function Services() {
                 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; min-height: 80px;">
                   ${data?.signature ? `<img src="${data.signature}" style="max-height: 50px; max-width: 150px; object-fit: contain; margin-bottom: 5px;" alt="Signature" />` : `<div style="height: 50px;"></div>`}
                   <div class="sig-line">Candidate Signature</div>
-                  <div style="text-align: center; font-size: 8px; color: #555; margin-top: 4px;">Date: ____ / ____ / ________</div>
+                  <div style="text-align: center; font-size: 8px; color: #555; margin-top: 4px;">Date: ${new Date(regDate).toLocaleDateString()}</div>
                 </div>
-                <div>
-                  <div class="sig-line">Authorized Casting Representative</div>
-                  <div style="text-align: center; font-size: 8px; color: #555; margin-top: 4px;">Registration Stamp Frame</div>
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; min-height: 80px;">
+                  ${(globalSettings && globalSettings.adminSignature) ? `
+                    <img src="${globalSettings.adminSignature}" style="max-height: 48px; max-width: 140px; object-fit: contain; margin-bottom: 2px;" alt="Stamp" referrerPolicy="no-referrer" />
+                  ` : `<div style="height: 40px;"></div>`}
+                  <div class="sig-line" style="font-weight: bold; text-align: center;">
+                    ${(globalSettings && globalSettings.adminSignatureName) ? globalSettings.adminSignatureName : 'CEO / General Manager / Secretary / Admin Signature'}
+                  </div>
+                  <div style="text-align: center; font-size: 7px; color: #555; text-transform: uppercase; font-weight: bold; margin-top: 2px;">
+                    ${(globalSettings && globalSettings.adminSignatureTitle) ? globalSettings.adminSignatureTitle : 'Authorized Signature'}
+                  </div>
+                  <div style="text-align: center; font-size: 8px; color: #555; margin-top: 4px;">Date: ${new Date().toLocaleDateString()}</div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
           <script>
             window.addEventListener('load', function() {
@@ -804,6 +853,14 @@ export default function Services() {
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.8);
       doc.rect(15, 15, 180, 267);
+
+      // Robust Professional Watermark
+      doc.saveGraphicsState();
+      doc.setTextColor(242, 244, 247);
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(36);
+      doc.text('GREFAS CONSULT', 105, 150, { align: 'center', angle: 30 });
+      doc.restoreGraphicsState();
 
       // Header separation line
       doc.setLineWidth(1.2);
@@ -999,23 +1056,41 @@ export default function Services() {
       doc.line(120, 252, 185, 252);
 
       doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(7);
       doc.setTextColor(0, 0, 0);
       doc.text('CANDIDATE SIGNATURE', 57.5, 257, { align: 'center' });
-      doc.text('AUTHORIZED OFFICER / STAMP', 152.5, 257, { align: 'center' });
+      
+      const adminNameStr = (globalSettings && globalSettings.adminSignatureName) 
+        ? globalSettings.adminSignatureName.toUpperCase() 
+        : 'CEO / GENERAL MANAGER / SECRETARY / ADMIN';
+      const adminTitleStr = (globalSettings && globalSettings.adminSignatureTitle)
+        ? globalSettings.adminSignatureTitle.toUpperCase()
+        : 'AUTHORIZED SIGNATORY STAMP';
+      doc.text(adminNameStr, 152.5, 257, { align: 'center' });
+      doc.text(adminTitleStr, 152.5, 261, { align: 'center' });
 
       doc.setFont('Helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(100, 100, 100);
-      doc.text('Date: ____ / ____ / ________', 57.5, 262, { align: 'center' });
-      doc.text('Grefas Production Official', 152.5, 262, { align: 'center' });
+      const docDateVal = data?.createdAt ? new Date(data.createdAt).toLocaleDateString() : new Date().toLocaleDateString();
+      doc.text(`Date: ${docDateVal}`, 57.5, 265, { align: 'center' });
+      doc.text(`Date: ${new Date().toLocaleDateString()}`, 152.5, 265, { align: 'center' });
 
-      // Embed signature image if it exists
+      // Embed candidate signature image if it exists
       if (data.signature && data.signature.startsWith('data:')) {
         try {
           doc.addImage(data.signature, 'PNG', 35, 232, 45, 18);
         } catch (err) {
-          console.warn("Failed rendering signature inside jsPDF:", err);
+          console.warn("Failed rendering candidate signature inside jsPDF:", err);
+        }
+      }
+
+      // Embed dynamic administrator signature if it exists
+      if (globalSettings && globalSettings.adminSignature && globalSettings.adminSignature.startsWith('data:')) {
+        try {
+          doc.addImage(globalSettings.adminSignature, 'PNG', 130, 232, 45, 18);
+        } catch (err) {
+          console.warn("Failed rendering admin signature inside jsPDF:", err);
         }
       }
 
@@ -1169,6 +1244,7 @@ export default function Services() {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        setGlobalSettings(data);
         if (data.intakeRoles && data.intakeRoles.length > 0) {
           setAvailableRoles(data.intakeRoles);
         } else {

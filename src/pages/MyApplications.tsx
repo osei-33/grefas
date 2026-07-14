@@ -25,6 +25,17 @@ export default function MyApplications() {
   const [loadingApps, setLoadingApps] = useState(false);
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
   const [updatingNotifications, setUpdatingNotifications] = useState(false);
+  const [globalSettings, setGlobalSettings] = useState<any>(null);
+
+  // Subscribe to global settings for logo watermarks and administrative signatures
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists()) {
+        setGlobalSettings(docSnap.data());
+      }
+    });
+    return () => unsubscribe();
+  }, []);
   
   const downloadReceiptPdf = (app: any, inst: any) => {
     try {
@@ -116,6 +127,14 @@ export default function MyApplications() {
 
       // Acknowledgement block
       doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+      // Robust Professional Watermark
+      doc.setTextColor(242, 244, 247);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(34);
+      doc.text('GREFAS CONSULT', 105, 120, { align: 'center', angle: 30 });
+      doc.setFontSize(14);
+      doc.text('OFFICIAL VALIDATED DOCUMENT', 105, 130, { align: 'center', angle: 30 });
+
       doc.rect(20, 165, 170, 30, 'F');
       doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
       doc.setLineWidth(0.5);
@@ -135,14 +154,40 @@ export default function MyApplications() {
 
       // Signatures lines
       doc.setDrawColor(203, 213, 225); // Slate-300
-      doc.line(25, 225, 85, 225);
+      doc.line(25, 225, 95, 225);
       doc.line(125, 225, 185, 225);
+
+      // Signature image auto-injection if present
+      if (globalSettings && globalSettings.adminSignature) {
+        try {
+          doc.addImage(globalSettings.adminSignature, 'PNG', 30, 203, 50, 20); // x, y, width, height
+        } catch (sigErr) {
+          console.warn('Failed to inject signature image into jsPDF:', sigErr);
+        }
+      }
 
       doc.setTextColor(100, 116, 139);
       doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      
+      const sigName = (globalSettings && globalSettings.adminSignatureName) ? globalSettings.adminSignatureName : '';
+      const sigTitle = (globalSettings && globalSettings.adminSignatureTitle) ? globalSettings.adminSignatureTitle : 'CEO / General Manager / Secretary / Admin Signature';
+
+      if (sigName) {
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(30, 41, 59);
+        doc.text(sigName, 25, 229);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.setFontSize(6.5);
+        doc.text(sigTitle, 25, 233);
+      } else {
+        doc.text('CEO / General Manager / Secretary / Admin Signature', 23, 230);
+      }
+
       doc.setFontSize(8);
-      doc.text('Authorized Signature', 40, 230);
-      doc.text('Finance Director', 145, 230);
+      doc.text(`Date: ${paidDate.split(',')[0]}`, 140, 230);
 
       // Footer
       doc.setTextColor(148, 163, 184); // Slate-400
@@ -360,12 +405,12 @@ export default function MyApplications() {
             </p>
             <div style="margin-top: 25px; display: flex; justify-content: space-between;">
               <div>
-                <p style="margin: 0; border-top: 1px solid #000; width: 160px; margin-top: 20px;"></p>
-                <p style="margin: 4px 0 0 0; font-size: 9px; text-align: center;">Authorized Signature</p>
+                <p style="margin: 0; border-top: 1px solid #000; width: 220px; margin-top: 20px;"></p>
+                <p style="margin: 4px 0 0 0; font-size: 9px; text-align: center; font-weight: bold;">CEO / General Manager / Secretary / Admin Signature</p>
               </div>
               <div>
-                <p style="margin: 0; border-top: 1px solid #000; width: 160px; margin-top: 20px;"></p>
-                <p style="margin: 4px 0 0 0; font-size: 9px; text-align: center;">Finance Director</p>
+                <p style="margin: 0; border-top: 1px solid #000; width: 140px; margin-top: 20px;"></p>
+                <p style="margin: 4px 0 0 0; font-size: 9px; text-align: center; font-weight: bold;">Date: ${paidDate.split(',')[0]}</p>
               </div>
             </div>
           </div>
@@ -516,12 +561,12 @@ export default function MyApplications() {
             </p>
             <div style="margin-top: 35px; display: flex; justify-content: space-between;">
               <div>
-                <p style="margin: 0; border-top: 1px solid #cbd5e1; width: 180px; margin-top: 15px;"></p>
-                <p style="margin: 4px 0 0 0; font-size: 9px; text-align: center; color: #64748b; font-weight: bold;">Authorized Representative</p>
+                <p style="margin: 0; border-top: 1px solid #cbd5e1; width: 220px; margin-top: 15px;"></p>
+                <p style="margin: 4px 0 0 0; font-size: 9px; text-align: center; color: #64748b; font-weight: bold;">CEO / General Manager / Secretary / Admin Signature</p>
               </div>
               <div>
-                <p style="margin: 0; border-top: 1px solid #cbd5e1; width: 180px; margin-top: 15px;"></p>
-                <p style="margin: 4px 0 0 0; font-size: 9px; text-align: center; color: #64748b; font-weight: bold;">Finance Division Seal</p>
+                <p style="margin: 0; border-top: 1px solid #cbd5e1; width: 150px; margin-top: 15px;"></p>
+                <p style="margin: 4px 0 0 0; font-size: 9px; text-align: center; color: #64748b; font-weight: bold;">Date: ${new Date().toLocaleDateString()}</p>
               </div>
             </div>
           </div>
@@ -793,14 +838,18 @@ export default function MyApplications() {
               By presenting this copy of the Grefas Casting Form, the applicant acknowledges that all demo tapes,
               audition reels, and physical casting metrics furnished are proprietary to Grefas Consult Division.
             </p>
-            <div style="margin-top: 30px; display: flex; justify-content: space-between;">
+            <div style="margin-top: 30px; display: flex; justify-content: space-between; gap: 15px;">
               <div>
-                <p style="margin: 0; border-top: 1px solid #000; width: 200px; margin-top: 30px;"></p>
-                <p style="margin: 5px 0 0 0; font-size: 10px; text-align: center;">Applicant Signature</p>
+                <p style="margin: 0; border-top: 1px solid #000; width: 180px; margin-top: 30px;"></p>
+                <p style="margin: 5px 0 0 0; font-size: 10px; text-align: center; font-weight: bold;">Applicant Signature</p>
               </div>
               <div>
-                <p style="margin: 0; border-top: 1px solid #000; width: 200px; margin-top: 30px;"></p>
-                <p style="margin: 5px 0 0 0; font-size: 10px; text-align: center;">Grefas Director Signature</p>
+                <p style="margin: 0; border-top: 1px solid #000; width: 220px; margin-top: 30px;"></p>
+                <p style="margin: 5px 0 0 0; font-size: 10px; text-align: center; font-weight: bold;">CEO / General Manager / Secretary / Admin Signature</p>
+              </div>
+              <div>
+                <p style="margin: 0; border-top: 1px solid #000; width: 140px; margin-top: 30px;"></p>
+                <p style="margin: 5px 0 0 0; font-size: 10px; text-align: center; font-weight: bold;">Date: ${new Date().toLocaleDateString()}</p>
               </div>
             </div>
           </div>

@@ -86,6 +86,17 @@ export default function ManageEmployeesPayroll() {
   const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [loadingSalaries, setLoadingSalaries] = useState(true);
+  const [globalSettings, setGlobalSettings] = useState<any>(null);
+
+  // Subscribe to global settings for logo watermarks and administrative signatures
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists()) {
+        setGlobalSettings(docSnap.data());
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Saving states
   const [isSavingEmployee, setIsSavingEmployee] = useState(false);
@@ -636,6 +647,33 @@ export default function ManageEmployeesPayroll() {
               margin-top: 8px;
               border-top: 1px solid #f3f4f6;
               padding-top: 20px;
+              position: relative;
+              z-index: 10;
+            }
+            /* Watermark design styles */
+            .watermark-container {
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              pointer-events: none;
+              z-index: 1;
+            }
+            .watermark {
+              width: 380px;
+              height: auto;
+              max-height: 380px;
+              object-fit: contain;
+              transform: rotate(-15deg);
+              opacity: 0.04;
+            }
+            .printable-content {
+              position: relative;
+              z-index: 10;
             }
             @media print {
               body { padding: 20px; }
@@ -644,7 +682,16 @@ export default function ManageEmployeesPayroll() {
           </style>
         </head>
         <body>
-          <div class="header-container">
+          <!-- Watermark Background -->
+          <div class="watermark-container">
+            ${(globalSettings && globalSettings.logoUrl)
+              ? `<img src="${globalSettings.logoUrl}" class="watermark" alt="Watermark Logo" referrerPolicy="no-referrer" />`
+              : `<div class="watermark" style="font-family: sans-serif; font-size: 44px; font-weight: 900; color: #000; opacity: 0.03; text-align: center;">GREFAS CONSULT</div>`
+            }
+          </div>
+
+          <div class="printable-content">
+            <div class="header-container">
             <div class="brand-section">
               <h1>GREFAS ENTERTAINMENT</h1>
               <p>Consulting & World-Class Production Services</p>
@@ -740,12 +787,26 @@ export default function ManageEmployeesPayroll() {
             </div>
           ` : ''}
 
-          <div class="signatures">
-            <div>
-              <div class="sig-line">Prepared & Certified By Grefas Admin</div>
-            </div>
-            <div>
-              <div class="sig-line">Employee Signature & Acceptance</div>
+            <div class="signatures">
+              <div>
+                ${(globalSettings && globalSettings.adminSignature) ? `
+                  <div style="min-height: 50px; display: flex; align-items: center; justify-content: center;">
+                    <img src="${globalSettings.adminSignature}" style="max-height: 48px; max-width: 170px; object-fit: contain;" alt="Administrative Stamp" referrerPolicy="no-referrer" />
+                  </div>
+                ` : '<div style="height: 50px;"></div>'}
+                <div class="sig-line" style="margin-top: 5px; border-top: 1px dashed #cbd5e1; padding-top: 5px; font-weight: bold; color: #111827;">
+                  ${(globalSettings && globalSettings.adminSignatureName) ? globalSettings.adminSignatureName : 'CEO / General Manager / Secretary / Admin Signature'}
+                </div>
+                <div style="font-size: 10px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-top: 2px;">
+                  ${(globalSettings && globalSettings.adminSignatureTitle) ? globalSettings.adminSignatureTitle : 'Administrative Officer Stamp'}
+                </div>
+                <div style="font-size: 10px; color: #4b5563; font-weight: bold; margin-top: 4px;">Date: ${slip.paidDate || new Date().toLocaleDateString()}</div>
+              </div>
+              <div>
+                <div style="height: 50px;"></div>
+                <div class="sig-line" style="margin-top: 5px; border-top: 1px dashed #cbd5e1; padding-top: 5px; color: #111827;">Employee Signature & Acceptance</div>
+                <div style="font-size: 10px; color: #4b5563; font-weight: bold; margin-top: 4px;">Date: ________________________</div>
+              </div>
             </div>
           </div>
 

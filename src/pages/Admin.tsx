@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -29,7 +29,8 @@ import {
   getDoc,
   setDoc,
   where,
-  updateDoc
+  updateDoc,
+  deleteField
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
@@ -730,6 +731,20 @@ export default function Admin() {
                 <span>Visitor Alerts</span>
                 {isActive('/admin/announcements') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+              <Link
+                to="/admin/profile"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/profile') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-profile"
+              >
+                <UserIcon className={`h-4 w-4 ${isActive('/admin/profile') ? 'text-orange-600' : ''}`} />
+                <span>My Profile & Signature</span>
+                {isActive('/admin/profile') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
               {role === 'admin' && (
                 <>
                   <div className="pt-4 pb-2">
@@ -839,6 +854,7 @@ export default function Admin() {
           <Route path="/payroll" element={<ManageEmployeesPayroll />} />
           <Route path="/testimonials" element={<ManageTestimonials />} />
           <Route path="/announcements" element={<ManageVisitorAlerts />} />
+          <Route path="/profile" element={<AdminProfile />} />
           {role === 'admin' && (
             <>
               <Route path="/users" element={<ManageUsers />} />
@@ -3015,6 +3031,15 @@ function ManageTeam() {
   const [imageUploadProgress, setImageUploadProgress] = useState(0);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Bulk signature management states
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [isBulkSignatureModalOpen, setIsBulkSignatureModalOpen] = useState(false);
+  const [bulkSignatureMode, setBulkSignatureMode] = useState<'upload' | 'text'>('text');
+  const [bulkSignatureText, setBulkSignatureText] = useState('');
+  const [bulkSignatureImage, setBulkSignatureImage] = useState('');
+  const [isUploadingBulkSig, setIsUploadingBulkSig] = useState(false);
+
   const [newMember, setNewMember] = useState({
     name: '',
     role: '',
@@ -3187,6 +3212,148 @@ function ManageTeam() {
     });
     return () => unsubscribe();
   }, []);
+
+  const handleBulkGrantSignatureAccess = async () => {
+    if (selectedMemberIds.length === 0) {
+      toast.error('No team members selected.');
+      return;
+    }
+    try {
+      const selectedNames: string[] = [];
+      await Promise.all(selectedMemberIds.map(async (id) => {
+        const mDoc = doc(db, 'team_members', id);
+        const mSnap = await getDoc(mDoc);
+        if (mSnap.exists()) {
+          selectedNames.push(mSnap.data().name || 'Specialist');
+        }
+        await updateDoc(mDoc, {
+          hasSignatureAccess: true
+        });
+      }));
+
+      // Log bulk grant in audit logs
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const uData = uSnap.exists() ? uSnap.data() : {};
+        const uName = uData.fullName || currentUser.displayName || currentUser.email || 'Administrator';
+        const uRole = uData.role || 'admin';
+
+        await addDoc(collection(db, 'activity_logs'), {
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+          userName: uName,
+          type: 'signature_change',
+          description: `GRANTED official signature access in bulk to ${selectedNames.length} specialist(s) (${selectedNames.join(', ')}) by ${uName} (${uRole}).`,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      toast.success(`Successfully granted signature access to ${selectedMemberIds.length} specialist(s).`);
+      setSelectedMemberIds([]);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `team_members (bulk grant)`);
+    }
+  };
+
+  const handleBulkRevokeSignatureAccess = async () => {
+    if (selectedMemberIds.length === 0) {
+      toast.error('No team members selected.');
+      return;
+    }
+    try {
+      const selectedNames: string[] = [];
+      await Promise.all(selectedMemberIds.map(async (id) => {
+        const mDoc = doc(db, 'team_members', id);
+        const mSnap = await getDoc(mDoc);
+        if (mSnap.exists()) {
+          selectedNames.push(mSnap.data().name || 'Specialist');
+        }
+        await updateDoc(mDoc, {
+          hasSignatureAccess: false,
+          signatureImageUrl: deleteField(),
+          signatureImage: deleteField()
+        });
+      }));
+
+      // Log bulk revoke in audit logs
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const uData = uSnap.exists() ? uSnap.data() : {};
+        const uName = uData.fullName || currentUser.displayName || currentUser.email || 'Administrator';
+        const uRole = uData.role || 'admin';
+
+        await addDoc(collection(db, 'activity_logs'), {
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+          userName: uName,
+          type: 'signature_change',
+          description: `REVOKED signature access in bulk for ${selectedNames.length} specialist(s) (${selectedNames.join(', ')}) and cleared their signature files by ${uName} (${uRole}).`,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      toast.success(`Successfully revoked signature access for ${selectedMemberIds.length} specialist(s).`);
+      setSelectedMemberIds([]);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `team_members (bulk revoke)`);
+    }
+  };
+
+  const handleBulkReplaceSignatureSubmit = async () => {
+    if (selectedMemberIds.length === 0) {
+      toast.error('No team members selected.');
+      return;
+    }
+
+    const valueToSet = bulkSignatureMode === 'text' ? bulkSignatureText : bulkSignatureImage;
+    if (!valueToSet) {
+      toast.error('Please provide a signature value (type name or upload image).');
+      return;
+    }
+
+    try {
+      const selectedNames: string[] = [];
+      await Promise.all(selectedMemberIds.map(async (id) => {
+        const mDoc = doc(db, 'team_members', id);
+        const mSnap = await getDoc(mDoc);
+        if (mSnap.exists()) {
+          selectedNames.push(mSnap.data().name || 'Specialist');
+        }
+        await updateDoc(mDoc, {
+          hasSignatureAccess: true,
+          signatureImageUrl: valueToSet
+        });
+      }));
+
+      // Log bulk replace in audit logs
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const uData = uSnap.exists() ? uSnap.data() : {};
+        const uName = uData.fullName || currentUser.displayName || currentUser.email || 'Administrator';
+        const uRole = uData.role || 'admin';
+
+        await addDoc(collection(db, 'activity_logs'), {
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+          userName: uName,
+          type: 'signature_change',
+          description: `REPLACED/UPDATED signature image credentials in bulk for ${selectedNames.length} specialist(s) (${selectedNames.join(', ')}) using a unified ${bulkSignatureMode} signature template by ${uName} (${uRole}).`,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      toast.success(`Successfully replaced signature for ${selectedMemberIds.length} specialist(s).`);
+      setIsBulkSignatureModalOpen(false);
+      setBulkSignatureText('');
+      setBulkSignatureImage('');
+      setSelectedMemberIds([]);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `team_members (bulk replace)`);
+    }
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3602,17 +3769,100 @@ function ManageTeam() {
       )}
 
       <Card className="border border-border">
-        <CardHeader>
-          <CardTitle>Specialists List</CardTitle>
-          <CardDescription>View, manage and delete registered team specialists.</CardDescription>
+        <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <CardTitle>Specialists List</CardTitle>
+            <CardDescription>View, manage and delete registered team specialists.</CardDescription>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {members.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (selectedMemberIds.length === members.length) {
+                    setSelectedMemberIds([]);
+                  } else {
+                    setSelectedMemberIds(members.map(m => m.id));
+                  }
+                }}
+                className="text-xs font-semibold h-8 border-border text-foreground hover:bg-muted"
+              >
+                {selectedMemberIds.length === members.length ? 'Deselect All' : 'Select All'}
+              </Button>
+            )}
+          </div>
         </CardHeader>
+
+        {selectedMemberIds.length > 0 && (
+          <div className="bg-orange-600/10 border-y border-orange-600/20 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-orange-600 text-white text-xs font-black">
+                {selectedMemberIds.length}
+              </span>
+              <p className="text-sm font-semibold text-orange-800 dark:text-orange-300">
+                Specialist(s) selected for bulk signature actions
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                onClick={handleBulkGrantSignatureAccess}
+                className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold flex items-center gap-1 h-8"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" /> Grant Access
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setBulkSignatureMode('text');
+                  setBulkSignatureText('');
+                  setBulkSignatureImage('');
+                  setIsBulkSignatureModalOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1 h-8"
+              >
+                <Edit className="h-3.5 w-3.5" /> Replace Signature
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleBulkRevokeSignatureAccess}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1 h-8"
+              >
+                <AlertCircle className="h-3.5 w-3.5" /> Revoke Access
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedMemberIds([])}
+                className="text-muted-foreground hover:text-foreground text-xs font-semibold h-8"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
         <CardContent className="p-0">
           <div className="divide-y divide-border">
             {members.map((member) => {
               const userAvailable = member.available !== false;
+              const isChecked = selectedMemberIds.includes(member.id);
               return (
-                <div key={member.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4">
+                <div key={member.id} className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 transition-colors ${isChecked ? 'bg-orange-600/5' : ''}`}>
                   <div className="flex items-center space-x-4">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedMemberIds(prev => [...prev, member.id]);
+                        } else {
+                          setSelectedMemberIds(prev => prev.filter(id => id !== member.id));
+                        }
+                      }}
+                      className="rounded border-border text-orange-600 focus:ring-orange-600 h-4 w-4 cursor-pointer"
+                    />
                     <img
                       src={member.imageUrl}
                       alt={member.name}
@@ -3620,11 +3870,16 @@ function ManageTeam() {
                       className="h-12 w-12 rounded-full object-cover border border-border"
                     />
                     <div>
-                      <p className="font-bold text-foreground flex items-center gap-2">
+                      <p className="font-bold text-foreground flex flex-wrap items-center gap-2">
                         {member.name}
                         <span className="text-[10px] px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950/40 text-orange-800 dark:text-orange-300 uppercase font-black tracking-wider">
                           {member.category}
                         </span>
+                        {member.hasSignatureAccess && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 font-bold border border-green-200 dark:border-green-900/35 flex items-center gap-1">
+                            <ShieldCheck className="h-3 w-3" /> Signatory
+                          </span>
+                        )}
                       </p>
                       <p className="text-xs text-orange-600 font-semibold">{member.role}</p>
                       {member.email && (
@@ -3675,6 +3930,128 @@ function ManageTeam() {
           onConfirm={confirmDelete}
           onCancel={() => setDeleteId(null)}
         />
+      )}
+
+      {isBulkSignatureModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-card border border-border rounded-xl shadow-2xl p-6 relative">
+            <button 
+              onClick={() => setIsBulkSignatureModalOpen(false)}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground cursor-pointer bg-transparent border-0"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            <h2 className="text-xl font-bold text-foreground mb-1">Replace Signature Access</h2>
+            <p className="text-xs text-muted-foreground mb-4">
+              Apply a unified signature format or image to all {selectedMemberIds.length} selected specialist(s).
+            </p>
+
+            <div className="flex gap-2 p-1 bg-muted rounded-lg border border-border mb-4">
+              <Button
+                variant={bulkSignatureMode === 'text' ? 'default' : 'outline'}
+                onClick={() => setBulkSignatureMode('text')}
+                className={`flex-1 text-xs font-bold cursor-pointer h-8 ${bulkSignatureMode === 'text' ? 'bg-orange-600 text-white' : 'text-muted-foreground'}`}
+              >
+                Type Signature
+              </Button>
+              <Button
+                variant={bulkSignatureMode === 'upload' ? 'default' : 'outline'}
+                onClick={() => setBulkSignatureMode('upload')}
+                className={`flex-1 text-xs font-bold cursor-pointer h-8 ${bulkSignatureMode === 'upload' ? 'bg-orange-600 text-white' : 'text-muted-foreground'}`}
+              >
+                Upload Signature Image
+              </Button>
+            </div>
+
+            {bulkSignatureMode === 'text' ? (
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-foreground">Typed Signature Name</label>
+                <Input
+                  placeholder="e.g. Grice Asante, CEO"
+                  value={bulkSignatureText}
+                  onChange={(e) => setBulkSignatureText(e.target.value)}
+                  className="bg-muted/40 border-border text-foreground text-sm focus-visible:ring-orange-600 focus-visible:border-orange-600"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  This text name will act as their official digital authorization signature on receipts and documents.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-foreground">Signature Image File</label>
+                {bulkSignatureImage ? (
+                  <div className="relative border border-dashed rounded-lg p-4 bg-muted/20 flex flex-col items-center">
+                    <img 
+                      src={bulkSignatureImage} 
+                      alt="Bulk Signature" 
+                      className="max-h-20 object-contain mb-2" 
+                      referrerPolicy="no-referrer"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setBulkSignatureImage('')}
+                      className="text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 font-bold"
+                    >
+                      Remove File
+                    </Button>
+                  </div>
+                ) : (
+                  <div 
+                    className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:bg-muted/10 transition-colors"
+                    onClick={() => {
+                      const fileInput = document.createElement('input');
+                      fileInput.type = 'file';
+                      fileInput.accept = 'image/*';
+                      fileInput.onchange = async (e: any) => {
+                        const file = e.target?.files?.[0];
+                        if (file) {
+                          if (!file.type.startsWith('image/')) {
+                            toast.error('Please select an image file.');
+                            return;
+                          }
+                          try {
+                            const compressed = await compressImage(file, 600, 300, 0.7);
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setBulkSignatureImage(reader.result as string);
+                            };
+                            reader.readAsDataURL(compressed);
+                          } catch (err) {
+                            console.error(err);
+                            toast.error('Failed to compress signature.');
+                          }
+                        }
+                      };
+                      fileInput.click();
+                    }}
+                  >
+                    <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-xs font-bold text-foreground">Click to upload signature image</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Accepts PNG, JPG (Transparent recommended)</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setIsBulkSignatureModalOpen(false)}
+                className="text-xs font-semibold h-9 border-border text-foreground hover:bg-muted"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleBulkReplaceSignatureSubmit}
+                className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold h-9 px-4"
+              >
+                Apply to {selectedMemberIds.length} Specialist(s)
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -5290,10 +5667,30 @@ function ManageBookings() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'passes_report'>('list');
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [deleteConfig, setDeleteConfig] = useState<{ message: string; action: () => Promise<void> } | null>(null);
+
+  // Booking Passes state and listener
+  const [passes, setPasses] = useState<any[]>([]);
+  const [passesLoading, setPassesLoading] = useState(true);
+  const [passesSearch, setPassesSearch] = useState('');
+
+  useEffect(() => {
+    if (viewMode !== 'passes_report') return;
+    setPassesLoading(true);
+    const passesQuery = query(collection(db, 'booking_passes'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(passesQuery, (snapshot) => {
+      const loadedPasses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPasses(loadedPasses);
+      setPassesLoading(false);
+    }, (error) => {
+      console.error('Error fetching passes:', error);
+      setPassesLoading(false);
+    });
+    return () => unsubscribe();
+  }, [viewMode]);
 
   const handleExportCSV = () => {
     if (filteredBookings.length === 0) {
@@ -5568,6 +5965,17 @@ function ManageBookings() {
             ${bookingsHTML}
           </tbody>
         </table>
+
+        <div style="margin-top: 60px; display: flex; justify-content: space-between; page-break-inside: avoid; font-family: sans-serif;">
+          <div>
+            <div style="border-top: 2px solid #374151; width: 320px; text-align: center; padding-top: 6px; font-weight: 700; font-size: 10px; text-transform: uppercase;">CEO / General Manager / Secretary / Admin Signature</div>
+            <div style="font-size: 10px; color: #6b7280; text-align: center; margin-top: 4px;">Grefas Executive Office</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="border-top: 2px solid #374151; width: 160px; text-align: center; padding-top: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase;">Date</div>
+            <div style="font-size: 10px; color: #6b7280; text-align: center; margin-top: 4px;">${new Date().toLocaleDateString()}</div>
+          </div>
+        </div>
       </body>
       </html>
     `;
@@ -5591,6 +5999,534 @@ function ManageBookings() {
     }, 1000);
 
     toast.success("Preparing PDF document report for printing...");
+  };
+
+  const handlePrintBookingPass = async (booking: any) => {
+    try {
+      const currentUser = auth.currentUser;
+      const genEmail = currentUser?.email || 'unknown';
+      let genName = 'System';
+      if (currentUser) {
+        const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        if (uSnap.exists()) {
+          genName = uSnap.data().fullName || currentUser.displayName || genEmail;
+        } else {
+          genName = currentUser.displayName || genEmail;
+        }
+      }
+
+      // Add record to Firestore booking_passes collection
+      await addDoc(collection(db, 'booking_passes'), {
+        bookingId: booking.id || 'N/A',
+        orderNumber: booking.orderNumber || 'N/A',
+        userName: booking.userName || 'N/A',
+        userEmail: booking.userEmail || 'N/A',
+        serviceTitle: booking.serviceTitle || 'General Consultation',
+        generatedByEmail: genEmail,
+        generatedByName: genName,
+        timestamp: new Date().toISOString()
+      });
+
+      // Also create an audit log entry
+      await addDoc(collection(db, 'activity_logs'), {
+        userId: currentUser?.uid || null,
+        userEmail: genEmail,
+        userName: genName,
+        type: 'booking_pass_generation',
+        description: `Booking pass generated/printed for order ${booking.orderNumber || booking.id} by ${genName}`,
+        createdAt: new Date().toISOString()
+      });
+
+      toast.success('Logging booking pass generation...');
+
+      // Trigger standard print view in an iframe for the booking pass!
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
+
+      const docRef = printFrame.contentWindow?.document || printFrame.contentDocument;
+      if (!docRef) {
+        toast.error('Could not initiate Booking Pass printing.');
+        return;
+      }
+
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(booking.orderNumber || booking.id)}`;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Reservation Pass - ${booking.orderNumber || 'N/A'}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+            body {
+              font-family: 'Inter', sans-serif;
+              color: #111827;
+              padding: 40px;
+              background: #ffffff;
+            }
+            .pass-card {
+              max-width: 600px;
+              margin: 0 auto;
+              border: 2px dashed #ea580c;
+              border-radius: 16px;
+              padding: 24px;
+              background-color: #fff;
+            }
+            .header {
+              display: flex;
+              justify-content: space-between;
+              border-bottom: 2px solid #f3f4f6;
+              padding-bottom: 16px;
+              margin-bottom: 20px;
+            }
+            .logo-text {
+              font-size: 16px;
+              font-weight: 800;
+              color: #ea580c;
+              text-transform: uppercase;
+            }
+            .pass-title {
+              font-size: 10px;
+              font-weight: 700;
+              text-transform: uppercase;
+              color: #9ca3af;
+              letter-spacing: 0.05em;
+              text-align: right;
+            }
+            .order-section {
+              display: flex;
+              justify-content: space-between;
+              background-color: #fff7ed;
+              border: 1px solid #ffedd5;
+              padding: 16px;
+              border-radius: 12px;
+              margin-bottom: 20px;
+            }
+            .order-label {
+              font-size: 9px;
+              text-transform: uppercase;
+              font-weight: 700;
+              color: #ea580c;
+            }
+            .order-val {
+              font-size: 28px;
+              font-weight: 900;
+              color: #ea580c;
+              letter-spacing: 0.1em;
+            }
+            .grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 20px;
+              margin-bottom: 20px;
+            }
+            .grid-box {
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              padding: 16px;
+            }
+            .box-title {
+              font-size: 11px;
+              text-transform: uppercase;
+              color: #9ca3af;
+              font-weight: 800;
+              margin: 0 0 10px 0;
+            }
+            .box-text {
+              font-size: 13px;
+              margin: 4px 0;
+            }
+            .notes-box {
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              padding: 16px;
+              margin-bottom: 20px;
+              background-color: #fafafa;
+            }
+            .footer {
+              font-size: 10px;
+              color: #9ca3af;
+              text-align: center;
+              border-top: 1px solid #e5e7eb;
+              padding-top: 12px;
+              margin-top: 20px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="pass-card">
+            <div class="header">
+              <div>
+                <div class="logo-text">Grefas Consult</div>
+                <div style="font-size: 11px; color: #4b5563;">Official Validation Ticket</div>
+              </div>
+              <div class="pass-title">
+                Reservation Pass <br/>
+                <strong style="color: #111827; font-size: 12px;">${booking.date || 'N/A'}</strong>
+              </div>
+            </div>
+
+            <div class="order-section">
+              <div>
+                <span class="order-label">Unique Reference Code</span>
+                <div class="order-val">${booking.orderNumber || 'N/A'}</div>
+                <p style="font-size: 11px; color: #6b7280; margin: 4px 0 0 0;">Please keep this reference for verification.</p>
+              </div>
+              <div>
+                <img src="${qrUrl}" style="width: 80px; height: 80px; display: block;" alt="QR" />
+              </div>
+            </div>
+
+            <div class="grid">
+              <div class="grid-box">
+                <h4 class="box-title">Client Details</h4>
+                <p class="box-text"><strong>Name:</strong> ${booking.userName || 'N/A'}</p>
+                <p class="box-text"><strong>Email:</strong> ${booking.userEmail || 'N/A'}</p>
+                <p class="box-text"><strong>Phone:</strong> ${booking.userPhone || 'N/A'}</p>
+              </div>
+              <div class="grid-box">
+                <h4 class="box-title">Service Details</h4>
+                <p class="box-text"><strong>Service:</strong> ${booking.serviceTitle || 'General Consultation'}</p>
+                <p class="box-text"><strong>Time Slot:</strong> ${booking.time || 'N/A'}</p>
+                <p class="box-text"><strong>Specialist:</strong> ${booking.teamMemberName || 'General Staff'}</p>
+              </div>
+            </div>
+
+            ${booking.notes ? `
+              <div class="notes-box">
+                <h4 class="box-title">Client Notes</h4>
+                <p class="box-text" style="font-style: italic;">"${booking.notes}"</p>
+              </div>
+            ` : ''}
+
+            <div class="footer">
+              Thank you for choosing Grefas Consult & Entertainment. Generated on ${new Date().toLocaleString()}
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      docRef.open();
+      docRef.write(htmlContent);
+      docRef.close();
+
+      setTimeout(() => {
+        try {
+          printFrame.contentWindow?.focus();
+          printFrame.contentWindow?.print();
+        } catch (e) {
+          console.error("Print fail", e);
+        } finally {
+          setTimeout(() => {
+            document.body.removeChild(printFrame);
+          }, 1000);
+        }
+      }, 500);
+
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to generate or log booking pass.');
+    }
+  };
+
+  const handleExportPassesCSV = (passesToExport: any[]) => {
+    if (passesToExport.length === 0) {
+      toast.error('No passes found to export.');
+      return;
+    }
+    const headers = ['Timestamp', 'Reference Code', 'Client Name', 'Client Email', 'Service', 'Generated By (Name)', 'Generated By (Email)'];
+    const rows = passesToExport.map(p => [
+      p.timestamp ? new Date(p.timestamp).toLocaleString() : 'N/A',
+      p.orderNumber || 'N/A',
+      p.userName || 'N/A',
+      p.userEmail || 'N/A',
+      p.serviceTitle || 'General Consultation',
+      p.generatedByName || 'N/A',
+      p.generatedByEmail || 'N/A'
+    ]);
+    
+    const csvContent = [
+      headers.join(','), 
+      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `booking_passes_report_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Successfully exported passes report to CSV!');
+  };
+
+  const handleExportPassesPDF = (passesToExport: any[]) => {
+    if (passesToExport.length === 0) {
+      toast.error('No passes found to export.');
+      return;
+    }
+    const reportDate = format(new Date(), 'MMMM d, yyyy HH:mm');
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    document.body.appendChild(printFrame);
+
+    const docRef = printFrame.contentWindow?.document || printFrame.contentDocument;
+    if (!docRef) {
+      toast.error('Failed to initialize print process.');
+      return;
+    }
+
+    const rowsHtml = passesToExport.map((p, idx) => `
+      <tr style="border-bottom: 1px solid #e5e7eb; font-size: 11px;">
+        <td style="padding: 10px; color: #6b7280;">${idx + 1}</td>
+        <td style="padding: 10px; font-weight: 600;">${p.orderNumber || 'N/A'}</td>
+        <td style="padding: 10px;">${p.userName || 'N/A'}<br/><span style="color:#9ca3af; font-size:10px;">${p.userEmail || 'N/A'}</span></td>
+        <td style="padding: 10px;">${p.serviceTitle || 'General Consultation'}</td>
+        <td style="padding: 10px;">${p.generatedByName || 'N/A'}<br/><span style="color:#9ca3af; font-size:10px;">${p.generatedByEmail || 'N/A'}</span></td>
+        <td style="padding: 10px; color: #4b5563;">${p.timestamp ? new Date(p.timestamp).toLocaleString() : 'N/A'}</td>
+      </tr>
+    `).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Generated Booking Passes Report</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+          body {
+            font-family: 'Inter', sans-serif;
+            padding: 40px;
+            color: #111827;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 3px solid #ea580c;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+          }
+          .title {
+            font-size: 24px;
+            font-weight: 800;
+            color: #ea580c;
+            text-transform: uppercase;
+            margin: 0;
+          }
+          .subtitle {
+            font-size: 12px;
+            color: #4b5563;
+            margin-top: 4px;
+          }
+          .meta-info {
+            text-align: right;
+            font-size: 11px;
+            color: #6b7280;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          th {
+            background-color: #f9fafb;
+            color: #374151;
+            font-weight: 700;
+            text-align: left;
+            padding: 12px 10px;
+            font-size: 11px;
+            text-transform: uppercase;
+            border-bottom: 2px solid #e5e7eb;
+          }
+          .footer {
+            margin-top: 40px;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 15px;
+            text-align: center;
+            font-size: 10px;
+            color: #9ca3af;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="title">Booking Passes Report</h1>
+            <p class="subtitle">Official audit log of all generated/printed guest reservation tickets</p>
+          </div>
+          <div class="meta-info">
+            <strong>Run Date:</strong> ${reportDate}<br/>
+            <strong>Total Passes:</strong> ${passesToExport.length}
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40px;">#</th>
+              <th>Ref Code</th>
+              <th>Client Details</th>
+              <th>Requested Service</th>
+              <th>Authorized Generator</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          Grefas Consult & Entertainment Administration Dashboard. Confidential.
+        </div>
+      </body>
+      </html>
+    `;
+
+    docRef.open();
+    docRef.write(htmlContent);
+    docRef.close();
+
+    setTimeout(() => {
+      try {
+        printFrame.contentWindow?.focus();
+        printFrame.contentWindow?.print();
+      } catch (e) {
+        console.error("Print fail", e);
+        toast.error("Failed to print passes report.");
+      } finally {
+        setTimeout(() => {
+          document.body.removeChild(printFrame);
+        }, 1000);
+      }
+    }, 1000);
+
+    toast.success("Preparing PDF document report for printing...");
+  };
+
+  const BookingPassesReportView = () => {
+    const filteredPasses = passes.filter(p => {
+      const s = passesSearch.trim().toLowerCase();
+      if (!s) return true;
+      return (p.orderNumber || '').toLowerCase().includes(s) ||
+             (p.userName || '').toLowerCase().includes(s) ||
+             (p.userEmail || '').toLowerCase().includes(s) ||
+             (p.serviceTitle || '').toLowerCase().includes(s) ||
+             (p.generatedByName || '').toLowerCase().includes(s) ||
+             (p.generatedByEmail || '').toLowerCase().includes(s);
+    });
+
+    return (
+      <Card className="bg-card border-border">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6">
+          <div>
+            <CardTitle className="text-foreground flex items-center gap-2">
+              <Ticket className="h-5 w-5 text-orange-600 animate-pulse" />
+              Booking Pass Generation Logs
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Audit log of all printed reservation tickets and passes generated by admins, managers, or CEOs.
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExportPassesCSV(filteredPasses)}
+              disabled={filteredPasses.length === 0}
+              className="text-xs font-bold gap-1.5 border-border hover:bg-muted text-foreground h-9"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-green-600" />
+              Export CSV
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExportPassesPDF(filteredPasses)}
+              disabled={filteredPasses.length === 0}
+              className="text-xs font-bold gap-1.5 border-border hover:bg-muted text-foreground h-9"
+            >
+              <FileText className="h-4 w-4 text-red-500" />
+              Export PDF
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Filter passes by reference code, client name/email, service, or issuer..."
+              value={passesSearch}
+              onChange={(e) => setPassesSearch(e.target.value)}
+              className="pl-9 bg-muted/40 border-border text-sm text-foreground focus-visible:ring-orange-600 focus-visible:border-orange-600"
+            />
+          </div>
+
+          {passesLoading ? (
+            <div className="py-20 text-center text-muted-foreground">
+              <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto mb-2" />
+              Loading pass generation records...
+            </div>
+          ) : filteredPasses.length === 0 ? (
+            <div className="py-20 text-center text-muted-foreground border border-dashed rounded-xl border-border bg-muted/5">
+              <Ticket className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-foreground">No records found</p>
+              <p className="text-xs text-muted-foreground mt-1">There are no booking pass generation logs matching your criteria.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-border">
+                    <th className="p-4 font-bold text-foreground">Reference Code</th>
+                    <th className="p-4 font-bold text-foreground">Client Details</th>
+                    <th className="p-4 font-bold text-foreground">Service</th>
+                    <th className="p-4 font-bold text-foreground">Generated By</th>
+                    <th className="p-4 font-bold text-foreground">Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredPasses.map((p) => (
+                    <tr key={p.id} className="hover:bg-muted/10 transition-colors">
+                      <td className="p-4 font-bold text-foreground">
+                        <span className="text-orange-600 bg-orange-600/10 px-2 py-0.5 rounded-md border border-orange-600/20 text-xs">
+                          {p.orderNumber || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="font-semibold text-foreground">{p.userName || 'N/A'}</div>
+                        <div className="text-xs text-muted-foreground">{p.userEmail || 'N/A'}</div>
+                      </td>
+                      <td className="p-4 text-foreground">{p.serviceTitle || 'General Consultation'}</td>
+                      <td className="p-4">
+                        <div className="font-semibold text-foreground">{p.generatedByName || 'N/A'}</div>
+                        <div className="text-xs text-muted-foreground">{p.generatedByEmail || 'N/A'}</div>
+                      </td>
+                      <td className="p-4 text-muted-foreground text-xs font-mono">
+                        {p.timestamp ? new Date(p.timestamp).toLocaleString() : 'N/A'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
   };
 
   const handleGenerateInvoicePDF = (booking: any) => {
@@ -5835,6 +6771,17 @@ function ManageBookings() {
             </table>
           </div>
 
+          <div style="margin-top: 50px; margin-bottom: 30px; display: flex; justify-content: space-between; page-break-inside: avoid; font-family: sans-serif;">
+            <div>
+              <div style="border-top: 2px solid #ea580c; width: 320px; text-align: center; padding-top: 6px; font-weight: 700; font-size: 10px; text-transform: uppercase; color: #111827;">CEO / General Manager / Secretary / Admin Signature</div>
+              <div style="font-size: 10px; color: #6b7280; text-align: center; margin-top: 4px;">Grefas Authorized Representative</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="border-top: 2px solid #ea580c; width: 160px; text-align: center; padding-top: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; color: #111827;">Date</div>
+              <div style="font-size: 10px; color: #6b7280; text-align: center; margin-top: 4px;">${reportDate}</div>
+            </div>
+          </div>
+
           <div class="footer">
             <p>Thank you for choosing Grefas Consult & Entertainment!</p>
             <p>For inquiries or adjustments, please email us at <strong>support@grefas.com</strong> or call Grefas Support desk.</p>
@@ -5926,12 +6873,30 @@ function ManageBookings() {
       const bookingRef = doc(db, 'bookings', id);
       await setDoc(bookingRef, { status: newStatus }, { merge: true });
       
+      const bookingSnap = await getDoc(bookingRef);
+      const bookingData = bookingSnap.exists() ? bookingSnap.data() : {};
+
+      // Audit Log write
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const uData = uSnap.exists() ? uSnap.data() : {};
+        const uName = uData.fullName || currentUser.displayName || currentUser.email || 'Administrator';
+        const uRole = uData.role || 'admin';
+
+        await addDoc(collection(db, 'activity_logs'), {
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+          userName: uName,
+          type: 'booking_change',
+          description: `Booking status for order ${bookingData.orderNumber || id} (Client: ${bookingData.userName || 'N/A'}) updated to '${newStatus}' by ${uName} (${uRole})`,
+          createdAt: new Date().toISOString()
+        });
+      }
+
       // Notify the user if confirmed or cancelled
       if (newStatus === 'confirmed' || newStatus === 'cancelled') {
-        const bookingSnap = await getDoc(bookingRef);
         if (bookingSnap.exists()) {
-          const bookingData = bookingSnap.data();
-          
           // 1. In-app notification
           if (bookingData.userId && bookingData.userId !== 'anonymous') {
             const title = newStatus === 'confirmed' ? 'Booking Confirmed!' : 'Booking Cancelled';
@@ -5980,7 +6945,7 @@ function ManageBookings() {
               if (result.results?.sms && result.results.sms.startsWith("failed")) {
                 let errorMsg = `Booking confirmed, but SMS failed: ${result.results.sms}`;
                 if (result.results.sms.includes("Invalid Phone Number")) {
-                  errorMsg = "Booking confirmed, but SMS failed due to an invalid phone number format.";
+                   errorMsg = "Booking confirmed, but SMS failed due to an invalid phone number format.";
                 }
                 
                 toast.warning(errorMsg, { duration: 8000 });
@@ -6065,9 +7030,30 @@ function ManageBookings() {
       action: async () => {
         setDeletingId(id);
         try {
+          const bookingSnap = await getDoc(doc(db, 'bookings', id));
+          const bookingData = bookingSnap.exists() ? bookingSnap.data() : {};
+
           await deleteDoc(doc(db, 'bookings', id));
           setSelectedIds(prev => prev.filter(item => item !== id));
           toast.success('Booking deleted');
+
+          // Log deletion in audit logs
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+            const uData = uSnap.exists() ? uSnap.data() : {};
+            const uName = uData.fullName || currentUser.displayName || currentUser.email || 'Administrator';
+            const uRole = uData.role || 'admin';
+
+            await addDoc(collection(db, 'activity_logs'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email,
+              userName: uName,
+              type: 'booking_change',
+              description: `Booking request for order ${bookingData.orderNumber || id} (Client: ${bookingData.userName || 'N/A'}) was DELETED by ${uName} (${uRole})`,
+              createdAt: new Date().toISOString()
+            });
+          }
         } catch (error) {
           handleFirestoreError(error, OperationType.DELETE, `bookings/${id}`);
         } finally {
@@ -6128,6 +7114,24 @@ function ManageBookings() {
           }));
           toast.success(`Successfully deleted ${successCount} booking(s).`);
           setSelectedIds([]);
+
+          // Log bulk deletion in audit logs
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+            const uData = uSnap.exists() ? uSnap.data() : {};
+            const uName = uData.fullName || currentUser.displayName || currentUser.email || 'Administrator';
+            const uRole = uData.role || 'admin';
+
+            await addDoc(collection(db, 'activity_logs'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email,
+              userName: uName,
+              type: 'booking_change',
+              description: `Bulk deleted ${successCount} booking request(s) by ${uName} (${uRole})`,
+              createdAt: new Date().toISOString()
+            });
+          }
         } catch (error) {
           handleFirestoreError(error, OperationType.DELETE, `bookings (bulk)`);
         } finally {
@@ -6154,6 +7158,24 @@ function ManageBookings() {
           }));
           toast.success(`Successfully deleted all ${successCount} booking(s).`);
           setSelectedIds([]);
+
+          // Log delete all in audit logs
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            const uSnap = await getDoc(doc(db, 'users', currentUser.uid));
+            const uData = uSnap.exists() ? uSnap.data() : {};
+            const uName = uData.fullName || currentUser.displayName || currentUser.email || 'Administrator';
+            const uRole = uData.role || 'admin';
+
+            await addDoc(collection(db, 'activity_logs'), {
+              userId: currentUser.uid,
+              userEmail: currentUser.email,
+              userName: uName,
+              type: 'booking_change',
+              description: `Deleted ALL ${successCount} booking request(s) in a single wipeout action by ${uName} (${uRole})`,
+              createdAt: new Date().toISOString()
+            });
+          }
         } catch (error) {
           handleFirestoreError(error, OperationType.DELETE, `bookings (all)`);
         } finally {
@@ -6222,11 +7244,20 @@ function ManageBookings() {
               <Grid className="h-4 w-4" />
               Calendar View
             </Button>
+            <Button
+              variant={viewMode === 'passes_report' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('passes_report')}
+              className={`text-xs gap-1.5 h-8 font-semibold ${viewMode === 'passes_report' ? 'bg-orange-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <Ticket className="h-4 w-4" />
+              Passes Report
+            </Button>
           </div>
         </div>
       </div>
 
-      {viewMode === 'list' ? (
+      {viewMode === 'list' && (
         <>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-card p-4 rounded-xl border border-border">
             <div className="relative flex-grow max-w-md">
@@ -6398,6 +7429,14 @@ function ManageBookings() {
                           >
                             <FileText className="h-4 w-4 text-green-600" /> Issue Invoice (PDF)
                           </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-amber-600 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/10 flex items-center gap-2"
+                            onClick={() => handlePrintBookingPass(booking)}
+                          >
+                            <Ticket className="h-4 w-4 text-amber-600" /> Print Pass
+                          </Button>
                         </>
                       )}
                       <Button 
@@ -6421,7 +7460,9 @@ function ManageBookings() {
             )}
           </div>
         </>
-      ) : (
+      )}
+
+      {viewMode === 'calendar' && (
         <div className="space-y-6">
           {/* Calendar Header with navigation */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-card p-4 rounded-xl border border-border">
@@ -6704,6 +7745,14 @@ function ManageBookings() {
                               >
                                 <Bell className="h-3.5 w-3.5" /> Reminder
                               </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="border-amber-600 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/10 flex items-center gap-1.5 text-xs py-1 h-8"
+                                onClick={() => handlePrintBookingPass(booking)}
+                              >
+                                <Ticket className="h-3.5 w-3.5 text-amber-600" /> Print Pass
+                              </Button>
                             </>
                           )}
 
@@ -6736,6 +7785,10 @@ function ManageBookings() {
             </div>
           </div>
         </div>
+      )}
+
+      {viewMode === 'passes_report' && (
+        <BookingPassesReportView />
       )}
 
       {deleteConfig && (
@@ -9742,6 +10795,610 @@ export function ManageVisitorAlerts() {
           message="Are you sure you want to permanently delete this visitor alert? This will stop it from displaying as a pop-up on the website."
           onConfirm={handleDeleteAlert}
           onCancel={() => setDeleteId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AdminProfile() {
+  const [fullName, setFullName] = useState('');
+  const [title, setTitle] = useState('');
+  const [roleState, setRoleState] = useState('');
+  const [signatureImage, setSignatureImage] = useState('');
+  const [signatureMode, setSignatureMode] = useState<'draw' | 'upload'>('draw');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isGlobalSignatory, setIsGlobalSignatory] = useState(false);
+  const [showDeleteSignatureModal, setShowDeleteSignatureModal] = useState(false);
+  const [showDeleteProfileModal, setShowDeleteProfileModal] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Fetch current user details
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    // Get personal profile from users collection
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const unsubscribeUser = onSnapshot(userDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setFullName(data.fullName || '');
+        setTitle(data.title || '');
+        setRoleState(data.role || '');
+        setSignatureImage(data.signatureImage || '');
+      }
+    });
+
+    // Check if they are currently set as the global default signatory
+    const globalDocRef = doc(db, 'settings', 'global');
+    const unsubscribeGlobal = onSnapshot(globalDocRef, (snap) => {
+      if (snap.exists()) {
+        const globalData = snap.data();
+        setIsGlobalSignatory(globalData.globalSignatoryUid === currentUser.uid);
+      }
+    });
+
+    return () => {
+      unsubscribeUser();
+      unsubscribeGlobal();
+    };
+  }, []);
+
+  // Canvas drawing coordinate scaling logic (same as ManageLetters!)
+  const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    if ('touches' in e) {
+      if (e.touches.length === 0) return { x: 0, y: 0 };
+      const touch = e.touches[0];
+      return {
+        x: (touch.clientX - rect.left) * scaleX,
+        y: (touch.clientY - rect.top) * scaleY
+      };
+    } else {
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+      };
+    }
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCoordinates(e);
+    ctx.beginPath();
+    ctx.moveTo(coords.x, coords.y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const coords = getCoordinates(e);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    saveSignatureImage();
+  };
+
+  const saveSignatureImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    setSignatureImage(dataUrl);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    setSignatureImage('');
+  };
+
+  // Set line properties when canvas/mode is loaded
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.5;
+      }
+    }
+  }, [signatureMode]);
+
+  const handleSignatureFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Invalid file type. Please upload an image file for the signature.');
+      return;
+    }
+    try {
+      toast.loading('Optimizing signature image format...', { id: 'sig-img-compress' });
+      const compressedBlob = await compressImage(file, 400, 150, 0.85);
+      const base64 = await blobToBase64(compressedBlob);
+      setSignatureImage(base64);
+      toast.success('Signature image uploaded and optimized successfully!', { id: 'sig-img-compress' });
+    } catch (err) {
+      toast.error('Failed to process the signature image.', { id: 'sig-img-compress' });
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    setIsSaving(true);
+    try {
+      // 1. Update user profile including role selection
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      await setDoc(userDocRef, {
+        fullName,
+        title,
+        role: roleState || 'admin',
+        signatureImage,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      // 2. If checked as Global Default Signatory
+      if (isGlobalSignatory) {
+        const globalDocRef = doc(db, 'settings', 'global');
+        await setDoc(globalDocRef, {
+          adminSignature: signatureImage,
+          adminSignatureName: fullName,
+          adminSignatureTitle: title,
+          globalSignatoryUid: currentUser.uid
+        }, { merge: true });
+      } else {
+        // If they were the global default but unchecked, clear global signatory UID
+        const globalDocRef = doc(db, 'settings', 'global');
+        const globalSnap = await getDoc(globalDocRef);
+        if (globalSnap.exists() && globalSnap.data().globalSignatoryUid === currentUser.uid) {
+          await setDoc(globalDocRef, {
+            globalSignatoryUid: ''
+          }, { merge: true });
+        }
+      }
+
+      // 3. Track in audit logs
+      await addDoc(collection(db, 'activity_logs'), {
+        userId: currentUser.uid,
+        userEmail: currentUser.email,
+        userName: fullName || currentUser.displayName || currentUser.email || 'Administrator',
+        type: 'profile_change',
+        description: `Administrative profile and signature saved by ${fullName || currentUser.email}. System role set to '${roleState || 'admin'}'.`,
+        createdAt: new Date().toISOString()
+      });
+
+      toast.success('Profile and signature saved successfully!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'users/' + currentUser.uid);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteSignature = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    try {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userDocRef, {
+        signatureImage: deleteField()
+      });
+
+      // Also update settings/global if they are the global signatory
+      const globalDocRef = doc(db, 'settings', 'global');
+      const globalSnap = await getDoc(globalDocRef);
+      if (globalSnap.exists() && globalSnap.data().globalSignatoryUid === currentUser.uid) {
+        await updateDoc(globalDocRef, {
+          adminSignature: deleteField()
+        });
+      }
+
+      // Log the signature deletion
+      await addDoc(collection(db, 'activity_logs'), {
+        userId: currentUser.uid,
+        userEmail: currentUser.email,
+        userName: fullName || currentUser.displayName || currentUser.email || 'Administrator',
+        type: 'profile_change',
+        description: `Signature image was DELETED/cleared by ${fullName || currentUser.email}.`,
+        createdAt: new Date().toISOString()
+      });
+
+      setSignatureImage('');
+      clearSignature();
+      setShowDeleteSignatureModal(false);
+      toast.success('Signature deleted successfully!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'users/' + currentUser.uid);
+    }
+  };
+
+  const handleDeleteProfile = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    try {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userDocRef, {
+        fullName: deleteField(),
+        title: deleteField(),
+        signatureImage: deleteField()
+      });
+
+      // Also update settings/global if they are the global signatory
+      const globalDocRef = doc(db, 'settings', 'global');
+      const globalSnap = await getDoc(globalDocRef);
+      if (globalSnap.exists() && globalSnap.data().globalSignatoryUid === currentUser.uid) {
+        await updateDoc(globalDocRef, {
+          adminSignature: deleteField(),
+          adminSignatureName: deleteField(),
+          adminSignatureTitle: deleteField(),
+          globalSignatoryUid: deleteField()
+        });
+      }
+
+      // Log the profile deletion
+      await addDoc(collection(db, 'activity_logs'), {
+        userId: currentUser.uid,
+        userEmail: currentUser.email,
+        userName: fullName || currentUser.displayName || currentUser.email || 'Administrator',
+        type: 'profile_change',
+        description: `Administrative profile and signature details were completely DELETED/cleared by ${fullName || currentUser.email}.`,
+        createdAt: new Date().toISOString()
+      });
+
+      setFullName('');
+      setTitle('');
+      setSignatureImage('');
+      setIsGlobalSignatory(false);
+      clearSignature();
+      setShowDeleteProfileModal(false);
+      toast.success('Administrative profile and signature deleted successfully!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'users/' + currentUser.uid);
+    }
+  };
+
+  const currentUser = auth.currentUser;
+  const isProfileEmpty = !fullName && !title && !signatureImage;
+  const isProfileActive = fullName && title && signatureImage;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-border/50 pb-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
+            <UserIcon className="h-8 w-8 text-orange-600" /> Administrative Profile
+          </h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            Manage your official administrative details and upload or draw your signature to automate document validation.
+          </p>
+        </div>
+        <div className="flex items-center">
+          {isProfileActive ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-400 border border-green-200 dark:border-green-900/50">
+              <span className="h-2 w-2 rounded-full bg-green-600 dark:bg-green-400 animate-pulse" />
+              Profile Active & Configured (Edit mode)
+            </span>
+          ) : isProfileEmpty ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-zinc-100 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800">
+              <span className="h-2 w-2 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+              Profile Empty / Unconfigured (Add mode)
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50">
+              <span className="h-2 w-2 rounded-full bg-amber-500 dark:bg-amber-400 animate-bounce" />
+              Partially Configured (Edit below to complete)
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-foreground">Official Credentials & Title</CardTitle>
+              <CardDescription className="text-muted-foreground">This name and title will be placed on official certificates, payrolls, and letters.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSaveProfile} className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Account Email</label>
+                    <Input 
+                      value={currentUser?.email || ''} 
+                      disabled 
+                      className="bg-muted border-border cursor-not-allowed opacity-75"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">System Role</label>
+                    <select
+                      value={roleState || 'admin'}
+                      onChange={(e) => setRoleState(e.target.value)}
+                      className="w-full h-10 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600 focus:border-orange-600 font-semibold"
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="manager">Manager</option>
+                      <option value="ceo">CEO</option>
+                      <option value="editor">Editor</option>
+                      <option value="guest">Guest</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Signatory Full Name</label>
+                    <Input 
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="e.g. Grice Asante"
+                      required
+                      className="bg-muted/50 border-border focus:ring-orange-500 focus:border-orange-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Professional Title / Designation</label>
+                    <Input 
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="e.g. CEO & General Manager"
+                      required
+                      className="bg-muted/50 border-border focus:ring-orange-500 focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Signature Upload Options */}
+                <div className="space-y-3">
+                  {signatureImage && (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl border border-border bg-muted/20 gap-4 mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-white p-1 rounded-lg border border-border flex items-center justify-center min-w-[120px] h-[50px]">
+                          <img src={signatureImage} className="max-h-[44px] max-w-[110px] object-contain select-none" alt="Saved Signature" referrerPolicy="no-referrer" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-foreground flex items-center gap-1">
+                            <span className="inline-block h-2 w-2 rounded-full bg-green-500" /> Saved Signature Active
+                          </p>
+                          <p className="text-[10px] text-muted-foreground max-w-sm">
+                            This signature is currently registered and actively validating documents, letters, and payroll slips.
+                          </p>
+                        </div>
+                      </div>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setShowDeleteSignatureModal(true)}
+                        className="text-[10px] font-black uppercase tracking-wider text-red-500 border-red-500/20 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20 cursor-pointer h-8 w-full sm:w-auto"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Signature
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Authorized Signature Image</p>
+                      <p className="text-[11px] text-muted-foreground">Select whether to draw on the pad or upload a transparent PNG image.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={signatureMode === 'draw' ? 'default' : 'outline'}
+                        onClick={() => setSignatureMode('draw')}
+                        className={`text-[10px] h-7 font-bold px-3 py-0 cursor-pointer ${signatureMode === 'draw' ? 'bg-orange-600 text-white hover:bg-orange-700' : ''}`}
+                      >
+                        Draw
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={signatureMode === 'upload' ? 'default' : 'outline'}
+                        onClick={() => setSignatureMode('upload')}
+                        className={`text-[10px] h-7 font-bold px-3 py-0 cursor-pointer ${signatureMode === 'upload' ? 'bg-orange-600 text-white hover:bg-orange-700' : ''}`}
+                      >
+                        Upload Image
+                      </Button>
+                    </div>
+                  </div>
+
+                  {signatureMode === 'draw' ? (
+                    <div className="relative border border-border bg-white rounded-xl overflow-hidden p-1 shadow-sm">
+                      <canvas
+                        ref={canvasRef}
+                        width={600}
+                        height={150}
+                        className="w-full h-[150px] bg-neutral-50 rounded-lg cursor-crosshair touch-none"
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={stopDrawing}
+                        onMouseLeave={stopDrawing}
+                        onTouchStart={startDrawing}
+                        onTouchMove={draw}
+                        onTouchEnd={stopDrawing}
+                      />
+                      <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={clearSignature}
+                          className="text-[10px] h-7 font-bold text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 bg-white border-border"
+                        >
+                          Clear canvas
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      className="border-2 border-dashed border-border hover:border-orange-500/50 bg-muted/20 hover:bg-muted/40 transition duration-300 rounded-xl p-6 text-center cursor-pointer flex flex-col items-center justify-center space-y-2 relative min-h-[150px]"
+                      onClick={() => document.getElementById('profile-sig-file')?.click()}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) handleSignatureFile(file);
+                      }}
+                    >
+                      <Upload className="h-8 w-8 text-muted-foreground animate-bounce" />
+                      <p className="text-xs font-bold text-foreground">Drag & drop your signature image, or click to browse</p>
+                      <p className="text-[10px] text-muted-foreground">Supports transparent PNG, JPEG (auto-cropped to ratio)</p>
+                      <input 
+                        type="file" 
+                        id="profile-sig-file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSignatureFile(file);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Global Default Signatory Checkbox */}
+                <div className="bg-muted/40 p-4 rounded-xl flex items-start gap-3 border border-border/50">
+                  <input 
+                    type="checkbox" 
+                    id="chk-global-default"
+                    checked={isGlobalSignatory}
+                    onChange={(e) => setIsGlobalSignatory(e.target.checked)}
+                    className="h-4 w-4 mt-0.5 text-orange-600 focus:ring-orange-500 border-border rounded"
+                  />
+                  <div className="space-y-1">
+                    <label htmlFor="chk-global-default" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5 text-orange-600" /> Use as Global Default Signatory for Official Documents
+                    </label>
+                    <p className="text-[10px] text-muted-foreground">
+                      If checked, this signature, name, and professional title will be automatically injected into generated invoices, printable receipts, and employee payroll slips across the entire platform.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t border-border/40 mt-4">
+                  {!isProfileEmpty ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowDeleteProfileModal(true)}
+                      className="border-red-500/20 text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20 text-xs font-bold uppercase tracking-wider px-5 h-10 flex items-center gap-2 cursor-pointer w-full sm:w-auto"
+                    >
+                      <Trash2 className="h-4 w-4" /> Delete Profile Details
+                    </Button>
+                  ) : <div className="hidden sm:block" />}
+                  <Button
+                    type="submit"
+                    disabled={isSaving}
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase tracking-wider px-6 h-10 flex items-center gap-2 cursor-pointer w-full sm:w-auto"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Saving changes...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" /> Save Profile & Signature
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Live Document Preview Sidecard */}
+        <div className="space-y-6">
+          <Card className="bg-card border-border overflow-hidden">
+            <CardHeader className="border-b border-border bg-muted/30">
+              <CardTitle className="text-foreground text-sm flex items-center gap-1.5">
+                <CheckCircle className="h-4 w-4 text-orange-600" /> Active Stamp Preview
+              </CardTitle>
+              <CardDescription className="text-muted-foreground text-[10px]">Real-time rendering of your signature block on official documents.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 flex flex-col items-center justify-center min-h-[220px] bg-white text-black relative">
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03]">
+                <span className="text-2xl font-black rotate-12">GREFAS CONSULT</span>
+              </div>
+              <div className="relative z-10 text-center space-y-4">
+                <div className="border border-dashed border-zinc-200 p-4 rounded-lg bg-neutral-50/50 min-h-[90px] min-w-[200px] flex items-center justify-center">
+                  {signatureImage ? (
+                    <img 
+                      src={signatureImage} 
+                      className="max-h-[70px] max-w-[180px] object-contain select-none" 
+                      alt="Signature Stamp" 
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="text-zinc-400 text-xs italic flex flex-col items-center">
+                      <span>No signature recorded</span>
+                      <span className="text-[9px] mt-1">(Draw or upload above)</span>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-0.5">
+                  <p className="font-bold text-sm tracking-tight border-t border-zinc-300 pt-2 min-w-[150px] inline-block">
+                    {fullName || 'Administrative Officer'}
+                  </p>
+                  <p className="text-[11px] text-zinc-500 uppercase tracking-widest font-black">
+                    {title || 'CEO / General Manager / Secretary / Admin'}
+                  </p>
+                  <p className="text-[9px] text-zinc-400">
+                    Official Document Signatory Stamp
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Delete Signature Confirmation Modal */}
+      {showDeleteSignatureModal && (
+        <AdminDeleteModal
+          title="Delete Administrative Signature"
+          message="Are you sure you want to permanently delete your saved signature image? This will clear it from your profile and stop automatic document validation signatures from applying to official records."
+          onConfirm={handleDeleteSignature}
+          onCancel={() => setShowDeleteSignatureModal(false)}
+        />
+      )}
+
+      {/* Delete Entire Profile Confirmation Modal */}
+      {showDeleteProfileModal && (
+        <AdminDeleteModal
+          title="Delete Administrative Profile"
+          message="Are you sure you want to permanently delete your administrative profile credentials and signature? This will completely clear your official signatory name, designation title, and signature from the system."
+          onConfirm={handleDeleteProfile}
+          onCancel={() => setShowDeleteProfileModal(false)}
         />
       )}
     </div>
