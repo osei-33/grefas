@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -716,6 +716,20 @@ export default function Admin() {
                 {isActive('/admin/payroll') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
+                to="/admin/transactions"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/transactions') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-transactions"
+              >
+                <Wallet className={`h-4 w-4 ${isActive('/admin/transactions') ? 'text-orange-600' : ''}`} />
+                <span>Financial Ledger</span>
+                {isActive('/admin/transactions') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+              <Link
                 to="/admin/testimonials"
                 onClick={() => setIsSidebarOpen(false)}
                 className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -858,6 +872,7 @@ export default function Admin() {
           <Route path="/gallery" element={<ManageGallery />} />
           <Route path="/portfolio" element={<ManagePortfolio />} />
           <Route path="/bookings" element={<ManageBookings />} />
+          <Route path="/transactions" element={<ManageTransactions />} />
           <Route path="/team" element={<ManageTeam />} />
           <Route path="/tasks" element={<ManageTasks />} />
           <Route path="/blog" element={<ManageBlog />} />
@@ -986,12 +1001,21 @@ function Login() {
     } catch (error: any) {
       console.error(error);
       let msg = 'Incorrect email address or password.';
-      if (error.code === 'auth/operation-not-allowed') {
+      const errorCode = error?.code || '';
+      const errorMessage = error?.message || '';
+      if (errorCode === 'auth/operation-not-allowed') {
         msg = 'Email/Password sign-in is currently disabled. Please enable the "Email/Password" provider in your Firebase Console under Authentication > Sign-in method.';
-      } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      } else if (
+        errorCode === 'auth/user-not-found' || 
+        errorCode === 'auth/wrong-password' || 
+        errorCode === 'auth/invalid-credential' ||
+        errorMessage.includes('user-not-found') ||
+        errorMessage.includes('wrong-password') ||
+        errorMessage.includes('invalid-credential')
+      ) {
         msg = 'Incorrect email address or password.';
-      } else if (error.message) {
-        msg = error.message;
+      } else if (errorMessage) {
+        msg = errorMessage;
       }
       toast.error(msg);
     } finally {
@@ -2826,7 +2850,15 @@ function AdminServiceRequests() {
 function ManageServices() {
   const [services, setServices] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
-  const [newService, setNewService] = useState({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newService, setNewService] = useState({ 
+    title: '', 
+    description: '', 
+    iconName: 'Briefcase', 
+    color: 'bg-blue-100 text-blue-600', 
+    category: 'Consulting',
+    price: 150 
+  });
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const [categoryType, setCategoryType] = useState('Consulting');
@@ -2842,6 +2874,27 @@ function ManageServices() {
     return () => unsubscribe();
   }, []);
 
+  const handleEditClick = (service: any) => {
+    setEditingId(service.id);
+    setNewService({
+      title: service.title || '',
+      description: service.description || '',
+      iconName: service.iconName || 'Briefcase',
+      color: service.color || 'bg-blue-100 text-blue-600',
+      category: service.category || 'Consulting',
+      price: service.price !== undefined ? service.price : 150
+    });
+    const standardCategories = ['Consulting', 'Entertainment', 'Production', 'Creative'];
+    if (standardCategories.includes(service.category)) {
+      setCategoryType(service.category);
+      setCustomCategory('');
+    } else {
+      setCategoryType('Custom');
+      setCustomCategory(service.category || '');
+    }
+    setIsAdding(true);
+  };
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -2850,18 +2903,33 @@ function ManageServices() {
         toast.error('Please specify a category');
         return;
       }
-      await addDoc(collection(db, 'services'), {
-        ...newService,
+      const serviceData = {
+        title: newService.title,
+        description: newService.description,
+        iconName: newService.iconName,
+        color: newService.color,
         category: finalCategory,
-        createdAt: serverTimestamp()
-      });
-      toast.success('Service added');
+        price: Number(newService.price) || 0,
+      };
+
+      if (editingId) {
+        await setDoc(doc(db, 'services', editingId), serviceData, { merge: true });
+        toast.success('Service updated successfully');
+      } else {
+        await addDoc(collection(db, 'services'), {
+          ...serviceData,
+          createdAt: serverTimestamp()
+        });
+        toast.success('Service added successfully');
+      }
+
       setIsAdding(false);
-      setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting' });
+      setEditingId(null);
+      setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting', price: 150 });
       setCategoryType('Consulting');
       setCustomCategory('');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'services');
+      handleFirestoreError(error, editingId ? OperationType.UPDATE : OperationType.CREATE, 'services');
     }
   };
 
@@ -2944,7 +3012,18 @@ function ManageServices() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Manage Services</h1>
-        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white">
+        <Button 
+          onClick={() => {
+            if (isAdding) {
+              setIsAdding(false);
+              setEditingId(null);
+              setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting', price: 150 });
+            } else {
+              setIsAdding(true);
+            }
+          }} 
+          className="bg-orange-600 hover:bg-orange-700 text-white"
+        >
           {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add Service</>}
         </Button>
       </div>
@@ -2952,7 +3031,7 @@ function ManageServices() {
       {isAdding && (
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-foreground">Add New Service</CardTitle>
+            <CardTitle className="text-foreground">{editingId ? 'Edit Service' : 'Add New Service'}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleAdd} className="space-y-4">
@@ -2970,7 +3049,15 @@ function ManageServices() {
                 required 
                 className="bg-muted/50 border-border"
               />
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Input 
+                  placeholder="Price (GH₵)" 
+                  type="number"
+                  value={newService.price} 
+                  onChange={e => setNewService({...newService, price: Number(e.target.value) || 0})} 
+                  required 
+                  className="bg-muted/50 border-border"
+                />
                 <Input 
                   placeholder="Icon Name (Lucide)" 
                   value={newService.iconName} 
@@ -3008,7 +3095,9 @@ function ManageServices() {
                   )}
                 </div>
               </div>
-              <Button type="submit" className="w-full bg-orange-600 text-white">Save Service</Button>
+              <Button type="submit" className="w-full bg-orange-600 text-white">
+                {editingId ? 'Save Changes' : 'Save Service'}
+              </Button>
             </form>
           </CardContent>
         </Card>
@@ -3020,15 +3109,21 @@ function ManageServices() {
             {services.map((service) => (
               <div key={service.id} className="flex items-center justify-between p-4">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-foreground">{service.title}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-foreground text-sm">{service.title}</p>
                     <span className="text-[10px] uppercase font-bold bg-muted text-muted-foreground px-2 py-0.5 rounded tracking-wider">
                       {service.category || 'Consulting'}
                     </span>
+                    <span className="text-xs font-extrabold text-orange-600 bg-orange-600/10 px-2 py-0.5 rounded-full">
+                      GH₵ {(service.price !== undefined ? service.price : 150).toLocaleString()}
+                    </span>
                   </div>
-                  <p className="text-sm text-muted-foreground truncate max-w-md">{service.description}</p>
+                  <p className="text-xs text-muted-foreground truncate max-w-md mt-1">{service.description}</p>
                 </div>
                 <div className="flex space-x-2">
+                  <Button variant="ghost" size="sm" onClick={() => handleEditClick(service)} className="text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 hover:text-orange-700">
+                    <Edit className="h-4 w-4" />
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => handleDelete(service.id)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-700">
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -3045,6 +3140,431 @@ function ManageServices() {
           title="Delete Service"
           message="Are you sure you want to delete this service? This action is completely permanent and cannot be undone."
           onConfirm={confirmDelete}
+          onCancel={() => setDeleteId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ManageTransactions() {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newTransaction, setNewTransaction] = useState({
+    description: '',
+    amount: '',
+    type: 'credit',
+    category: 'Consultation Booking',
+    ref: '',
+    customDate: format(new Date(), 'yyyy-MM-dd')
+  });
+
+  const [filterType, setFilterType] = useState<'all' | 'credit' | 'debit'>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Categories list
+  const creditCategories = [
+    "Consultation Booking",
+    "Audition / Casting Fee",
+    "Media Sponsorship",
+    "Event Ticket Sale",
+    "Other Income"
+  ];
+
+  const debitCategories = [
+    "Specialist/Staff Payroll",
+    "Equipment Purchase",
+    "Office Utilities",
+    "Entertainment Event Production",
+    "Marketing & Ads",
+    "Other Expense"
+  ];
+
+  useEffect(() => {
+    const q = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching transactions:", error);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTransaction.description.trim()) {
+      toast.error("Please enter a description");
+      return;
+    }
+    if (!newTransaction.amount || Number(newTransaction.amount) <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+
+    try {
+      const selectedDate = newTransaction.customDate 
+        ? new Date(newTransaction.customDate + 'T12:00:00') 
+        : new Date();
+
+      await addDoc(collection(db, 'transactions'), {
+        description: newTransaction.description.trim(),
+        amount: Number(newTransaction.amount),
+        type: newTransaction.type,
+        category: newTransaction.category,
+        ref: newTransaction.ref.trim(),
+        recordedBy: auth.currentUser?.email || 'admin',
+        createdAt: serverTimestamp(),
+        transactionDate: selectedDate.toISOString()
+      });
+
+      toast.success("Transaction recorded successfully!");
+      setIsAdding(false);
+      setNewTransaction({
+        description: '',
+        amount: '',
+        type: 'credit',
+        category: 'Consultation Booking',
+        ref: '',
+        customDate: format(new Date(), 'yyyy-MM-dd')
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'transactions');
+    }
+  };
+
+  const handleDeleteTransaction = async () => {
+    if (!deleteId) return;
+    try {
+      await deleteDoc(doc(db, 'transactions', deleteId));
+      toast.success("Transaction deleted successfully");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `transactions/${deleteId}`);
+    } finally {
+      setDeleteId(null);
+    }
+  };
+
+  // Calculations
+  const totalCredits = transactions
+    .filter(t => t.type === 'credit')
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+  const totalDebits = transactions
+    .filter(t => t.type === 'debit')
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+  const balanceRemaining = totalCredits - totalDebits;
+
+  // Filter and Search
+  const filteredTransactions = transactions.filter(t => {
+    const matchesType = filterType === 'all' || t.type === filterType;
+    const matchesCategory = filterCategory === 'all' || t.category === filterCategory;
+    const matchesSearch = !searchQuery || 
+      t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.ref && t.ref.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesType && matchesCategory && matchesSearch;
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Financial Ledger & Transactions</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Track all revenues, consultation bookings, payroll disbursements, and operational expenses in Nyinahin.
+          </p>
+        </div>
+        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white">
+          {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Record Transaction</>}
+        </Button>
+      </div>
+
+      {/* Aggregate Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-card border-border shadow-sm">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Credits (Income)</p>
+              <h3 className="text-2xl font-black text-emerald-600 mt-1">
+                GH₵ {totalCredits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </h3>
+            </div>
+            <div className="h-12 w-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <TrendingUp className="h-6 w-6" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border shadow-sm">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Debits</p>
+              <h3 className="text-2xl font-black text-rose-600 mt-1">
+                GH₵ {totalDebits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </h3>
+            </div>
+            <div className="h-12 w-12 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
+              <TrendingDown className="h-6 w-6" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border shadow-sm">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Expenses</p>
+              <h3 className="text-2xl font-black text-orange-600 mt-1">
+                GH₵ {totalDebits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </h3>
+            </div>
+            <div className="h-12 w-12 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center">
+              <DollarSign className="h-6 w-6" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border border-border shadow-sm">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Balance Remaining</p>
+              <h3 className={`text-2xl font-black mt-1 ${balanceRemaining >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                GH₵ {balanceRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </h3>
+            </div>
+            <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${balanceRemaining >= 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+              <Wallet className="h-6 w-6" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {isAdding && (
+        <Card className="bg-card border-border shadow-md">
+          <CardHeader>
+            <CardTitle className="text-foreground">Record New Ledger Entry</CardTitle>
+            <CardDescription className="text-xs text-muted-foreground">Add a new credit or debit transaction to the financial ledger.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAddTransaction} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Entry Type</label>
+                  <select
+                    value={newTransaction.type}
+                    onChange={e => {
+                      const type = e.target.value as 'credit' | 'debit';
+                      setNewTransaction({
+                        ...newTransaction,
+                        type,
+                        category: type === 'credit' ? creditCategories[0] : debitCategories[0]
+                      });
+                    }}
+                    className="flex h-10 w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="credit">Credit (+) Income</option>
+                    <option value="debit">Debit (-) Expense</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Category</label>
+                  <select
+                    value={newTransaction.category}
+                    onChange={e => setNewTransaction({ ...newTransaction, category: e.target.value })}
+                    className="flex h-10 w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    {newTransaction.type === 'credit' ? (
+                      creditCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)
+                    ) : (
+                      debitCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)
+                    )}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Transaction Date</label>
+                  <Input
+                    type="date"
+                    value={newTransaction.customDate}
+                    onChange={e => setNewTransaction({ ...newTransaction, customDate: e.target.value })}
+                    required
+                    className="bg-muted/50 border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Description / Purpose</label>
+                  <Input
+                    placeholder="Enter what this payment covers (e.g., Audition fee, sound rentals)"
+                    value={newTransaction.description}
+                    onChange={e => setNewTransaction({ ...newTransaction, description: e.target.value })}
+                    required
+                    className="bg-muted/50 border-border"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Amount (GH₵)</label>
+                  <Input
+                    type="number"
+                    step="any"
+                    placeholder="0.00"
+                    value={newTransaction.amount}
+                    onChange={e => setNewTransaction({ ...newTransaction, amount: e.target.value })}
+                    required
+                    className="bg-muted/50 border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Payment Reference (MOMO, Receipt #, etc.)</label>
+                  <Input
+                    placeholder="Optional transaction reference"
+                    value={newTransaction.ref}
+                    onChange={e => setNewTransaction({ ...newTransaction, ref: e.target.value })}
+                    className="bg-muted/50 border-border"
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold h-10">
+                    Record Entry
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Filter and Table Section */}
+      <Card className="bg-card border-border shadow-sm">
+        <CardHeader className="pb-3 border-b border-border/40">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
+              <Clock className="h-5 w-5 text-orange-600" /> Transaction History
+            </CardTitle>
+            
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search ledger..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-9 h-9 text-xs bg-muted/30 border-border"
+                />
+              </div>
+
+              <select
+                value={filterType}
+                onChange={e => setFilterType(e.target.value as any)}
+                className="h-9 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-foreground focus:outline-none"
+              >
+                <option value="all">All Types</option>
+                <option value="credit">Credits only</option>
+                <option value="debit">Debits only</option>
+              </select>
+
+              <select
+                value={filterCategory}
+                onChange={e => setFilterCategory(e.target.value)}
+                className="h-9 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-foreground focus:outline-none"
+              >
+                <option value="all">All Categories</option>
+                {creditCategories.concat(debitCategories).map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex py-12 justify-center items-center">
+              <Loader2 className="h-6 w-6 animate-spin text-orange-600" />
+            </div>
+          ) : filteredTransactions.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground">
+              No transactions match your search/filter criteria.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-muted/30 border-b border-border/60 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                    <th className="p-4">Date</th>
+                    <th className="p-4">Description</th>
+                    <th className="p-4">Category</th>
+                    <th className="p-4">Reference</th>
+                    <th className="p-4 text-right">Amount</th>
+                    <th className="p-4 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60 text-xs text-foreground">
+                  {filteredTransactions.map((t) => {
+                    const displayDate = t.transactionDate 
+                      ? format(new Date(t.transactionDate), 'MMM d, yyyy')
+                      : t.createdAt?.seconds 
+                        ? format(new Date(t.createdAt.seconds * 1000), 'MMM d, yyyy')
+                        : 'Recent';
+
+                    return (
+                      <tr key={t.id} className="hover:bg-muted/15 transition-colors">
+                        <td className="p-4 whitespace-nowrap text-muted-foreground font-medium">{displayDate}</td>
+                        <td className="p-4">
+                          <div className="font-semibold">{t.description}</div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5">Recorded by: {t.recordedBy}</div>
+                        </td>
+                        <td className="p-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase ${
+                            t.type === 'credit' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'
+                          }`}>
+                            {t.category}
+                          </span>
+                        </td>
+                        <td className="p-4 whitespace-nowrap font-mono text-[10px] text-muted-foreground">{t.ref || 'N/A'}</td>
+                        <td className={`p-4 text-right font-bold text-sm whitespace-nowrap ${
+                          t.type === 'credit' ? 'text-emerald-600' : 'text-rose-600'
+                        }`}>
+                          {t.type === 'credit' ? '+' : '-'} GH₵ {t.amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="p-4 text-center whitespace-nowrap">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => setDeleteId(t.id)}
+                            className="h-7 w-7 text-muted-foreground hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-950/20"
+                            title="Delete Entry"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {deleteId && (
+        <AdminDeleteModal
+          title="Delete Transaction"
+          message="Are you sure you want to delete this transaction ledger entry? This action is completely permanent and cannot be undone."
+          onConfirm={handleDeleteTransaction}
           onCancel={() => setDeleteId(null)}
         />
       )}
@@ -8044,34 +8564,28 @@ function ManageUsers() {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUser.email.trim()) return;
+    const emailLower = newUser.email.trim().toLowerCase();
+    if (!emailLower) return;
 
     try {
-      // Find if user already exists
-      const existingUser = users.find(u => u.email === newUser.email);
+      // Find if user already exists (case-insensitive check)
+      const existingUser = users.find(u => u.email && u.email.trim().toLowerCase() === emailLower);
       if (existingUser) {
-        toast.error('User with this email already exists');
-        return;
+        await setDoc(doc(db, 'users', existingUser.id), { role: newUser.role }, { merge: true });
+        toast.success(`Role for ${emailLower} updated to ${newUser.role}`);
+      } else {
+        await addDoc(collection(db, 'users'), {
+          email: emailLower,
+          role: newUser.role,
+          createdAt: serverTimestamp()
+        });
+        toast.success('User pre-authorized successfully');
       }
 
-      // We use addDoc because we don't have a UID yet. 
-      // The sign-in logic will look up by email or we can use email as ID (but email might have dots)
-      // Actually, my rule says match /users/{userId} where userId is UID.
-      // If we add by email, we should probably use a different approach or just wait for them to sign in.
-      // But user wants to ADD them. I'll use email as ID for pre-authorization or just a random ID.
-      // Let's use a random ID and update the sign-in logic to link it, OR just allow isAdmin to create.
-      
-      await addDoc(collection(db, 'users'), {
-        email: newUser.email,
-        role: newUser.role,
-        createdAt: serverTimestamp()
-      });
-
-      toast.success('User pre-authorized successfully');
       setNewUser({ email: '', role: 'editor' });
       setIsAdding(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'users');
+      handleFirestoreError(error, OperationType.WRITE, 'users');
     }
   };
 

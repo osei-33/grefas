@@ -10,6 +10,7 @@
         "iconName": { "type": "string", "description": "Lucide icon name" },
         "color": { "type": "string", "description": "Tailwind color classes for the icon background" },
         "category": { "type": "string", "description": "The category of this service, such as Consulting or Entertainment" },
+        "price": { "type": "number", "description": "Standard service price in GH₵" },
         "order": { "type": "number", "description": "Display order" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -335,9 +336,47 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["bookingId", "orderNumber", "userName", "userEmail", "timestamp"]
+    },
+    "ServiceReview": {
+      "title": "Service Review",
+      "description": "A client review and rating left on an individual service.",
+      "type": "object",
+      "properties": {
+        "serviceId": { "type": "string", "description": "The ID of the reviewed service" },
+        "serviceTitle": { "type": "string", "description": "The title of the reviewed service" },
+        "userId": { "type": "string", "description": "The UID of the user who left the review" },
+        "userName": { "type": "string", "description": "The display name of the user" },
+        "rating": { "type": "number", "description": "Rating score from 1 to 5" },
+        "comment": { "type": "string", "description": "The feedback comment" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["serviceId", "userId", "userName", "rating", "comment"]
+    },
+    "Transaction": {
+      "title": "Transaction Ledger Entry",
+      "description": "An individual credit or debit recorded in the Grefas finance ledger.",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string", "description": "Description of the transaction" },
+        "amount": { "type": "number", "description": "Transaction amount in GHS" },
+        "type": { "type": "string", "enum": ["credit", "debit"], "description": "Type of transaction" },
+        "category": { "type": "string", "description": "The category of the ledger entry" },
+        "ref": { "type": "string", "description": "Payment reference code or ID" },
+        "recordedBy": { "type": "string", "description": "Email of the admin who recorded this" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp" }
+      },
+      "required": ["description", "amount", "type", "category"]
     }
   },
   "firestore": {
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Financial ledger of credits, debits, expenses, and income"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "ServiceReview",
+      "description": "Collection of client feedback and ratings for services"
+    },
     "/booking_passes/{passId}": {
       "schema": "BookingPass",
       "description": "Collection of printed booking passes for consultation/entertainment verification"

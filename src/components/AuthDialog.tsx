@@ -9,7 +9,7 @@ import {
   sendPasswordResetEmail, 
   updateProfile 
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { Loader2, Mail, Lock, User, Phone } from 'lucide-react';
 
@@ -95,12 +95,30 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = 'signin' }: 
 
           const isAdminEmail = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"].includes(email.trim().toLowerCase());
 
+          // Check if there is a pre-authorized role for this email
+          let initialRole = isAdminEmail ? 'admin' : 'guest';
+          try {
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('email', '==', email.trim().toLowerCase()));
+            const querySnapshot = await getDocs(q);
+            if (!querySnapshot.empty) {
+              const preAuthDoc = querySnapshot.docs[0];
+              initialRole = preAuthDoc.data().role || initialRole;
+              // If it's a pre-authorized random doc, we delete it to avoid duplicate user entries
+              if (preAuthDoc.id !== cred.user.uid) {
+                await deleteDoc(doc(db, 'users', preAuthDoc.id));
+              }
+            }
+          } catch (err) {
+            console.warn("Could not retrieve pre-authorized role:", err);
+          }
+
           // Save user details securely inside Firestore
           await setDoc(doc(db, 'users', cred.user.uid), {
             email: email.trim().toLowerCase(),
             fullName: fullName.trim(),
             phone: phone.trim(),
-            role: isAdminEmail ? 'admin' : 'guest',
+            role: initialRole,
             createdAt: serverTimestamp()
           }, { merge: true });
 
@@ -110,13 +128,15 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = 'signin' }: 
       } catch (error: any) {
         console.error("Sign up failure:", error);
         let msg = `Could not register your profile: ${error.message || error}`;
-        if (error.code === 'auth/operation-not-allowed') {
+        const errorCode = error?.code || '';
+        const errorMessage = error?.message || '';
+        if (errorCode === 'auth/operation-not-allowed') {
           msg = "Email/Password registration is currently disabled. Please enable the 'Email/Password' provider in your Firebase Console under Authentication > Sign-in method.";
-        } else if (error.code === 'auth/email-already-in-use') {
+        } else if (errorCode === 'auth/email-already-in-use' || errorMessage.includes('email-already-in-use')) {
           msg = "This email is already registered. Try logging in instead!";
-        } else if (error.code === 'auth/invalid-email') {
+        } else if (errorCode === 'auth/invalid-email' || errorMessage.includes('invalid-email')) {
           msg = "The email address is invalid.";
-        } else if (error.code === 'auth/weak-password') {
+        } else if (errorCode === 'auth/weak-password' || errorMessage.includes('weak-password')) {
           msg = "The password is too weak. Must be at least 6 characters.";
         }
         toast.error(msg);
@@ -133,9 +153,18 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = 'signin' }: 
       } catch (error: any) {
         console.error("Sign in failure:", error);
         let msg = `Sign-in failed: ${error.message || error}`;
-        if (error.code === 'auth/operation-not-allowed') {
+        const errorCode = error?.code || '';
+        const errorMessage = error?.message || '';
+        if (errorCode === 'auth/operation-not-allowed') {
           msg = "Email/Password sign-in is currently disabled. Please enable the 'Email/Password' provider in your Firebase Console under Authentication > Sign-in method.";
-        } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        } else if (
+          errorCode === 'auth/user-not-found' || 
+          errorCode === 'auth/wrong-password' || 
+          errorCode === 'auth/invalid-credential' ||
+          errorMessage.includes('user-not-found') ||
+          errorMessage.includes('wrong-password') ||
+          errorMessage.includes('invalid-credential')
+        ) {
           msg = "Incorrect email address or password.";
         }
         toast.error(msg);

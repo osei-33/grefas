@@ -21,6 +21,7 @@ export default function Services() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('All');
   const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const [reviews, setReviews] = useState<any[]>([]);
   
   const [currentStep, setCurrentStep] = useState(1);
   const [draftInfo, setDraftInfo] = useState<{ savedAt: string; data: any } | null>(null);
@@ -1239,6 +1240,27 @@ export default function Services() {
     return () => unsubscribe();
   }, []);
 
+  // Fetch reviews for service cards
+  useEffect(() => {
+    const q = query(collection(db, 'reviews'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.warn("Could not fetch reviews for service listings:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const getServiceRating = (serviceId: string) => {
+    const serviceReviews = reviews.filter(r => r.serviceId === serviceId);
+    if (serviceReviews.length === 0) return null;
+    const avg = serviceReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / serviceReviews.length;
+    return {
+      average: parseFloat(avg.toFixed(1)),
+      count: serviceReviews.length
+    };
+  };
+
   // Fetch dynamic roles and fee from settings/global
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
@@ -1428,12 +1450,41 @@ export default function Services() {
                             {getIcon(service.iconName)}
                           </div>
                           <CardTitle className="text-foreground tracking-tight line-clamp-1">{service.title}</CardTitle>
+                          {(() => {
+                            const ratingData = getServiceRating(service.id);
+                            if (!ratingData) return null;
+                            const StarIcon = LucideIcons.Star;
+                            return (
+                              <div className="flex items-center gap-1.5 mt-1.5 text-xs text-amber-500">
+                                <div className="flex items-center">
+                                  {Array.from({ length: 5 }).map((_, i) => (
+                                    <StarIcon
+                                      key={i}
+                                      className={`h-3 w-3 ${
+                                        i < Math.round(ratingData.average)
+                                          ? 'fill-amber-500 text-amber-500'
+                                          : 'text-muted-foreground/30'
+                                      }`}
+                                    />
+                                  ))}
+                                </div>
+                                <span className="font-bold text-foreground">{ratingData.average}</span>
+                                <span className="text-muted-foreground">({ratingData.count})</span>
+                              </div>
+                            );
+                          })()}
                           <CardDescription className="line-clamp-2 text-muted-foreground mt-1.5 min-h-[40px]">{service.description}</CardDescription>
                         </CardHeader>
-                        <CardContent className="flex-1 pt-0">
+                        <CardContent className="flex-1 pt-0 flex flex-col justify-between">
                           <p className="text-xs text-muted-foreground/80 leading-relaxed">
                             Tailored strategies and solutions engineered specifically to address local dynamics and power your strategic goals.
                           </p>
+                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/40">
+                            <span className="text-xs text-muted-foreground font-medium">Standard Price</span>
+                            <span className="text-sm font-black text-orange-600 bg-orange-600/5 px-2.5 py-1 rounded-md">
+                              GH₵ {(service.price !== undefined ? service.price : 150).toLocaleString()}
+                            </span>
+                          </div>
                         </CardContent>
                         <CardFooter className="pt-0">
                           <Link to={`/services/${service.id}`} className="w-full">

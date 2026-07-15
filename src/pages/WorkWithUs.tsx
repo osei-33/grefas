@@ -226,9 +226,18 @@ export default function WorkWithUs() {
     } catch (error: any) {
       console.error('Portal sign in error:', error);
       let errorMsg = `Failed to sign in: ${error.message || error}`;
-      if (error?.code === 'auth/operation-not-allowed') {
+      const errorCode = error?.code || '';
+      const errorMessage = error?.message || '';
+      if (errorCode === 'auth/operation-not-allowed') {
         errorMsg = 'Email/Password sign-in is currently disabled. Please enable the "Email/Password" provider in your Firebase Console under Authentication > Sign-in method.';
-      } else if (error?.code === 'auth/user-not-found' || error?.code === 'auth/wrong-password' || error?.code === 'auth/invalid-credential') {
+      } else if (
+        errorCode === 'auth/user-not-found' || 
+        errorCode === 'auth/wrong-password' || 
+        errorCode === 'auth/invalid-credential' ||
+        errorMessage.includes('user-not-found') ||
+        errorMessage.includes('wrong-password') ||
+        errorMessage.includes('invalid-credential')
+      ) {
         errorMsg = 'Incorrect email or password.';
       }
       toast.error(errorMsg);

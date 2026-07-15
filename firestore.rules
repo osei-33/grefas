@@ -100,7 +100,8 @@ service cloud.firestore {
       return data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
              data.description is string && data.description.size() > 0 && data.description.size() < 1000 &&
              data.iconName is string && data.color is string &&
-             (!('category' in data) || (data.category is string && data.category in ['Consulting', 'Entertainment']));
+             (!('category' in data) || (data.category is string && data.category.size() > 0 && data.category.size() < 100)) &&
+             (!('price' in data) || data.price is number);
     }
 
     function isValidGalleryItem(data) {
@@ -160,6 +161,14 @@ service cloud.firestore {
              (!('type' in data) || data.type is string) &&
              (!('buttonText' in data) || data.buttonText is string) &&
              (!('buttonUrl' in data) || data.buttonUrl is string);
+    }
+
+    function isValidReview(data) {
+      return data.serviceId is string && data.serviceId.size() > 0 &&
+             data.userId is string && data.userId.size() > 0 &&
+             data.userName is string && data.userName.size() > 0 &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             data.comment is string && data.comment.size() > 0 && data.comment.size() <= 2000;
     }
 
     function isValidActivityLog(data) {
@@ -250,6 +259,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidReview(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidReview(request.resource.data) && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow delete: if isStaff() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+
     match /bookings/{bookingId} {
       allow get, list: if true;
       allow create: if isValidBooking(request.resource.data);
@@ -335,6 +351,10 @@ service cloud.firestore {
     match /salaries/{salaryId} {
       allow read: if isStaff() || (isAuthenticated() && resource.data.employeeEmail == request.auth.token.email);
       allow create, update, delete: if isStaff();
+    }
+    
+    match /transactions/{transactionId} {
+      allow read, write: if isStaff();
     }
     
     match /activity_logs/{logId} {
