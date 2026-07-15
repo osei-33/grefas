@@ -10,11 +10,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { format } from 'date-fns';
 import AuthDialog from './AuthDialog';
 
-const isAdminEmail = (email: string | null) => {
+const isAdminEmail = (email: string | null | undefined) => {
   if (!email) return false;
+  const cleanEmail = email.toLowerCase().trim();
   const hardcodedAdmins = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"];
-  const envAdmins = ((import.meta as any).env.VITE_ADMIN_EMAILS || "").split(",").map((e: string) => e.trim());
-  return hardcodedAdmins.includes(email) || envAdmins.includes(email);
+  
+  let envAdmins: string[] = [];
+  try {
+    const envEmails = (import.meta as any).env?.VITE_ADMIN_EMAILS || "";
+    if (envEmails) {
+      envAdmins = String(envEmails).split(",").map((e: string) => e.trim().toLowerCase());
+    }
+  } catch (e) {
+    console.warn("Could not read VITE_ADMIN_EMAILS from env:", e);
+  }
+  
+  return hardcodedAdmins.includes(cleanEmail) || envAdmins.includes(cleanEmail);
 };
 
 export default function NotificationCenter() {

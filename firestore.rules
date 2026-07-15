@@ -168,6 +168,17 @@ service cloud.firestore {
              data.createdAt is string;
     }
 
+    function isValidBookingPass(data) {
+      return data.bookingId is string && data.bookingId.size() > 0 && data.bookingId.size() <= 100 &&
+             data.orderNumber is string && data.orderNumber.size() > 0 && data.orderNumber.size() <= 100 &&
+             data.userName is string && data.userName.size() > 0 && data.userName.size() <= 200 &&
+             data.userEmail is string && data.userEmail.size() > 0 && data.userEmail.size() <= 200 &&
+             (!('serviceTitle' in data) || (data.serviceTitle is string && data.serviceTitle.size() <= 300)) &&
+             (!('generatedByEmail' in data) || (data.generatedByEmail is string && data.generatedByEmail.size() <= 200)) &&
+             (!('generatedByName' in data) || (data.generatedByName is string && data.generatedByName.size() <= 200)) &&
+             data.timestamp is string && data.timestamp.size() > 0 && data.timestamp.size() <= 100;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -243,6 +254,13 @@ service cloud.firestore {
       allow get, list: if true;
       allow create: if isValidBooking(request.resource.data);
       allow update, delete: if isStaff();
+    }
+
+    match /booking_passes/{passId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && isValidBookingPass(request.resource.data);
+      allow update: if isStaff() && isValidBookingPass(request.resource.data);
+      allow delete: if isStaff();
     }
 
     match /notifications/{notificationId} {

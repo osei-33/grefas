@@ -39,11 +39,22 @@ import SmsDashboard from '@/components/SmsDashboard';
 import ManageLetters from '@/components/ManageLetters';
 import ManageEmployeesPayroll from '@/components/ManageEmployeesPayroll';
 
-const isAdminEmail = (email: string | null) => {
+const isAdminEmail = (email: string | null | undefined) => {
   if (!email) return false;
+  const cleanEmail = email.toLowerCase().trim();
   const hardcodedAdmins = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"];
-  const envAdmins = ((import.meta as any).env.VITE_ADMIN_EMAILS || "").split(",").map((e: string) => e.trim());
-  return hardcodedAdmins.includes(email) || envAdmins.includes(email);
+  
+  let envAdmins: string[] = [];
+  try {
+    const envEmails = (import.meta as any).env?.VITE_ADMIN_EMAILS || "";
+    if (envEmails) {
+      envAdmins = String(envEmails).split(",").map((e: string) => e.trim().toLowerCase());
+    }
+  } catch (e) {
+    console.warn("Could not read VITE_ADMIN_EMAILS from env:", e);
+  }
+  
+  return hardcodedAdmins.includes(cleanEmail) || envAdmins.includes(cleanEmail);
 };
 
 function AdminDeleteModal({ 
@@ -109,6 +120,7 @@ export default function Admin() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const hasAdminAccess = role === 'admin' || role === 'editor' || isAdminEmail(user?.email);
 
   // Session inactivity/expiration management
   const lastActivityRef = useRef<number>(Date.now());
@@ -116,7 +128,7 @@ export default function Admin() {
   const [showSessionWarning, setShowSessionWarning] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!user || role === 'guest') return;
+    if (!user || !hasAdminAccess) return;
 
     const resetTimer = () => {
       lastActivityRef.current = Date.now();
@@ -207,13 +219,13 @@ export default function Admin() {
 
         // Listen for user document changes
         unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-          if (doc && doc.exists()) {
+          if (isAdminEmail(user.email)) {
+            setRole('admin');
+          } else if (doc && doc.exists()) {
             setRole(doc.data().role);
           } else {
             // Document might not exist yet if they just signed in
-            if (!isAdminEmail(user.email)) {
-              setRole('guest');
-            }
+            setRole('guest');
           }
           setLoading(false);
         }, (error) => {
@@ -291,7 +303,7 @@ export default function Admin() {
   }, []);
 
   useEffect(() => {
-    if (!user || role === 'guest') return;
+    if (!user || !hasAdminAccess) return;
 
     const notifQuery = query(
       collection(db, 'notifications'),
@@ -394,12 +406,12 @@ export default function Admin() {
     return <Login />;
   }
 
-  if (role === 'guest') {
+  if (!hasAdminAccess) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4 text-center px-4">
         <AlertCircle className="h-12 w-12 text-red-500" />
         <h2 className="text-2xl font-bold">Access Denied</h2>
-        <p className="text-zinc-500 max-w-md">You do not have permission to access the admin panel. Please contact the administrator if you believe this is an error.</p>
+        <p className="text-zinc-500 max-w-md">You do not have administrator permission to access the admin panel. Please contact the administrator if you believe this is an error.</p>
         <div className="flex gap-4">
           <Button variant="outline" onClick={handleLogout}>Logout</Button>
           <Button className="bg-orange-600 hover:bg-orange-700" onClick={() => navigate('/')}>Return Home</Button>
@@ -951,7 +963,20 @@ function Login() {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
       
-      if (!isAdminEmail(user.email)) {
+      const isHardcoded = isAdminEmail(user.email);
+      let userRole = null;
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc && userDoc.exists()) {
+          userRole = userDoc.data().role;
+        }
+      } catch (err) {
+        console.warn("Could not check user role from firestore:", err);
+      }
+
+      const hasAccess = isHardcoded || userRole === 'admin' || userRole === 'editor';
+      
+      if (!hasAccess) {
         toast.error('Access Denied: This account is not authorized as an Admin.');
         // Sign out if not admin
         await signOut(auth);
@@ -960,9 +985,13 @@ function Login() {
       }
     } catch (error: any) {
       console.error(error);
-      let msg = error.message || 'Incorrect email address or password.';
+      let msg = 'Incorrect email address or password.';
       if (error.code === 'auth/operation-not-allowed') {
         msg = 'Email/Password sign-in is currently disabled. Please enable the "Email/Password" provider in your Firebase Console under Authentication > Sign-in method.';
+      } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        msg = 'Incorrect email address or password.';
+      } else if (error.message) {
+        msg = error.message;
       }
       toast.error(msg);
     } finally {

@@ -319,9 +319,29 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["type", "description", "createdAt"]
+    },
+    "BookingPass": {
+      "title": "Booking Pass",
+      "description": "A booking pass validation ticket printed/generated for verified service attendance.",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "serviceTitle": { "type": "string" },
+        "generatedByEmail": { "type": "string" },
+        "generatedByName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookingId", "orderNumber", "userName", "userEmail", "timestamp"]
     }
   },
   "firestore": {
+    "/booking_passes/{passId}": {
+      "schema": "BookingPass",
+      "description": "Collection of printed booking passes for consultation/entertainment verification"
+    },
     "/visitor_notifications/{notificationId}": {
       "schema": "VisitorNotification",
       "description": "Collection of visitor popup notifications managed by admin"

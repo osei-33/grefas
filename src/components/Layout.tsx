@@ -129,18 +129,19 @@ export default function Layout({ children }: LayoutProps) {
       setUser(authenticatedUser);
       if (authenticatedUser) {
         const userPath = `users/${authenticatedUser.uid}`;
+        const isHardcodedAdmin = authenticatedUser.email && ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"].includes(authenticatedUser.email.toLowerCase().trim());
         try {
           const userDoc = await getDoc(doc(db, 'users', authenticatedUser.uid));
-          if (userDoc && userDoc.exists()) {
-            setUserRole(userDoc.data().role);
-          } else if (["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"].includes(authenticatedUser.email || "")) {
+          if (isHardcodedAdmin) {
             setUserRole('admin');
+          } else if (userDoc && userDoc.exists()) {
+            setUserRole(userDoc.data().role);
           } else {
             setUserRole('guest');
           }
         } catch (error) {
           // Fallback to admin if it's the owner, even if offline
-          if (["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"].includes(authenticatedUser.email || "")) {
+          if (isHardcodedAdmin) {
             setUserRole('admin');
           } else {
             setUserRole('guest');
