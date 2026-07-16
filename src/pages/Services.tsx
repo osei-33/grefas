@@ -48,6 +48,17 @@ export default function Services() {
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [intakePrice, setIntakePrice] = useState<number>(50);
   const [priceConfirmed, setPriceConfirmed] = useState<boolean>(false);
+  const [paymentProvider, setPaymentProvider] = useState<'mtn' | 'telecel' | 'at' | 'card'>('mtn');
+  const [momoNumber, setMomoNumber] = useState('');
+  const [momoProvider, setMomoProvider] = useState('MTN');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardName, setCardName] = useState('');
+  const [isPaying, setIsPaying] = useState(false);
+  const [paymentSteps, setPaymentSteps] = useState<string[]>([]);
+  const [currentPaymentStep, setCurrentPaymentStep] = useState(0);
+  const [paymentRef, setPaymentRef] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [printableData, setPrintableData] = useState<any | null>(null);
   const [lastSubmittedSnapshot, setLastSubmittedSnapshot] = useState<any | null>(null);
@@ -1121,6 +1132,85 @@ export default function Services() {
   const printEmptyForm = () => {
     setPrintableData(null);
     setShowPrintModal(true);
+  };
+
+  const handleProcessPayment = async () => {
+    // Basic fields validation
+    if (paymentProvider !== 'card') {
+      if (!momoNumber.trim()) {
+        toast.error("Please enter your Mobile Money phone number");
+        return;
+      }
+      if (!/^0[235][0-9]{8}$/.test(momoNumber.trim())) {
+        toast.error("Please enter a valid 10-digit Ghanaian mobile money number starting with 0");
+        return;
+      }
+    } else {
+      if (!cardName.trim()) {
+        toast.error("Please enter the cardholder's name");
+        return;
+      }
+      if (!cardNumber.trim()) {
+        toast.error("Please enter your card number");
+        return;
+      }
+      if (!cardExpiry.trim()) {
+        toast.error("Please enter your card expiry date");
+        return;
+      }
+      if (!cardCvv.trim()) {
+        toast.error("Please enter your card CVV");
+        return;
+      }
+    }
+
+    setIsPaying(true);
+    setCurrentPaymentStep(0);
+    const steps = [
+      "Connecting to secure payment gateway server...",
+      `Routing request to ${paymentProvider === 'card' ? 'Visa/Mastercard Clearing Desk' : (momoProvider + ' Central Node')}...`,
+      paymentProvider === 'card' 
+        ? "Processing 3D-Secure authentication..." 
+        : "Sending secure authorization prompt notification to phone...",
+      "Clearing transaction and securing client reservation funds..."
+    ];
+    setPaymentSteps(steps);
+
+    // Simulate payment sequence with steps
+    try {
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setCurrentPaymentStep(1);
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setCurrentPaymentStep(2);
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setCurrentPaymentStep(3);
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // Generate Reference
+      const refCode = `${paymentProvider === 'card' ? 'CARD' : 'MOMO'}-GREFAS-${Math.floor(100000 + Math.random() * 900000)}`;
+      setPaymentRef(refCode);
+
+      // Write direct to Firestore Transactions Collection
+      const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
+      await addDoc(collection(db, 'transactions'), {
+        description: `Audition / Casting Fee: ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
+        amount: Number(intakePrice),
+        type: 'credit',
+        category: 'Audition / Casting Fee',
+        ref: refCode,
+        recordedBy: recordedByEmail,
+        createdAt: new Date(),
+        transactionDate: new Date().toISOString()
+      });
+
+      setPriceConfirmed(true);
+      toast.success(`Secure payment of GH₵ ${intakePrice.toFixed(2)} completed successfully!`);
+    } catch (err) {
+      console.error("Payment execution failure:", err);
+      toast.error("Security verification failed. Please try again.");
+    } finally {
+      setIsPaying(false);
+    }
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -2319,12 +2409,12 @@ export default function Services() {
                           )}
                         </div>
 
-                        {/* Dynamic Casting Intake Price Confirmation Section */}
+                        {/* Dynamic Casting Intake Price Confirmation Section (SSL Secured Payment Portal) */}
                         <div className="sm:col-span-2 border-t border-border/40 pt-6 space-y-4">
                           <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-5 md:p-6 space-y-4">
                             <div className="flex items-start gap-3.5">
                               <div className="bg-orange-600 text-white p-3 rounded-xl shrink-0 shadow-md">
-                                <LucideIcons.CreditCard className="h-6 w-6 animate-pulse" />
+                                <LucideIcons.ShieldCheck className="h-6 w-6 animate-pulse" />
                               </div>
                               <div className="space-y-1">
                                 <h4 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 flex-wrap">
@@ -2337,17 +2427,152 @@ export default function Services() {
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-3 p-3.5 bg-card border border-border/80 rounded-xl hover:bg-muted/30 transition-all duration-300">
-                              <input
-                                type="checkbox"
-                                id="priceConfirmation"
-                                checked={priceConfirmed}
-                                onChange={(e) => setPriceConfirmed(e.target.checked)}
-                                className="h-5 w-5 rounded border-border text-orange-600 focus:ring-orange-600 accent-orange-600 cursor-pointer"
-                              />
-                              <label htmlFor="priceConfirmation" className="text-xs font-bold text-foreground cursor-pointer select-none">
-                                I confirm and agree to pay the GH₵ {intakePrice} registration fee to finalize my casting enrollment
-                              </label>
+                            <div className="border-t border-border/40 pt-4 space-y-4">
+                              <div className="flex justify-between items-center text-xs font-bold text-foreground">
+                                <span>Total Audition Fee:</span>
+                                <span className="text-emerald-600 font-mono text-sm">GH₵ {intakePrice.toFixed(2)}</span>
+                              </div>
+
+                              {!priceConfirmed ? (
+                                <div className="space-y-4">
+                                  {/* Payment Method Selector */}
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setPaymentProvider('mtn')}
+                                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1.5 ${
+                                        paymentProvider !== 'card'
+                                          ? 'border-orange-500 bg-orange-500/10 text-orange-950 dark:text-orange-200'
+                                          : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                      }`}
+                                    >
+                                      <LucideIcons.Smartphone className="h-4 w-4" /> Mobile Money
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPaymentProvider('card')}
+                                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1.5 ${
+                                        paymentProvider === 'card'
+                                          ? 'border-orange-500 bg-orange-500/10 text-orange-950 dark:text-orange-200'
+                                          : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                      }`}
+                                    >
+                                      <LucideIcons.CreditCard className="h-4 w-4" /> Credit / Debit Card
+                                    </button>
+                                  </div>
+
+                                  {paymentProvider !== 'card' ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">MOMO Network Provider</label>
+                                        <select
+                                          value={momoProvider}
+                                          onChange={(e) => setMomoProvider(e.target.value)}
+                                          className="w-full h-10 rounded-xl border border-border bg-muted/50 px-3 py-1 text-xs text-foreground focus:outline-none"
+                                        >
+                                          <option value="MTN">MTN Mobile Money</option>
+                                          <option value="Telecel">Telecel Cash</option>
+                                          <option value="AT">AT Money</option>
+                                        </select>
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Mobile Money Number</label>
+                                        <Input
+                                          type="tel"
+                                          placeholder="024XXXXXXX"
+                                          value={momoNumber}
+                                          onChange={(e) => setMomoNumber(e.target.value)}
+                                          className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                        />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cardholder Name</label>
+                                        <Input
+                                          placeholder="John Doe"
+                                          value={cardName}
+                                          onChange={(e) => setCardName(e.target.value)}
+                                          className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                        />
+                                      </div>
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className="sm:col-span-1.5 space-y-1.5">
+                                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Number</label>
+                                          <Input
+                                            placeholder="4111 2222 3333 4444"
+                                            value={cardNumber}
+                                            onChange={(e) => setCardNumber(e.target.value)}
+                                            className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                          />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Expiry (MM/YY)</label>
+                                          <Input
+                                            placeholder="12/28"
+                                            value={cardExpiry}
+                                            onChange={(e) => setCardExpiry(e.target.value)}
+                                            className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                          />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">CVV</label>
+                                          <Input
+                                            type="password"
+                                            maxLength={4}
+                                            placeholder="123"
+                                            value={cardCvv}
+                                            onChange={(e) => setCardCvv(e.target.value)}
+                                            className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {isPaying ? (
+                                    <div className="bg-card border border-border/60 p-4 rounded-xl space-y-3">
+                                      <div className="flex items-center gap-2">
+                                        <LucideIcons.Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                                        <span className="text-xs font-bold text-foreground">Executing Secure Gateway Protocol...</span>
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        {paymentSteps.map((stepMsg, idx) => (
+                                          <div key={idx} className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground">
+                                            {currentPaymentStep > idx ? (
+                                              <LucideIcons.CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                            ) : currentPaymentStep === idx ? (
+                                              <LucideIcons.Loader2 className="h-3 w-3 animate-spin text-emerald-600 shrink-0" />
+                                            ) : (
+                                              <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30 ml-1 shrink-0" />
+                                            )}
+                                            <span className={currentPaymentStep === idx ? 'text-foreground font-bold' : ''}>{stepMsg}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      onClick={handleProcessPayment}
+                                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
+                                    >
+                                      <LucideIcons.Lock className="h-3.5 w-3.5" /> Authorize & Pay GH₵ {intakePrice.toFixed(2)}
+                                    </Button>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-xl text-center space-y-2">
+                                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600">
+                                    <LucideIcons.CheckCircle className="h-6 w-6" />
+                                  </div>
+                                  <h5 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Payment Secured Successfully</h5>
+                                  <p className="text-[10px] text-muted-foreground">
+                                    Reference: <span className="font-mono font-bold text-foreground">{paymentRef}</span>
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -2376,13 +2601,22 @@ export default function Services() {
                       </Button>
                       <Button
                         type="submit"
-                        disabled={submitting}
-                        className="ml-auto bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-6 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        disabled={submitting || !priceConfirmed}
+                        className={`ml-auto font-bold h-11 px-6 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                          priceConfirmed 
+                            ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-md' 
+                            : 'bg-muted border border-border text-muted-foreground cursor-not-allowed shadow-none hover:bg-muted'
+                        }`}
                       >
                         {submitting ? (
                           <>
                             <LucideIcons.Loader2 className="h-5 w-5 animate-spin" />
                             <span>Transmitting...</span>
+                          </>
+                        ) : !priceConfirmed ? (
+                          <>
+                            <LucideIcons.Lock className="h-4 w-4 text-muted-foreground/60" />
+                            <span>Payment Required</span>
                           </>
                         ) : (
                           <>

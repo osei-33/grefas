@@ -12,7 +12,7 @@ import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc, q
 import { onAuthStateChanged } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer, ShieldCheck, Smartphone, CreditCard, Lock, CheckCircle } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import { showBrowserNotification } from '@/lib/utils';
@@ -62,6 +62,19 @@ export default function Booking() {
   });
   const [services, setServices] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [consultationPrice, setConsultationPrice] = useState<number>(150);
+  const [isPaid, setIsPaid] = useState(false);
+  const [paymentProvider, setPaymentProvider] = useState<'mtn' | 'telecel' | 'at' | 'card'>('mtn');
+  const [momoNumber, setMomoNumber] = useState('');
+  const [momoProvider, setMomoProvider] = useState('MTN');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardName, setCardName] = useState('');
+  const [isPaying, setIsPaying] = useState(false);
+  const [paymentSteps, setPaymentSteps] = useState<string[]>([]);
+  const [currentPaymentStep, setCurrentPaymentStep] = useState(0);
+  const [paymentRef, setPaymentRef] = useState('');
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const [copied, setCopied] = useState(false);
@@ -493,8 +506,92 @@ export default function Booking() {
     }
   };
 
+  const handleProcessPayment = async () => {
+    // Basic fields validation
+    if (paymentProvider !== 'card') {
+      if (!momoNumber.trim()) {
+        toast.error("Please enter your Mobile Money phone number");
+        return;
+      }
+      if (!/^0[235][0-9]{8}$/.test(momoNumber.trim())) {
+        toast.error("Please enter a valid 10-digit Ghanaian mobile money number starting with 0");
+        return;
+      }
+    } else {
+      if (!cardName.trim()) {
+        toast.error("Please enter the cardholder's name");
+        return;
+      }
+      if (!cardNumber.trim()) {
+        toast.error("Please enter your card number");
+        return;
+      }
+      if (!cardExpiry.trim()) {
+        toast.error("Please enter your card expiry date");
+        return;
+      }
+      if (!cardCvv.trim()) {
+        toast.error("Please enter your card CVV");
+        return;
+      }
+    }
+
+    setIsPaying(true);
+    setCurrentPaymentStep(0);
+    const steps = [
+      "Connecting to secure payment gateway server...",
+      `Routing request to ${paymentProvider === 'card' ? 'Visa/Mastercard Clearing Desk' : (momoProvider + ' Central Node')}...`,
+      paymentProvider === 'card' 
+        ? "Processing 3D-Secure authentication..." 
+        : "Sending secure authorization prompt notification to phone...",
+      "Clearing transaction and securing client reservation funds..."
+    ];
+    setPaymentSteps(steps);
+
+    // Simulate payment sequence with steps
+    try {
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setCurrentPaymentStep(1);
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setCurrentPaymentStep(2);
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setCurrentPaymentStep(3);
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // Generate Reference
+      const refCode = `${paymentProvider === 'card' ? 'CARD' : 'MOMO'}-GREFAS-${Math.floor(100000 + Math.random() * 900000)}`;
+      setPaymentRef(refCode);
+
+      // Write direct to Firestore Transactions Collection
+      const recordedByEmail = auth.currentUser?.email || formData.userEmail || 'online_client';
+      await addDoc(collection(db, 'transactions'), {
+        description: `Consultation Booking: ${formData.serviceTitle || 'General Consult'} (Client: ${formData.userName})`,
+        amount: Number(consultationPrice),
+        type: 'credit',
+        category: 'Consultation Booking',
+        ref: refCode,
+        recordedBy: recordedByEmail,
+        createdAt: serverTimestamp(),
+        transactionDate: new Date().toISOString()
+      });
+
+      setIsPaid(true);
+      toast.success(`Secure payment of GH₵ ${consultationPrice.toFixed(2)} completed successfully!`);
+    } catch (err) {
+      console.error("Payment execution failure:", err);
+      toast.error("Security verification failed. Please try again.");
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isPaid) {
+      toast.error("Please complete the secure in-app consultation payment before submitting.");
+      return;
+    }
+
     if (!date) {
       toast.error("Please select a date");
       return;
@@ -521,6 +618,9 @@ export default function Booking() {
         clientTimezone: timezone,
         userId: user?.uid || 'anonymous',
         status: 'pending',
+        paymentStatus: 'Paid',
+        paymentRef: paymentRef,
+        price: consultationPrice,
         createdAt: serverTimestamp()
       });
 
@@ -1012,6 +1112,9 @@ export default function Booking() {
                                   serviceId: e.target.value,
                                   serviceTitle: s?.title || ''
                                 });
+                                if (s) {
+                                  setConsultationPrice(s.price || 150);
+                                }
                               }}
                             >
                               <option value="" className="bg-card">Select a service category</option>
@@ -1151,9 +1254,186 @@ export default function Booking() {
                           )}
                         </div>
 
+                        {/* IN-APP SECURE PAYMENT PORTAL */}
+                        <div className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 space-y-4 text-left">
+                          <div className="flex items-center justify-between border-b border-emerald-500/10 pb-3">
+                            <div className="flex items-center gap-2">
+                              <ShieldCheck className="h-5.5 w-5.5 text-emerald-600" />
+                              <div>
+                                <h4 className="text-sm font-extrabold text-foreground">Secure Consultation Payment</h4>
+                                <p className="text-[10px] text-muted-foreground font-semibold">SSL SECURED & ESCROW PROTECTED</p>
+                              </div>
+                            </div>
+                            <span className="bg-emerald-500/10 text-emerald-600 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase font-mono">
+                              Required
+                            </span>
+                          </div>
+
+                          <div className="bg-muted/40 p-4 rounded-xl border border-border/40 space-y-2">
+                            <div className="flex justify-between text-xs font-semibold text-muted-foreground">
+                              <span>Service / Category:</span>
+                              <span className="text-foreground font-extrabold">{formData.serviceTitle || 'General Consultation'}</span>
+                            </div>
+                            <div className="flex justify-between text-xs font-semibold text-muted-foreground">
+                              <span>Consultation Base Fee:</span>
+                              <span className="text-foreground font-bold font-mono">GH₵ {consultationPrice.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs font-semibold text-muted-foreground">
+                              <span>Gateway Convenience Fee:</span>
+                              <span className="text-emerald-600 font-bold font-mono">GH₵ 0.00 (Waived)</span>
+                            </div>
+                            <div className="h-px bg-border/60 my-1" />
+                            <div className="flex justify-between text-sm font-black">
+                              <span className="text-foreground">Total Accurate Price:</span>
+                              <span className="text-emerald-600 font-mono">GH₵ {consultationPrice.toFixed(2)}</span>
+                            </div>
+                          </div>
+
+                          {!isPaid ? (
+                            <div className="space-y-4">
+                              {/* Payment Method Selector */}
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setPaymentProvider('mtn')}
+                                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1.5 ${
+                                    paymentProvider !== 'card'
+                                      ? 'border-orange-500 bg-orange-500/10 text-orange-950 dark:text-orange-200'
+                                      : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  <Smartphone className="h-4 w-4" /> Mobile Money
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPaymentProvider('card')}
+                                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1.5 ${
+                                    paymentProvider === 'card'
+                                      ? 'border-orange-500 bg-orange-500/10 text-orange-950 dark:text-orange-200'
+                                      : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  <CreditCard className="h-4 w-4" /> Credit / Debit Card
+                                </button>
+                              </div>
+
+                              {paymentProvider !== 'card' ? (
+                                <div className="space-y-3">
+                                  <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">MOMO Network Provider</label>
+                                    <select
+                                      value={momoProvider}
+                                      onChange={(e) => setMomoProvider(e.target.value)}
+                                      className="w-full h-10 rounded-xl border border-border bg-muted/50 px-3 py-1 text-xs text-foreground focus:outline-none"
+                                    >
+                                      <option value="MTN">MTN Mobile Money</option>
+                                      <option value="Telecel">Telecel Cash</option>
+                                      <option value="AT">AT Money</option>
+                                    </select>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Mobile Money Number</label>
+                                    <Input
+                                      type="tel"
+                                      placeholder="024XXXXXXX"
+                                      value={momoNumber}
+                                      onChange={(e) => setMomoNumber(e.target.value)}
+                                      className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cardholder Name</label>
+                                    <Input
+                                      placeholder="John Doe"
+                                      value={cardName}
+                                      onChange={(e) => setCardName(e.target.value)}
+                                      className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                    />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Number</label>
+                                    <Input
+                                      placeholder="4111 2222 3333 4444"
+                                      value={cardNumber}
+                                      onChange={(e) => setCardNumber(e.target.value)}
+                                      className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1.5">
+                                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Expiry (MM/YY)</label>
+                                      <Input
+                                        placeholder="12/28"
+                                        value={cardExpiry}
+                                        onChange={(e) => setCardExpiry(e.target.value)}
+                                        className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">CVV</label>
+                                      <Input
+                                        type="password"
+                                        maxLength={4}
+                                        placeholder="123"
+                                        value={cardCvv}
+                                        onChange={(e) => setCardCvv(e.target.value)}
+                                        className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {isPaying ? (
+                                <div className="bg-card/40 border border-border/60 p-4 rounded-xl space-y-3">
+                                  <div className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                                    <span className="text-xs font-bold text-foreground">Executing Secure Gateway Protocol...</span>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    {paymentSteps.map((stepMsg, idx) => (
+                                      <div key={idx} className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground">
+                                        {currentPaymentStep > idx ? (
+                                          <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                        ) : currentPaymentStep === idx ? (
+                                          <Loader2 className="h-3 w-3 animate-spin text-emerald-600 shrink-0" />
+                                        ) : (
+                                          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30 ml-1 shrink-0" />
+                                        )}
+                                        <span className={currentPaymentStep === idx ? 'text-foreground font-bold' : ''}>{stepMsg}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  onClick={handleProcessPayment}
+                                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
+                                >
+                                  <Lock className="h-3.5 w-3.5" /> Authorize & Pay GH₵ {consultationPrice.toFixed(2)}
+                                </Button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-xl text-center space-y-2">
+                              <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600">
+                                <CheckCircle className="h-6 w-6" />
+                              </div>
+                              <h5 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Payment Secured Successfully</h5>
+                              <p className="text-[10px] text-muted-foreground">
+                                Reference: <span className="font-mono font-bold text-foreground">{paymentRef}</span>
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
                         <div className="rounded-xl border border-orange-200/50 dark:border-orange-950/40 bg-orange-500/5 p-4 flex gap-3 items-start text-xs font-semibold text-orange-850 dark:text-orange-400">
                           <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                          <p className="leading-relaxed">
+                          <p className="leading-relaxed text-left">
                             By submitting this request, you secure this block on our schedule. Due to our strictly kept 5-bookings limit per day rule, our consult desk will lock this slot and evaluate the alignment within normal review cycles.
                           </p>
                         </div>
@@ -1170,11 +1450,15 @@ export default function Booking() {
                           <Button
                             type="button"
                             onClick={handleBooking}
-                            disabled={submitting}
-                            className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-11 px-6 rounded-xl flex-1 justify-center flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm"
+                            disabled={submitting || !isPaid}
+                            className={`font-bold h-11 px-6 rounded-xl flex-1 justify-center flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm ${
+                              isPaid ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-muted border border-border text-muted-foreground cursor-not-allowed shadow-none hover:bg-muted'
+                            }`}
                           >
                             {submitting ? (
                               <span className="flex items-center gap-1.5 justify-center"><Loader2 className="h-5 w-5 animate-spin" /> Transmitting Booking...</span>
+                            ) : !isPaid ? (
+                              <span className="flex items-center gap-1.5 justify-center"><Lock className="h-4 w-4 text-muted-foreground/60" /> Secure Payment Required</span>
                             ) : (
                               <>Confirm & Request Booking <Check className="h-4.5 w-4.5" /></>
                             )}

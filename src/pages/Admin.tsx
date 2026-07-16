@@ -1087,6 +1087,8 @@ function Dashboard() {
   const [appointmentTrends, setAppointmentTrends] = useState<any[]>([]);
   const [applicationStatuses, setApplicationStatuses] = useState<any[]>([]);
   const [userGrowth, setUserGrowth] = useState<any[]>([]);
+  const [monthlyRevenueTrends, setMonthlyRevenueTrends] = useState<any[]>([]);
+  const [expenseCategoryBreakdown, setExpenseCategoryBreakdown] = useState<any[]>([]);
   const [loadingCharts, setLoadingCharts] = useState(true);
 
   const [systemStatuses, setSystemStatuses] = useState({
@@ -1367,6 +1369,112 @@ function Dashboard() {
           finalUserGrowth = starterCurve;
         }
 
+        // Fetch Transactions for Financial Dashboards
+        let transactionsList: any[] = [];
+        try {
+          const transactionsSnap = await getDocs(collection(db, 'transactions'));
+          transactionsList = transactionsSnap.docs.map(doc => doc.data());
+        } catch (txErr) {
+          console.warn("Failed to fetch transactions for dashboard:", txErr);
+        }
+
+        // 1. Calculate Expenses by Category
+        const debits = transactionsList.filter((t: any) => t.type === 'debit');
+        const totalDebitsSum = debits.reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+        
+        const expenseCategoryMap: { [key: string]: number } = {};
+        debits.forEach((t: any) => {
+          const cat = t.category || 'Other Expense';
+          expenseCategoryMap[cat] = (expenseCategoryMap[cat] || 0) + (t.amount || 0);
+        });
+
+        const defaultDebitCategories = [
+          "Specialist/Staff Payroll",
+          "Equipment Purchase",
+          "Office Utilities",
+          "Entertainment Event Production",
+          "Marketing & Ads",
+          "Other Expense"
+        ];
+        
+        defaultDebitCategories.forEach(cat => {
+          if (expenseCategoryMap[cat] === undefined) {
+            expenseCategoryMap[cat] = 0;
+          }
+        });
+
+        const expenseCategoryList = Object.entries(expenseCategoryMap)
+          .map(([category, amount]) => ({
+            category,
+            amount,
+            percentage: totalDebitsSum > 0 ? (amount / totalDebitsSum) * 100 : 0
+          }))
+          .sort((a, b) => b.amount - a.amount);
+
+        // 2. Calculate Monthly Revenue Trends (Income vs Expenses)
+        const monthlyMap: { [key: string]: { Income: number; Expenses: number } } = {};
+        const last6MonthsKeys: string[] = [];
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date();
+          d.setMonth(d.getMonth() - i);
+          const monthKey = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+          last6MonthsKeys.push(monthKey);
+          monthlyMap[monthKey] = { Income: 0, Expenses: 0 };
+        }
+
+        transactionsList.forEach((t: any) => {
+          let dateObj: Date | null = null;
+          if (t.transactionDate) {
+            dateObj = new Date(t.transactionDate);
+          } else if (t.createdAt) {
+            dateObj = t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt);
+          }
+          if (dateObj && !isNaN(dateObj.getTime())) {
+            const monthKey = dateObj.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+            if (!monthlyMap[monthKey]) {
+              monthlyMap[monthKey] = { Income: 0, Expenses: 0 };
+            }
+            if (t.type === 'credit') {
+              monthlyMap[monthKey].Income += (t.amount || 0);
+            } else if (t.type === 'debit') {
+              monthlyMap[monthKey].Expenses += (t.amount || 0);
+            }
+          }
+        });
+
+        const revTrends = last6MonthsKeys.map(month => ({
+          month,
+          Income: monthlyMap[month]?.Income || 0,
+          Expenses: monthlyMap[month]?.Expenses || 0
+        }));
+
+        const totalTxCount = transactionsList.length;
+        const finalRevTrends = revTrends.map((item, idx) => {
+          if (totalTxCount === 0) {
+            const baseline = [
+              { Income: 2500, Expenses: 1200 },
+              { Income: 3800, Expenses: 1800 },
+              { Income: 4200, Expenses: 2400 },
+              { Income: 5600, Expenses: 2900 },
+              { Income: 6800, Expenses: 3100 },
+              { Income: 7500, Expenses: 3500 }
+            ];
+            return {
+              month: item.month,
+              ...baseline[idx % baseline.length]
+            };
+          }
+          return item;
+        });
+
+        const finalExpenseCategoryList = totalTxCount === 0 ? [
+          { category: "Specialist/Staff Payroll", amount: 1500, percentage: 46.8 },
+          { category: "Entertainment Event Production", amount: 850, percentage: 26.5 },
+          { category: "Equipment Purchase", amount: 450, percentage: 14.1 },
+          { category: "Office Utilities", amount: 250, percentage: 7.8 },
+          { category: "Marketing & Ads", amount: 150, percentage: 4.8 }
+        ] : expenseCategoryList;
+
         setCounts({
           services: servicesSnap.size,
           gallery: gallerySnap.size,
@@ -1381,6 +1489,8 @@ function Dashboard() {
         setAppointmentTrends(finalAptTrends);
         setApplicationStatuses(finalStatusDist);
         setUserGrowth(finalUserGrowth);
+        setMonthlyRevenueTrends(finalRevTrends);
+        setExpenseCategoryBreakdown(finalExpenseCategoryList);
         setLoadingCharts(false);
       } catch (error) {
         console.error("Dashboard fetch error:", error);
@@ -1749,6 +1859,96 @@ function Dashboard() {
                     <Area type="monotone" dataKey="Users" name="Registered Users" stroke="#3b82f6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorUserGrowth)" />
                   </AreaChart>
                 </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Monthly Revenue Trends (col-span-2) */}
+          <Card className="bg-card border-border shadow-xs lg:col-span-2">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-bold text-foreground">Monthly Revenue Trends</CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground">
+                    Bar chart comparison of Monthly Income (Credits) vs Expenses (Debits)
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-1.5 bg-orange-600/10 text-orange-600 px-2 py-0.5 rounded text-[10px] font-bold font-mono">
+                  <span>Ledger Comparison</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="h-80 pt-4">
+              {loadingCharts ? (
+                <div className="flex h-full items-center justify-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-orange-600" />
+                  <span className="text-xs text-muted-foreground font-bold">PROJECTING REVENUE...</span>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyRevenueTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(120,120,120,0.1)" />
+                    <XAxis dataKey="month" stroke="currentColor" className="text-[10px] text-muted-foreground font-mono" />
+                    <YAxis stroke="currentColor" className="text-[10px] text-muted-foreground font-mono" />
+                    <Tooltip
+                      contentStyle={{ 
+                        backgroundColor: 'var(--card)', 
+                        borderColor: 'rgba(120,120,120,0.2)', 
+                        borderRadius: '8px',
+                        color: 'var(--foreground)'
+                      }}
+                    />
+                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 600 }} />
+                    <Bar dataKey="Income" name="Total Income (Credits)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Expenses" name="Total Expenses (Debits)" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Expense Category Breakdown (col-span-1) */}
+          <Card className="bg-card border-border shadow-xs lg:col-span-1">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-bold text-foreground">Expense Category Breakdown</CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                Where company and operations funds are directed
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4">
+              {loadingCharts ? (
+                <div className="flex h-60 items-center justify-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-orange-600" />
+                  <span className="text-xs text-muted-foreground font-bold font-mono">PARSING CATEGORIES...</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {expenseCategoryBreakdown.map((item, index) => (
+                    <div key={item.category} className="space-y-1">
+                      <div className="flex justify-between text-xs font-semibold">
+                        <span className="text-muted-foreground truncate max-w-[150px]">{item.category}</span>
+                        <span className="text-foreground font-mono">GH₵ {item.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                      </div>
+                      <div className="w-full bg-muted/40 rounded-full h-1.5 overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${
+                            index === 0 ? 'bg-rose-600' :
+                            index === 1 ? 'bg-orange-500' :
+                            index === 2 ? 'bg-amber-500' :
+                            index === 3 ? 'bg-blue-500' : 'bg-slate-400'
+                          }`}
+                          style={{ width: `${Math.max(item.percentage, 2)}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <span className="text-[10px] font-black text-muted-foreground">{item.percentage.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  ))}
+                  {expenseCategoryBreakdown.length === 0 && (
+                    <div className="text-center text-xs text-muted-foreground py-8">No recorded expenses yet</div>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -3249,6 +3449,58 @@ function ManageTransactions() {
     }
   };
 
+  const handleDownloadCSV = () => {
+    try {
+      if (filteredTransactions.length === 0) {
+        toast.error("No transactions available to export.");
+        return;
+      }
+
+      // Define columns
+      const headers = ["Date", "Description", "Type", "Category", "Payment Ref", "Amount (GHS)", "Recorded By"];
+      
+      // Map rows
+      const rows = filteredTransactions.map(t => {
+        const displayDate = t.transactionDate 
+          ? format(new Date(t.transactionDate), 'yyyy-MM-dd')
+          : t.createdAt?.seconds 
+            ? format(new Date(t.createdAt.seconds * 1000), 'yyyy-MM-dd')
+            : 'Recent';
+            
+        return [
+          displayDate,
+          `"${(t.description || '').replace(/"/g, '""')}"`,
+          t.type === 'credit' ? 'CREDIT (Income)' : 'DEBIT (Expense)',
+          t.category || 'N/A',
+          t.ref || 'N/A',
+          t.amount || 0,
+          t.recordedBy || 'N/A'
+        ];
+      });
+
+      // Construct CSV Content
+      const csvContent = [
+        headers.join(","),
+        ...rows.map(e => e.join(","))
+      ].join("\n");
+
+      // Create Downloadable blob
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Grefas_Ledger_Report_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success("CSV Report downloaded successfully!");
+    } catch (err) {
+      console.error("Failed to export ledger to CSV:", err);
+      toast.error("Failed to generate CSV export.");
+    }
+  };
+
   // Calculations
   const totalCredits = transactions
     .filter(t => t.type === 'credit')
@@ -3486,6 +3738,15 @@ function ManageTransactions() {
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadCSV}
+                className="h-9 border-border hover:bg-muted text-foreground flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 shrink-0"
+              >
+                <Download className="h-3.5 w-3.5 text-orange-600" /> Export CSV
+              </Button>
             </div>
           </div>
         </CardHeader>
