@@ -307,7 +307,7 @@ export default function Home() {
           >
             <img
               src={slides[currentSlide]}
-              alt="Hero Background"
+              alt={`Grefas Consult & Entertainment - Business & Production Showcase Slide ${currentSlide + 1}`}
               className="h-full w-full object-cover opacity-50"
               referrerPolicy="no-referrer"
             />
@@ -585,7 +585,7 @@ export default function Home() {
                 <div className="absolute inset-0">
                   <img 
                     src={advertImageUrl} 
-                    alt="Animated Partner Advert" 
+                    alt="Grefas Consult & Entertainment Partner Service Announcement and Featured Ad" 
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     referrerPolicy="no-referrer"
                     onError={(e) => {

@@ -211,7 +211,7 @@ export default function Layout({ children }: LayoutProps) {
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center space-x-2">
               {settings?.logoUrl ? (
-                <img src={settings.logoUrl} alt="Logo" className="h-9 w-auto rounded animate-pulse" referrerPolicy="no-referrer" />
+                <img src={settings.logoUrl} alt="Grefas Consult & Entertainment Official Brand Logo" className="h-9 w-auto rounded animate-pulse" referrerPolicy="no-referrer" />
               ) : (
                 <span className="text-xl font-bold tracking-tighter text-foreground">
                   GREFAS<span className="text-orange-600">.</span>
@@ -350,7 +350,7 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center space-x-4">
             <Link to="/" className="flex items-center space-x-2 shrink-0">
               {settings?.logoUrl ? (
-                <img src={settings.logoUrl} alt="Logo" className="h-10 w-auto rounded" referrerPolicy="no-referrer" />
+                <img src={settings.logoUrl} alt="Grefas Consult & Entertainment Logo" className="h-10 w-auto rounded" referrerPolicy="no-referrer" />
               ) : (
                 <span className="text-2xl font-bold tracking-tighter text-foreground">
                   GREFAS<span className="text-orange-600">.</span>
@@ -566,7 +566,7 @@ export default function Layout({ children }: LayoutProps) {
             <div className="col-span-1">
               <Link to="/" className="flex items-center space-x-2">
                 {settings?.logoUrl ? (
-                  <img src={settings.logoUrl} alt="Logo" className="h-12 w-auto rounded" referrerPolicy="no-referrer" />
+                  <img src={settings.logoUrl} alt="Grefas Consult & Entertainment Nyinahin Office" className="h-12 w-auto rounded" referrerPolicy="no-referrer" />
                 ) : (
                   <span className="text-2xl font-bold tracking-tighter text-foreground">
                     GREFAS<span className="text-orange-600">.</span>

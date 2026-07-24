@@ -131,7 +131,7 @@ export default function BlogSection() {
               <div className="relative h-48 overflow-hidden bg-muted">
                 <img
                   src={post.image}
-                  alt={post.title}
+                  alt={`${post.title} - Grefas Consult & Entertainment Insight Article`}
                   className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   referrerPolicy="no-referrer"
                   loading="lazy"
@@ -195,7 +195,7 @@ export default function BlogSection() {
               <div className="relative h-64 sm:h-80 w-full overflow-hidden bg-muted">
                 <img
                   src={selectedPost.image}
-                  alt={selectedPost.title}
+                  alt={`${selectedPost.title} - Grefas Consult Featured Story Header`}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />

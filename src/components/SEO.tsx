@@ -67,6 +67,40 @@ export default function SEO({
       <meta name="geo.placename" content="Nyinahin" />
       <meta name="geo.position" content="6.6178;-2.0944" />
       <meta name="ICBM" content="6.6178, -2.0944" />
+
+      {/* JSON-LD Structured Data Schema for Google Rich Search & Local Business SEO */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": ["LocalBusiness", "EntertainmentBusiness", "ProfessionalService"],
+          "name": "Grefas Consult & Entertainment",
+          "alternateName": "Grefas Consult",
+          "url": canonicalUrl,
+          "logo": displayOgImage,
+          "image": displayOgImage,
+          "description": displayDescription,
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "GPS Address AI-0008-9223",
+            "addressLocality": "Nyinahin",
+            "addressRegion": "Ashanti Region",
+            "addressCountry": "GH"
+          },
+          "geo": {
+            "@type": "GeoCoordinates",
+            "latitude": 6.6178,
+            "longitude": -2.0944
+          },
+          "telephone": "+233541234567",
+          "email": "info@grefasconsultandentertainment.com",
+          "priceRange": "$$",
+          "sameAs": [
+            "https://facebook.com",
+            "https://instagram.com",
+            "https://youtube.com"
+          ]
+        })}
+      </script>
     </Helmet>
   );
 }

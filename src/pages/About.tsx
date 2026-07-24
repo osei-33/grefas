@@ -79,7 +79,7 @@ export default function About() {
             <div className="aspect-[4/5] overflow-hidden rounded-3xl bg-muted shadow-xl relative">
               <img
                 src={settings?.aboutImageUrl || "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=800"}
-                alt="About Grefas"
+                alt="About Grefas Consult & Entertainment - Corporate Office & Creative Operations in Nyinahin, Ghana"
                 className="h-full w-full object-cover"
                 referrerPolicy="no-referrer"
               />

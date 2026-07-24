@@ -370,7 +370,7 @@ export default function Team() {
                   <div className="relative aspect-square w-full bg-muted overflow-hidden">
                     <img
                       src={member.imageUrl}
-                      alt={member.name}
+                      alt={`${member.name} - ${member.role} at Grefas Consult & Entertainment`}
                       referrerPolicy="no-referrer"
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
@@ -488,7 +488,7 @@ export default function Team() {
                 <div className="relative h-48 sm:h-56 bg-muted overflow-hidden flex-shrink-0">
                   <img
                     src={activeModalMember.imageUrl}
-                    alt={activeModalMember.name}
+                    alt={`${activeModalMember.name} - ${activeModalMember.role} Detailed Profile`}
                     referrerPolicy="no-referrer"
                     className="h-full w-full object-cover"
                   />

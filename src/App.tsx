@@ -14,6 +14,7 @@ import Team from './pages/Team';
 import Admin from './pages/Admin';
 import MyApplications from './pages/MyApplications';
 import WorkWithUs from './pages/WorkWithUs';
+import NotFound from './pages/NotFound';
 import { Toaster } from 'sonner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LanguageProvider } from './lib/LanguageContext';
@@ -38,6 +39,7 @@ export default function App() {
                 <Route path="/work-with-us" element={<WorkWithUs />} />
                 <Route path="/my-applications" element={<MyApplications />} />
                 <Route path="/admin/*" element={<Admin />} />
+                <Route path="*" element={<NotFound />} />
               </Routes>
             </Layout>
             <Toaster position="top-center" />

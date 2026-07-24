@@ -1524,7 +1524,7 @@ export default function Services() {
                         <div className="relative h-48 w-full bg-muted overflow-hidden">
                           <img 
                             src={service.imageUrl || getServicePlaceholderImage(service)} 
-                            alt={service.title} 
+                            alt={`${service.title} - Grefas Consult & Entertainment Professional Service`} 
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
                             referrerPolicy="no-referrer"
                           />
@@ -2477,12 +2477,12 @@ export default function Services() {
                                       </div>
                                       <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Mobile Money Number</label>
-                                        <Input
+                                        <input
                                           type="tel"
                                           placeholder="024XXXXXXX"
                                           value={momoNumber}
                                           onChange={(e) => setMomoNumber(e.target.value)}
-                                          className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                          className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
                                         />
                                       </div>
                                     </div>
@@ -2490,41 +2490,41 @@ export default function Services() {
                                     <div className="space-y-3">
                                       <div className="space-y-1.5">
                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cardholder Name</label>
-                                        <Input
+                                        <input
                                           placeholder="John Doe"
                                           value={cardName}
                                           onChange={(e) => setCardName(e.target.value)}
-                                          className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                          className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
                                         />
                                       </div>
                                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         <div className="sm:col-span-1.5 space-y-1.5">
                                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Number</label>
-                                          <Input
+                                          <input
                                             placeholder="4111 2222 3333 4444"
                                             value={cardNumber}
                                             onChange={(e) => setCardNumber(e.target.value)}
-                                            className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                            className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
                                           />
                                         </div>
                                         <div className="space-y-1.5">
                                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Expiry (MM/YY)</label>
-                                          <Input
+                                          <input
                                             placeholder="12/28"
                                             value={cardExpiry}
                                             onChange={(e) => setCardExpiry(e.target.value)}
-                                            className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                            className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
                                           />
                                         </div>
                                         <div className="space-y-1.5">
                                           <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">CVV</label>
-                                          <Input
+                                          <input
                                             type="password"
                                             maxLength={4}
                                             placeholder="123"
                                             value={cardCvv}
                                             onChange={(e) => setCardCvv(e.target.value)}
-                                            className="bg-muted/50 border-border h-10 rounded-xl text-xs font-medium"
+                                            className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
                                           />
                                         </div>
                                       </div>

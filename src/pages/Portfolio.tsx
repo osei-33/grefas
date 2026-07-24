@@ -171,7 +171,7 @@ export default function Portfolio() {
                   <div className="relative aspect-video overflow-hidden bg-muted">
                     <img
                       src={item.imageUrl}
-                      alt={item.title}
+                      alt={`${item.title} - Grefas Consult & Entertainment Project Portfolio (${item.category || 'Consulting & Media'})`}
                       className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                       referrerPolicy="no-referrer"
                       loading="lazy"

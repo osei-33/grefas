@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Play, 
@@ -875,9 +876,9 @@ export default function InteractiveGuide() {
                 asChild
                 className="w-full bg-orange-600 hover:bg-orange-700 text-white uppercase text-xs font-black tracking-wider py-5"
               >
-                <a href={activeTab === 'registration' ? '/services' : '/booking'}>
+                <Link to={activeTab === 'registration' ? '/services' : '/booking'}>
                   {activeTab === 'registration' ? 'Go to Registration Hub' : 'Go to Booking Scheduler'} <ArrowRight className="ml-2 h-4 w-4" />
-                </a>
+                </Link>
               </Button>
             </div>
 
