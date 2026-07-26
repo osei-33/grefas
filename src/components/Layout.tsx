@@ -577,23 +577,21 @@ export default function Layout({ children }: LayoutProps) {
                 {t('footer.description')}
               </p>
               <div className="mt-6 flex space-x-4">
-                {settings?.facebook && (
-                  <a href={settings.facebook} target="_blank" rel="noopener noreferrer">
-                    <Facebook className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600" />
-                  </a>
-                )}
-                {settings?.youtube && (
-                  <a href={settings.youtube} target="_blank" rel="noopener noreferrer">
-                    <Youtube className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600" />
-                  </a>
-                )}
-                {settings?.tiktok && (
-                  <a href={settings.tiktok} target="_blank" rel="noopener noreferrer">
-                    <Music2 className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600" />
-                  </a>
-                )}
-                <Instagram className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600" />
-                <Twitter className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600" />
+                <a href={settings?.facebook || "https://facebook.com"} target="_blank" rel="noopener noreferrer" title="Facebook">
+                  <Facebook className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
+                </a>
+                <a href={settings?.instagram || "https://instagram.com"} target="_blank" rel="noopener noreferrer" title="Instagram">
+                  <Instagram className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
+                </a>
+                <a href={settings?.youtube || "https://youtube.com"} target="_blank" rel="noopener noreferrer" title="YouTube">
+                  <Youtube className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
+                </a>
+                <a href={settings?.tiktok || "https://tiktok.com"} target="_blank" rel="noopener noreferrer" title="TikTok">
+                  <Music2 className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
+                </a>
+                <a href={settings?.twitter || "https://x.com"} target="_blank" rel="noopener noreferrer" title="Twitter / X">
+                  <Twitter className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
+                </a>
               </div>
             </div>
             <div>
