@@ -1382,30 +1382,30 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
 
       let responseText = "";
       try {
-        console.log("Attempting letter generation with gemini-3.5-flash...");
+        console.log("Attempting letter generation with gemini-2.5-flash...");
         const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
         });
         responseText = response.text || "";
       } catch (firstErr: any) {
-        console.warn("First model gemini-3.5-flash failed/unavailable. Trying stable fallback gemini-flash-latest...", firstErr.message || firstErr);
+        console.log("Primary model gemini-2.5-flash unavailable/quota limited. Trying fallback gemini-2.0-flash...", firstErr.message || firstErr);
         try {
           const response = await ai.models.generateContent({
-            model: "gemini-flash-latest",
+            model: "gemini-2.0-flash",
             contents: prompt,
           });
           responseText = response.text || "";
         } catch (secondErr: any) {
-          console.warn("Second model gemini-flash-latest failed. Trying lightweight fallback gemini-3.1-flash-lite...", secondErr.message || secondErr);
+          console.log("Secondary model gemini-2.0-flash unavailable. Trying fallback gemini-1.5-flash...", secondErr.message || secondErr);
           try {
             const response = await ai.models.generateContent({
-              model: "gemini-3.1-flash-lite",
+              model: "gemini-1.5-flash",
               contents: prompt,
             });
             responseText = response.text || "";
           } catch (thirdErr: any) {
-            console.warn("All Gemini models failed or quota exceeded. Invoking professional local fallback text generator...", thirdErr.message || thirdErr);
+            console.log("All remote Gemini models quota limited or offline. Invoking local text generator...", thirdErr.message || thirdErr);
             // Bulletproof local fallback generator
             const contextText = additionalContext ? `In regard to ${additionalContext}, we want to reiterate our commitment to excellence.` : "We are writing to officially outline our terms and look forward to a highly successful cooperation.";
             responseText = `We are pleased to write to you on behalf of Grefas Entertainment & Productions concerning our ongoing discussions and mutual interests in the creative industry. As we move forward with our strategic plans, we want to express our sincere appreciation for your interest and proposed engagement with our organization.
@@ -1419,7 +1419,7 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
 
       res.json({ text: responseText });
     } catch (err: any) {
-      console.error("Gemini letter generation experienced an unhandled exception. Yielding local fallback:", err);
+      console.log("Gemini letter generation fallback triggered:", err?.message || err);
       const contextText = additionalContext ? `In regard to ${additionalContext}, we want to reiterate our commitment to excellence.` : "We are writing to officially outline our terms and look forward to a highly successful cooperation.";
       const responseText = `We are pleased to write to you on behalf of Grefas Entertainment & Productions concerning our ongoing discussions and mutual interests in the creative industry. As we move forward with our strategic plans, we want to express our sincere appreciation for your interest and proposed engagement with our organization.
 
@@ -1491,29 +1491,28 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
         }
       });
 
-      let response;
+      // 1. Try Imagen 3 primary model
       try {
-        console.log("Attempting image generation with gemini-3.1-flash-lite-image...");
-        response = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite-image',
-          contents: {
-            parts: [
-              {
-                text: `Generate a high-quality, professional image for a consulting and entertainment business gallery. Topic: ${prompt}. The image should be vibrant and modern.`,
-              },
-            ],
-          },
+        console.log("Attempting image generation with imagen-3.0-generate-002...");
+        const imgResult = await ai.models.generateImages({
+          model: 'imagen-3.0-generate-002',
+          prompt: `Generate a high-quality, professional image for a consulting and entertainment business gallery. Topic: ${prompt}. The image should be vibrant and modern.`,
           config: {
-            imageConfig: {
-              aspectRatio: "1:1"
-            }
+            numberOfImages: 1,
+            outputMimeType: 'image/jpeg',
+            aspectRatio: "1:1"
           }
         });
+        const base64Bytes = imgResult.generatedImages?.[0]?.image?.imageBytes;
+        if (base64Bytes) {
+          return res.json({ success: true, url: `data:image/jpeg;base64,${base64Bytes}` });
+        }
       } catch (firstErr: any) {
-        console.warn("First model gemini-3.1-flash-lite-image failed. Trying fallback gemini-3.1-flash-image...", firstErr.message || firstErr);
+        console.log("Imagen 3.0 primary model unavailable or quota limited. Trying fallback gemini-2.5-flash...", firstErr.message || firstErr);
+        // 2. Try Gemini 2.5 Flash image output
         try {
-          response = await ai.models.generateContent({
-            model: 'gemini-3.1-flash-image',
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
             contents: {
               parts: [
                 {
@@ -1527,30 +1526,27 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
               }
             }
           });
+          let imageUrl = '';
+          if (response.candidates?.[0]?.content?.parts) {
+            for (const part of response.candidates[0].content.parts) {
+              if (part.inlineData) {
+                imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+                break;
+              }
+            }
+          }
+          if (imageUrl) {
+            return res.json({ success: true, url: imageUrl });
+          }
         } catch (secondErr: any) {
-          console.warn("Both Gemini image models failed or quota was exceeded. Generating beautiful local abstract poster image...", secondErr.message || secondErr);
+          console.log("Gemini image generation models quota reached. Serving clean SVG artwork fallback:", secondErr.message || secondErr);
           return res.json({ success: true, url: generateFallbackSVG(prompt), isFallback: true });
         }
       }
 
-      let imageUrl = '';
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-            break;
-          }
-        }
-      }
-
-      if (imageUrl) {
-        res.json({ success: true, url: imageUrl });
-      } else {
-        console.warn("No inline data in response. Generating fallback SVG poster.");
-        res.json({ success: true, url: generateFallbackSVG(prompt), isFallback: true });
-      }
+      res.json({ success: true, url: generateFallbackSVG(prompt), isFallback: true });
     } catch (err: any) {
-      console.error("Gemini image generation failed entirely. Yielding local fallback poster:", err);
+      console.log("Gemini image generation exception caught. Serving local fallback poster:", err?.message || err);
       res.json({ success: true, url: generateFallbackSVG(prompt), isFallback: true });
     }
   });

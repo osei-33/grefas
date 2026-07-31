@@ -9,7 +9,7 @@ import {
   sendPasswordResetEmail, 
   updateProfile 
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { Loader2, Mail, Lock, User, Phone } from 'lucide-react';
 
@@ -98,15 +98,19 @@ export default function AuthDialog({ isOpen, onClose, defaultMode = 'signin' }: 
           // Check if there is a pre-authorized role for this email
           let initialRole = isAdminEmail ? 'admin' : 'guest';
           try {
-            const usersRef = collection(db, 'users');
-            const q = query(usersRef, where('email', '==', email.trim().toLowerCase()));
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-              const preAuthDoc = querySnapshot.docs[0];
-              initialRole = preAuthDoc.data().role || initialRole;
-              // If it's a pre-authorized random doc, we delete it to avoid duplicate user entries
-              if (preAuthDoc.id !== cred.user.uid) {
-                await deleteDoc(doc(db, 'users', preAuthDoc.id));
+            const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
+            if (userDoc.exists() && userDoc.data()?.role) {
+              initialRole = userDoc.data().role;
+            } else {
+              const usersRef = collection(db, 'users');
+              const q = query(usersRef, where('email', '==', email.trim().toLowerCase()));
+              const querySnapshot = await getDocs(q);
+              if (!querySnapshot.empty) {
+                const preAuthDoc = querySnapshot.docs[0];
+                initialRole = preAuthDoc.data().role || initialRole;
+                if (preAuthDoc.id !== cred.user.uid) {
+                  await deleteDoc(doc(db, 'users', preAuthDoc.id));
+                }
               }
             }
           } catch (err) {

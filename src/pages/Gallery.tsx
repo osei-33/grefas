@@ -41,6 +41,50 @@ const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: 
   );
 };
 
+export const getYoutubeId = (urlStr: string): string | null => {
+  if (!urlStr) return null;
+  const cleanUrl = urlStr.trim();
+  
+  // 1. YouTube Shorts: youtube.com/shorts/ID
+  const shortsMatch = cleanUrl.match(/(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]{11})/);
+  if (shortsMatch && shortsMatch[1]) return shortsMatch[1];
+
+  // 2. YouTube Live: youtube.com/live/ID
+  const liveMatch = cleanUrl.match(/(?:youtube\.com|youtu\.be)\/live\/([a-zA-Z0-9_-]{11})/);
+  if (liveMatch && liveMatch[1]) return liveMatch[1];
+
+  // 3. Standard watch?v=, embed/, v/, youtu.be/
+  const regExp = /^.*(?:youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+  const match = cleanUrl.match(regExp);
+  if (match && match[1] && match[1].length === 11) {
+    return match[1];
+  }
+
+  // 4. Fallback search for v= search parameter
+  try {
+    const urlObj = new URL(cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`);
+    const vParam = urlObj.searchParams.get('v');
+    if (vParam && vParam.length === 11) return vParam;
+  } catch (e) {}
+
+  return null;
+};
+
+export const getVimeoId = (urlStr: string): string | null => {
+  if (!urlStr) return null;
+  const regExp = /vimeo\.com\/(?:video\/)?([0-9]+)/;
+  const match = urlStr.trim().match(regExp);
+  return match ? match[1] : null;
+};
+
+export const isMediaVideo = (item: any): boolean => {
+  if (!item) return false;
+  if (getYoutubeId(item?.url) || getVimeoId(item?.url)) return true;
+  if (item?.type === 'video') return true;
+  if (item?.url && typeof item.url === 'string' && item.url.match(/\.(mp4|mov|avi|mkv|webm|flv|3gp|wmv|m4v)/i)) return true;
+  return false;
+};
+
 const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string; title: string }) => {
   const secureUrl = (url || "").replace(/^http:/, "https:");
   const secureThumbnail = (thumbnail || "").replace(/^http:/, "https:");
@@ -49,24 +93,7 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
   const videoRef = useRef<HTMLVideoElement>(null);
   const [localThumb, setLocalThumb] = useState<string | null>(secureThumbnail || null);
 
-  // Helper to extract YouTube video ID
-  const getYoutubeId = (urlStr: string) => {
-    if (!urlStr) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = urlStr.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-  };
-
   const youtubeId = getYoutubeId(secureUrl);
-
-  // Helper to extract Vimeo ID
-  const getVimeoId = (urlStr: string) => {
-    if (!urlStr) return null;
-    const regExp = /vimeo\.com\/(?:video\/)?([0-9]+)/;
-    const match = urlStr.match(regExp);
-    return match ? match[1] : null;
-  };
-
   const vimeoId = getVimeoId(secureUrl);
 
   useEffect(() => {
@@ -137,18 +164,30 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
   }, [isHovered]);
 
   if (youtubeId) {
-    const ytThumb = `https://img.youtube.com/vi/${youtubeId}/0.jpg`;
+    const ytThumb = `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`;
+    const coverSrc = secureThumbnail || localThumb || ytThumb;
+
     return (
-      <div className="relative w-full aspect-video bg-black overflow-hidden flex items-center justify-center">
+      <div className="relative w-full aspect-video bg-black overflow-hidden flex items-center justify-center group">
         <img
-          src={ytThumb}
+          src={coverSrc}
           alt={title}
           className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
           referrerPolicy="no-referrer"
           loading="lazy"
+          onError={(e) => {
+            const target = e.currentTarget;
+            if (!target.src.includes('hqdefault.jpg')) {
+              target.src = `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`;
+            } else if (!target.src.includes('mqdefault.jpg')) {
+              target.src = `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
+            } else if (!target.src.includes('0.jpg')) {
+              target.src = `https://img.youtube.com/vi/${youtubeId}/0.jpg`;
+            }
+          }}
         />
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-          <div className="rounded-full bg-white/20 p-2 text-white backdrop-blur-md">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/50 transition-colors z-10">
+          <div className="rounded-full bg-orange-600/90 p-3 text-white shadow-xl backdrop-blur-sm transform transition-transform duration-300 group-hover:scale-115">
             <Play className="h-6 w-6 fill-white text-white" />
           </div>
         </div>
@@ -157,17 +196,18 @@ const VideoCover = ({ url, thumbnail, title }: { url: string; thumbnail?: string
   }
 
   if (vimeoId) {
+    const coverSrc = secureThumbnail || localThumb || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80";
     return (
-      <div className="relative w-full aspect-video bg-black overflow-hidden flex items-center justify-center">
+      <div className="relative w-full aspect-video bg-black overflow-hidden flex items-center justify-center group">
         <img
-          src={localThumb || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80"}
+          src={coverSrc}
           alt={title}
           className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
           referrerPolicy="no-referrer"
           loading="lazy"
         />
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-          <div className="rounded-full bg-white/20 p-2 text-white backdrop-blur-md">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/50 transition-colors z-10">
+          <div className="rounded-full bg-orange-600/90 p-3 text-white shadow-xl backdrop-blur-sm transform transition-transform duration-300 group-hover:scale-115">
             <Play className="h-6 w-6 fill-white text-white" />
           </div>
         </div>
@@ -241,7 +281,56 @@ const MediaViewer = ({ item }: { item: any }) => {
 
   if (!item) return null;
 
-  if (item.type === 'image') {
+  const youtubeId = getYoutubeId(item.url);
+  const vimeoId = getVimeoId(item.url);
+
+  if (youtubeId) {
+    return (
+      <div className="w-full h-full relative bg-neutral-950 flex flex-col items-center justify-center p-2 md:p-6">
+        {isLoading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 pointer-events-none">
+            <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
+            <span className="text-white/70 text-xs font-bold uppercase tracking-widest mt-2">Loading YouTube Video...</span>
+          </div>
+        )}
+        <div className="w-full max-w-4xl aspect-video relative rounded-xl overflow-hidden shadow-2xl bg-black">
+          <iframe
+            src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&rel=0&modestbranding=1`}
+            title={item.title}
+            onLoad={() => setIsLoading(false)}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            className="w-full h-full border-0"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (vimeoId) {
+    return (
+      <div className="w-full h-full relative bg-neutral-950 flex flex-col items-center justify-center p-2 md:p-6">
+        {isLoading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 pointer-events-none">
+            <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
+            <span className="text-white/70 text-xs font-bold uppercase tracking-widest mt-2">Loading Vimeo Video...</span>
+          </div>
+        )}
+        <div className="w-full max-w-4xl aspect-video relative rounded-xl overflow-hidden shadow-2xl bg-black">
+          <iframe
+            src={`https://player.vimeo.com/video/${vimeoId}?autoplay=1&title=0&byline=0&portrait=0`}
+            title={item.title}
+            onLoad={() => setIsLoading(false)}
+            allow="autoplay; fullscreen; picture-in-picture"
+            allowFullScreen
+            className="w-full h-full border-0"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (item.type === 'image' && !isMediaVideo(item)) {
     return (
       <div className="w-full h-full flex items-center justify-center p-4">
         <img
@@ -256,66 +345,6 @@ const MediaViewer = ({ item }: { item: any }) => {
             <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
           </div>
         )}
-      </div>
-    );
-  }
-
-  // Identify video type
-  const getYoutubeId = (urlStr: string) => {
-    if (!urlStr) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = urlStr.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-  };
-
-  const getVimeoId = (urlStr: string) => {
-    if (!urlStr) return null;
-    const regExp = /vimeo\.com\/(?:video\/)?([0-9]+)/;
-    const match = urlStr.match(regExp);
-    return match ? match[1] : null;
-  };
-
-  const youtubeId = getYoutubeId(item.url);
-  const vimeoId = getVimeoId(item.url);
-
-  if (youtubeId) {
-    return (
-      <div className="w-full h-full relative bg-neutral-950 flex items-center justify-center">
-        {isLoading && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40">
-            <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest mt-2">Loading YouTube Video...</span>
-          </div>
-        )}
-        <iframe
-          src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&rel=0&modestbranding=1`}
-          title={item.title}
-          onLoad={() => setIsLoading(false)}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="w-full h-full border-none aspect-video max-h-full"
-        />
-      </div>
-    );
-  }
-
-  if (vimeoId) {
-    return (
-      <div className="w-full h-full relative bg-neutral-950 flex items-center justify-center">
-        {isLoading && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40">
-            <Loader2 className="h-10 w-10 animate-spin text-orange-600" />
-            <span className="text-white/50 text-xs font-bold uppercase tracking-widest mt-2">Loading Vimeo Video...</span>
-          </div>
-        )}
-        <iframe
-          src={`https://player.vimeo.com/video/${vimeoId}?autoplay=1&title=0&byline=0&portrait=0`}
-          title={item.title}
-          onLoad={() => setIsLoading(false)}
-          allow="autoplay; fullscreen; picture-in-picture"
-          allowFullScreen
-          className="w-full h-full border-none aspect-video max-h-full"
-        />
       </div>
     );
   }
@@ -778,17 +807,17 @@ export default function Gallery() {
                       className="w-full relative cursor-pointer"
                       onClick={() => setSelectedItem(item)}
                     >
-                      {item.type === 'image' ? (
-                        <ImageWithLoading
-                          src={item.url}
-                          alt={item.title}
-                          className="w-full h-auto object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
-                        />
-                      ) : (
+                      {isMediaVideo(item) ? (
                         <VideoCover
                           url={item.url}
                           thumbnail={item.thumbnail}
                           title={item.title}
+                        />
+                      ) : (
+                        <ImageWithLoading
+                          src={item.url}
+                          alt={item.title}
+                          className="w-full h-auto object-cover transition-transform duration-1000 ease-out group-hover:scale-110"
                         />
                       )}
                     </div>

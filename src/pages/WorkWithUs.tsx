@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
-import { collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -277,12 +277,34 @@ export default function WorkWithUs() {
           displayName: portalFullName.trim()
         });
 
+        // Check if there is an existing document or pre-authorized role for this email
+        let initialRole = 'guest';
+        try {
+          const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+          if (userDoc.exists() && userDoc.data()?.role) {
+            initialRole = userDoc.data().role;
+          } else {
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('email', '==', portalEmail.trim().toLowerCase()));
+            const qSnap = await getDocs(q);
+            if (!qSnap.empty) {
+              const preAuthDoc = qSnap.docs[0];
+              initialRole = preAuthDoc.data().role || 'guest';
+              if (preAuthDoc.id !== userCredential.user.uid) {
+                await deleteDoc(doc(db, 'users', preAuthDoc.id));
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Could not check pre-assigned role:", e);
+        }
+
         // Save phone to user profile in Firestore
         await setDoc(doc(db, 'users', userCredential.user.uid), {
-          email: portalEmail.trim(),
+          email: portalEmail.trim().toLowerCase(),
           fullName: portalFullName.trim(),
           phone: portalPhone.trim(),
-          role: 'guest',
+          role: initialRole,
           createdAt: serverTimestamp()
         }, { merge: true });
 
@@ -403,10 +425,6 @@ export default function WorkWithUs() {
     const age = calculateAge(dateOfBirth);
     if (age < 12) {
       return toast.error('Applicants must be at least 12 years of age to participate.');
-    }
-
-    if (!priceConfirmed) {
-      return toast.error(`Please confirm and agree to the registration fee of GH₵ ${intakePrice} before submitting.`);
     }
 
     setSubmitting(true);
@@ -1067,35 +1085,6 @@ export default function WorkWithUs() {
                       
                       <div className="p-3 bg-muted/30 border border-muted-foreground/10 rounded-xl space-y-2 text-[11px] text-muted-foreground leading-relaxed">
                         <p>I hereby certify that all statements made in this professional profile are true, complete, and correct to the best of my knowledge. I understand that any false declarations or misrepresentations will lead to immediate cancellation of my candidacy or engagement stubs with Grefas Consult & Entertainment.</p>
-                      </div>
-
-                      {/* Dynamic Casting Intake Price Confirmation Section */}
-                      <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4 space-y-3">
-                        <div className="flex items-start gap-2.5">
-                          <CreditCard className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
-                          <div className="space-y-1">
-                            <h4 className="font-extrabold text-[11px] text-foreground flex items-center gap-1.5 flex-wrap">
-                              <span>Official Registration & Processing Fee</span>
-                              <span className="text-[10px] font-black bg-orange-600 text-white px-2 py-0.5 rounded-full">GH₵ {intakePrice.toLocaleString()}</span>
-                            </h4>
-                            <p className="text-[10px] text-muted-foreground leading-relaxed">
-                              An official casting and demographic intake processing fee of <strong>GH₵ {intakePrice}</strong> is required to submit your audition profile to Grefas Entertainment casting directory.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 p-2 bg-background border border-border/80 rounded-lg hover:bg-muted/30 transition-all duration-300">
-                          <input
-                            type="checkbox"
-                            id="priceConfirmation"
-                            checked={priceConfirmed}
-                            onChange={(e) => setPriceConfirmed(e.target.checked)}
-                            className="h-4 w-4 rounded border-border text-orange-600 focus:ring-orange-600 accent-orange-600 cursor-pointer"
-                          />
-                          <label htmlFor="priceConfirmation" className="text-[10px] font-bold text-foreground cursor-pointer select-none">
-                            I confirm and agree to pay the GH₵ {intakePrice} registration fee to finalize my casting enrollment
-                          </label>
-                        </div>
                       </div>
 
                       <div className="space-y-1.5">

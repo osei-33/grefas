@@ -218,14 +218,44 @@ export default function Admin() {
         }
 
         // Listen for user document changes
-        unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+        unsubscribeSnapshot = onSnapshot(doc(db, 'users', user.uid), async (docSnap) => {
           if (isAdminEmail(user.email)) {
             setRole('admin');
-          } else if (doc && doc.exists()) {
-            setRole(doc.data().role);
+          } else if (docSnap && docSnap.exists() && docSnap.data()?.role) {
+            setRole(docSnap.data().role);
           } else {
-            // Document might not exist yet if they just signed in
-            setRole('guest');
+            // Check if there is a pre-authorized role for this user's email
+            try {
+              const cleanEmail = user.email ? user.email.toLowerCase().trim() : '';
+              if (cleanEmail) {
+                const usersRef = collection(db, 'users');
+                const q = query(usersRef, where('email', '==', cleanEmail));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                  const preAuthDoc = querySnapshot.docs[0];
+                  const assignedRole = preAuthDoc.data().role || 'guest';
+                  setRole(assignedRole);
+                  // Sync role to real user UID document
+                  await setDoc(doc(db, 'users', user.uid), {
+                    email: cleanEmail,
+                    fullName: user.displayName || preAuthDoc.data().fullName || '',
+                    role: assignedRole,
+                    updatedAt: serverTimestamp()
+                  }, { merge: true });
+                  // Cleanup orphaned pre-auth document if different ID
+                  if (preAuthDoc.id !== user.uid) {
+                    await deleteDoc(doc(db, 'users', preAuthDoc.id));
+                  }
+                } else {
+                  setRole('guest');
+                }
+              } else {
+                setRole('guest');
+              }
+            } catch (err) {
+              console.warn("Could not check pre-authorized user role:", err);
+              setRole('guest');
+            }
           }
           setLoading(false);
         }, (error) => {
@@ -4868,6 +4898,24 @@ function ManageTeam() {
 }
 
 function ManageGallery() {
+  const getYoutubeId = (urlStr: string) => {
+    if (!urlStr) return null;
+    const cleanUrl = urlStr.trim();
+    const shortsMatch = cleanUrl.match(/(?:youtube\.com|youtu\.be)\/shorts\/([a-zA-Z0-9_-]{11})/);
+    if (shortsMatch && shortsMatch[1]) return shortsMatch[1];
+    const liveMatch = cleanUrl.match(/(?:youtube\.com|youtu\.be)\/live\/([a-zA-Z0-9_-]{11})/);
+    if (liveMatch && liveMatch[1]) return liveMatch[1];
+    const regExp = /^.*(?:youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = cleanUrl.match(regExp);
+    if (match && match[1] && match[1].length === 11) return match[1];
+    try {
+      const urlObj = new URL(cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`);
+      const vParam = urlObj.searchParams.get('v');
+      if (vParam && vParam.length === 11) return vParam;
+    } catch (e) {}
+    return null;
+  };
+
   const [items, setItems] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [newItem, setNewItem] = useState({ type: 'image', url: '', title: '', category: 'events', thumbnail: '' });
@@ -5398,7 +5446,20 @@ function ManageGallery() {
                   <Input 
                     placeholder="URL (Image URL or Video Embed URL)" 
                     value={newItem.url} 
-                    onChange={e => setNewItem({...newItem, url: e.target.value})} 
+                    onChange={e => {
+                      const val = e.target.value;
+                      const ytId = getYoutubeId(val);
+                      if (ytId) {
+                        setNewItem(prev => ({
+                          ...prev,
+                          url: val,
+                          type: 'video',
+                          thumbnail: prev.thumbnail || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`
+                        }));
+                      } else {
+                        setNewItem(prev => ({ ...prev, url: val }));
+                      }
+                    }} 
                     required 
                     className="bg-muted/50 border-border"
                   />
@@ -5437,6 +5498,30 @@ function ManageGallery() {
         {items.map((item) => (
           <div key={item.id} className="group relative aspect-square overflow-hidden rounded-xl bg-muted border border-border/50">
             {(() => {
+              const ytId = getYoutubeId(item.url);
+              if (ytId) {
+                return (
+                  <div className="relative h-full w-full bg-black flex items-center justify-center">
+                    <img
+                      src={item.thumbnail || `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+                      alt={item.title}
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.src.includes('hqdefault.jpg')) {
+                          target.src = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+                        } else if (!target.src.includes('0.jpg')) {
+                          target.src = `https://img.youtube.com/vi/${ytId}/0.jpg`;
+                        }
+                      }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                      <Play className="h-6 w-6 text-white fill-white" />
+                    </div>
+                  </div>
+                );
+              }
               if (item.type === 'image') {
                 return (
                   <img
@@ -5446,45 +5531,27 @@ function ManageGallery() {
                     referrerPolicy="no-referrer"
                   />
                 );
-              } else {
-                const getYoutubeId = (urlStr: string) => {
-                  if (!urlStr) return null;
-                  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-                  const match = urlStr.match(regExp);
-                  return (match && match[2].length === 11) ? match[2] : null;
-                };
-                const ytId = getYoutubeId(item.url);
-                if (ytId) {
-                  return (
-                    <img
-                      src={`https://img.youtube.com/vi/${ytId}/0.jpg`}
-                      alt={item.title}
-                      className="h-full w-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  );
-                }
-                const isDirect = item.url?.includes('firebasestorage.googleapis.com') || item.url?.match(/\.(mp4|webm|ogg)/i);
-                if (isDirect) {
-                  return (
-                    <video
-                      src={item.url}
-                      poster={item.thumbnail}
-                      preload="metadata"
-                      muted
-                      className="h-full w-full object-cover"
-                    />
-                  );
-                }
+              }
+              const isDirect = item.url?.includes('firebasestorage.googleapis.com') || item.url?.match(/\.(mp4|webm|ogg)/i);
+              if (isDirect) {
                 return (
-                  <img
-                    src={item.thumbnail || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80"}
-                    alt={item.title}
+                  <video
+                    src={item.url}
+                    poster={item.thumbnail}
+                    preload="metadata"
+                    muted
                     className="h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
                   />
                 );
               }
+              return (
+                <img
+                  src={item.thumbnail || "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80"}
+                  alt={item.title}
+                  className="h-full w-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              );
             })()}
             <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
               <Button variant="destructive" size="sm" onClick={() => handleDelete(item.id, item.url, item.thumbnail)}>
@@ -8830,9 +8897,11 @@ function ManageUsers() {
 
     try {
       // Find if user already exists (case-insensitive check)
-      const existingUser = users.find(u => u.email && u.email.trim().toLowerCase() === emailLower);
-      if (existingUser) {
-        await setDoc(doc(db, 'users', existingUser.id), { role: newUser.role }, { merge: true });
+      const matchingUsers = users.filter(u => u.email && u.email.trim().toLowerCase() === emailLower);
+      if (matchingUsers.length > 0) {
+        for (const mu of matchingUsers) {
+          await setDoc(doc(db, 'users', mu.id), { role: newUser.role, email: emailLower, updatedAt: serverTimestamp() }, { merge: true });
+        }
         toast.success(`Role for ${emailLower} updated to ${newUser.role}`);
       } else {
         await addDoc(collection(db, 'users'), {
@@ -8840,7 +8909,7 @@ function ManageUsers() {
           role: newUser.role,
           createdAt: serverTimestamp()
         });
-        toast.success('User pre-authorized successfully');
+        toast.success(`User ${emailLower} pre-authorized as ${newUser.role}`);
       }
 
       setNewUser({ email: '', role: 'editor' });
@@ -8852,8 +8921,19 @@ function ManageUsers() {
 
   const handleUpdateRole = async (uid: string, role: string) => {
     try {
-      await setDoc(doc(db, 'users', uid), { role }, { merge: true });
-      toast.success(`User role updated to ${role}`);
+      const targetUser = users.find(u => u.id === uid);
+      await setDoc(doc(db, 'users', uid), { role, updatedAt: serverTimestamp() }, { merge: true });
+      
+      // Update any other docs matching the same email address
+      if (targetUser && targetUser.email) {
+        const cleanEmail = targetUser.email.trim().toLowerCase();
+        const otherMatches = users.filter(u => u.id !== uid && u.email && u.email.trim().toLowerCase() === cleanEmail);
+        for (const om of otherMatches) {
+          await setDoc(doc(db, 'users', om.id), { role, updatedAt: serverTimestamp() }, { merge: true });
+        }
+      }
+
+      toast.success(`User role successfully updated to ${role}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
     }
@@ -11760,10 +11840,14 @@ function AdminProfile() {
     try {
       // 1. Update user profile including role selection
       const userDocRef = doc(db, 'users', currentUser.uid);
+      const userSnap = await getDoc(userDocRef);
+      const currentRole = userSnap.exists() ? userSnap.data()?.role : null;
+      const targetRole = roleState || currentRole || (isAdminEmail(currentUser.email) ? 'admin' : 'guest');
+
       await setDoc(userDocRef, {
         fullName,
         title,
-        role: roleState || 'admin',
+        role: targetRole,
         signatureImage,
         updatedAt: serverTimestamp()
       }, { merge: true });
