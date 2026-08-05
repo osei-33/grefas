@@ -8,3 +8,17 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+// Register PWA service worker for offline support and mobile installation
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((registration) => {
+        console.log('Grefas PWA Service Worker registered:', registration.scope);
+      })
+      .catch((error) => {
+        console.warn('Grefas PWA Service Worker registration failed:', error);
+      });
+  });
+}

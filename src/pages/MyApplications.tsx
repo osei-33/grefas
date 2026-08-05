@@ -295,7 +295,7 @@ export default function MyApplications() {
     const unsubscribe = onSnapshot(q1, async (snapshot) => {
       const uidsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Also fetch by email as an active fallback for sync
+      // Also fetch by email & career_applications as active sync
       try {
         const q2 = query(
           collection(db, 'service_intakes'), 
@@ -303,10 +303,19 @@ export default function MyApplications() {
         );
         const emailSnap = await getDocs(q2);
         const emailList = emailSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Career applications collection queries
+        const careerUidSnap = await getDocs(query(collection(db, 'career_applications'), where('userId', '==', user.uid)));
+        const careerEmailSnap = await getDocs(query(collection(db, 'career_applications'), where('emailAddress', '==', user.email)));
         
+        const careerList = [
+          ...careerUidSnap.docs.map(doc => ({ id: doc.id, isCareerApp: true, ...doc.data() })),
+          ...careerEmailSnap.docs.map(doc => ({ id: doc.id, isCareerApp: true, ...doc.data() }))
+        ];
+
         // Merge list based on unique ID to avoid duplicates
         const mergedMap = new Map();
-        [...uidsList, ...emailList].forEach(item => {
+        [...uidsList, ...emailList, ...careerList].forEach(item => {
           mergedMap.set(item.id, item);
         });
         

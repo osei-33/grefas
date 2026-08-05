@@ -321,6 +321,16 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
+    match /career_applications/{appId} {
+      allow read: if isStaff() || (isAuthenticated() && (resource.data.userId == request.auth.uid || ('email' in request.auth.token && resource.data.emailAddress == request.auth.token.email)));
+      allow create: if request.resource.data.fullName is string && request.resource.data.fullName.size() > 0 &&
+                    request.resource.data.contact is string && request.resource.data.contact.size() > 0 &&
+                    request.resource.data.whatsappNumber is string && request.resource.data.whatsappNumber.size() > 0 &&
+                    request.resource.data.emailAddress is string && request.resource.data.emailAddress.size() > 0;
+      allow update: if isStaff() || (isAuthenticated() && (resource.data.userId == request.auth.uid || ('email' in request.auth.token && resource.data.emailAddress == request.auth.token.email)));
+      allow delete: if isStaff();
+    }
+
     match /testimonials/{testimonialId} {
       allow read: if true;
       allow create: if isValidTestimonial(request.resource.data);

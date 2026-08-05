@@ -306,6 +306,28 @@
       },
       "required": ["title", "message", "isActive"]
     },
+    "CareerApplication": {
+      "title": "Career Application",
+      "description": "A talent application submitted via the Work With Us desk.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "dateOfBirth": { "type": "string" },
+        "age": { "type": "number" },
+        "contact": { "type": "string" },
+        "address": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "emailAddress": { "type": "string" },
+        "roleTypes": { "type": "array", "items": { "type": "string" } },
+        "experienceLevel": { "type": "string" },
+        "availability": { "type": "string" },
+        "bio": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Shortlisted", "Interview Scheduled", "Hired", "Rejected"] },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "contact", "whatsappNumber", "emailAddress"]
+    },
     "ActivityLog": {
       "title": "Activity Log",
       "description": "Records client engagement including login history and status changes.",
@@ -456,6 +478,10 @@
     "/service_intakes/{intakeId}": {
       "schema": "ServiceIntake",
       "description": "Collection of service client intake registrations"
+    },
+    "/career_applications/{appId}": {
+      "schema": "CareerApplication",
+      "description": "Collection of talent application submissions from Work With Us desk"
     },
     "/activity_logs/{logId}": {
       "schema": "ActivityLog",

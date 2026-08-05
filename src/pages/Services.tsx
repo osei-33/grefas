@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import * as LucideIcons from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
+import { sendArkeselSms } from '@/lib/arkeselSms';
 import { collection, onSnapshot, query, orderBy, addDoc, where, getDocs, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
@@ -1269,6 +1270,19 @@ export default function Services() {
         console.warn("Failed to fetch casting_received template, falling back to default SMS.", err);
       }
 
+      const defaultSmsMsg = customSmsMessage || `Hello ${formData.fullName.trim()}, your Grefas registration has been received successfully! Status: Pending. Our team will review your profile shortly. - Grefas Consult`;
+
+      // Dispatch direct SMS alert to client/applicant
+      const clientPhone = formData.contact?.trim() || formData.whatsappNumber?.trim();
+      if (clientPhone) {
+        try {
+          await sendArkeselSms(clientPhone, defaultSmsMsg);
+          console.log("Client SMS alert sent immediately via Arkesel!");
+        } catch (smsErr) {
+          console.warn("Direct Arkesel SMS error:", smsErr);
+        }
+      }
+
       // Trigger server-side notifications via email proxy
       try {
         await fetch('/api/notify-intake', {
@@ -1276,7 +1290,7 @@ export default function Services() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...intakeData,
-            customMessage: customSmsMessage
+            customMessage: defaultSmsMsg
           })
         });
       } catch (err) {

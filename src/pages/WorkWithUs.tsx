@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
+import { sendArkeselSms } from '@/lib/arkeselSms';
 import { collection, addDoc, getDocs, query, where, doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { 
   onAuthStateChanged, 
@@ -35,7 +36,14 @@ import {
   Send,
   Loader2,
   LogIn,
-  CreditCard
+  CreditCard,
+  Upload,
+  Paperclip,
+  Eye,
+  X,
+  File,
+  Trash2,
+  ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
@@ -78,6 +86,58 @@ export default function WorkWithUs() {
   const [intakePrice, setIntakePrice] = useState<number>(50);
   const [priceConfirmed, setPriceConfirmed] = useState<boolean>(false);
 
+  // Subtitle & Documents state
+  const [workWithUsSubtitle, setWorkWithUsSubtitle] = useState('Grefas is always looking for brilliant actors, passionate crew members, video editors, scriptwriters, and consulting staff. Fill in your professional details below to join our talent database.');
+  const [cvFile, setCvFile] = useState<{ name: string; dataUrl: string; size: number; type: string } | null>(null);
+  const [cvLink, setCvLink] = useState('');
+  const [coverLetterFile, setCoverLetterFile] = useState<{ name: string; dataUrl: string; size: number; type: string } | null>(null);
+  const [coverLetterText, setCoverLetterText] = useState('');
+
+  // File Upload Handlers
+  const handleCvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('CV file size exceeds 15MB limit. Please select a smaller file or paste a link.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCvFile({
+        name: file.name,
+        dataUrl: reader.result as string,
+        size: file.size,
+        type: file.type
+      });
+      toast.success(`CV / Resume "${file.name}" attached successfully!`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCoverLetterUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Cover Letter file size exceeds 15MB limit.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCoverLetterFile({
+        name: file.name,
+        dataUrl: reader.result as string,
+        size: file.size,
+        type: file.type
+      });
+      toast.success(`Cover Letter document "${file.name}" attached successfully!`);
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Track Auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (authUser) => {
@@ -91,11 +151,14 @@ export default function WorkWithUs() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch dynamic roles from settings/global
+  // Fetch dynamic roles and subtitle from settings/global
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        if (data.workWithUsSubtitle) {
+          setWorkWithUsSubtitle(data.workWithUsSubtitle);
+        }
         if (data.intakeRoles && data.intakeRoles.length > 0) {
           setAvailableRoles(data.intakeRoles);
         } else {
@@ -144,13 +207,13 @@ export default function WorkWithUs() {
 
     const fetchLatestProfile = async () => {
       try {
-        const q = query(
-          collection(db, 'service_intakes'),
-          where('userId', '==', user.uid)
-        );
-        const snap = await getDocs(q);
+        // Query career_applications first, fallback to service_intakes
+        let snap = await getDocs(query(collection(db, 'career_applications'), where('userId', '==', user.uid)));
+        if (snap.empty) {
+          snap = await getDocs(query(collection(db, 'service_intakes'), where('userId', '==', user.uid)));
+        }
+        
         if (!snap.empty) {
-          // Sort manually by createdAt descending to get the newest
           const sorted = snap.docs
             .map(d => d.data())
             .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -174,9 +237,11 @@ export default function WorkWithUs() {
             setExperienceLevel(latest.experienceLevel || 'Intermediate');
             setAvailability(latest.availability || 'Full-time');
             setPortfolioLink(latest.portfolioLink || '');
+            if (latest.cvLink) setCvLink(latest.cvLink);
+            if (latest.coverLetterText) setCoverLetterText(latest.coverLetterText);
             setBio(latest.bio || '');
             setSignature(latest.signature || '');
-            toast.success('Welcome back! Your previous application profile has been auto-filled.');
+            toast.success('Welcome back! Your previous application profile has been loaded.');
           }
         } else {
           // If no service intakes found, check if there is a users doc with phone number
@@ -444,6 +509,12 @@ export default function WorkWithUs() {
       experienceLevel,
       availability,
       portfolioLink: portfolioLink.trim(),
+      cvUrl: cvFile?.dataUrl || cvLink.trim() || '',
+      cvFileName: cvFile?.name || (cvLink.trim() ? 'CV Link / External' : ''),
+      cvLink: cvLink.trim(),
+      coverLetterUrl: coverLetterFile?.dataUrl || '',
+      coverLetterFileName: coverLetterFile?.name || '',
+      coverLetterText: coverLetterText.trim(),
       bio: bio.trim(),
       signature: signature.trim(),
       preferredGenres: ['General', 'Commercial'],
@@ -457,26 +528,58 @@ export default function WorkWithUs() {
     };
 
     try {
-      // 1. Save application to 'service_intakes'
-      await addDoc(collection(db, 'service_intakes'), intakeData);
+      // 1. Save application to dedicated 'career_applications' collection
+      await addDoc(collection(db, 'career_applications'), intakeData);
 
-                      // 2. Dispatch a notification to admin
-                      await addDoc(collection(db, 'notifications'), {
-                        userId: 'admin',
-                        userEmail: 'admin',
-                        title: 'New Candidate Career Application',
-                        message: `A new application to work with Grefas has been submitted by ${fullName.trim()} for the role of ${joinedRoleType}. Check the service intakes desk to review and issue an official contract letter.`,
-                        type: 'service_intake_alert',
-                        read: false,
-                        createdAt: new Date().toISOString()
-                      });
+      // 2. Dispatch a notification to admin
+      await addDoc(collection(db, 'notifications'), {
+        userId: 'admin',
+        userEmail: 'admin',
+        title: 'New Candidate Career Application',
+        message: `A new career application has been submitted by ${fullName.trim()} for ${joinedRoleType}. Check the Career Applications desk to review CV, Cover Letter & profile details.`,
+        type: 'career_application_alert',
+        read: false,
+        createdAt: new Date().toISOString()
+      });
 
-      // 3. Try to notify via backend if proxy exists
+      // 3. Check for custom SMS template or default message
+      let customSmsMessage = undefined;
+      try {
+        const templatesSnapshot = await getDocs(query(collection(db, 'sms_templates'), where('name', '==', 'application_received')));
+        if (!templatesSnapshot.empty) {
+          const tplData = templatesSnapshot.docs[0].data();
+          if (tplData && tplData.content) {
+            customSmsMessage = tplData.content
+              .replace(/{name}/g, fullName.trim())
+              .replace(/{role}/g, joinedRoleType);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch custom SMS template:", err);
+      }
+
+      const clientSmsMsg = customSmsMessage || `Hello ${fullName.trim()}, your Grefas Career Application (${joinedRoleType}) has been received successfully! Status: Pending. Our team will review your profile shortly. - Grefas Consult`;
+
+      // Dispatch immediate SMS alert to client/candidate phone
+      const phoneToNotify = contact.trim() || whatsappNumber.trim();
+      if (phoneToNotify) {
+        try {
+          await sendArkeselSms(phoneToNotify, clientSmsMsg);
+          console.log("Client SMS alert sent immediately via Arkesel!");
+        } catch (smsErr) {
+          console.warn("Direct Arkesel SMS error:", smsErr);
+        }
+      }
+
+      // 4. Try to notify via backend proxy as well
       try {
         await fetch('/api/notify-intake', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(intakeData)
+          body: JSON.stringify({
+            ...intakeData,
+            customMessage: clientSmsMsg
+          })
         });
       } catch (err) {
         console.warn('API notify intake skipped or failed:', err);
@@ -526,7 +629,7 @@ export default function WorkWithUs() {
             Apply to <span className="text-orange-600">Work With Us</span>
           </h1>
           <p className="text-base text-muted-foreground max-w-2xl mx-auto">
-            Grefas is always looking for brilliant actors, passionate crew members, video editors, scriptwriters, and consulting staff. Fill in your professional details below to join our talent database.
+            {workWithUsSubtitle}
           </p>
         </div>
 
@@ -1076,6 +1179,118 @@ export default function WorkWithUs() {
                           placeholder="Describe your skills, previous shoots, acting credentials, or technical capabilities..."
                           className="text-xs rounded-lg h-24 resize-none"
                         />
+                      </div>
+
+                      {/* CV / Resume & Cover Letter Attachments */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                        {/* CV / Resume Upload */}
+                        <div className="space-y-2 p-3.5 border border-border/80 rounded-xl bg-card">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                            <span className="flex items-center gap-1.5 text-foreground font-extrabold">
+                              <FileText className="h-3.5 w-3.5 text-orange-600" /> Curriculum Vitae (CV) / Resume
+                            </span>
+                            <span className="text-[9px] text-muted-foreground font-mono">PDF, DOC, DOCX</span>
+                          </label>
+
+                          {cvFile ? (
+                            <div className="flex items-center justify-between p-2.5 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Paperclip className="h-4 w-4 text-orange-600 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-foreground truncate">{cvFile.name}</p>
+                                  <p className="text-[10px] text-muted-foreground">{(cvFile.size / 1024).toFixed(1)} KB attached</p>
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setCvFile(null)}
+                                className="h-7 w-7 text-red-500 hover:bg-red-500/10 shrink-0"
+                                title="Remove CV File"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <label className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-border hover:border-orange-500/60 rounded-lg cursor-pointer bg-muted/20 hover:bg-orange-500/5 transition-all text-center">
+                              <Upload className="h-5 w-5 text-orange-600 mb-1" />
+                              <span className="text-xs font-semibold text-foreground">Upload CV / Resume File</span>
+                              <span className="text-[10px] text-muted-foreground">PDF, DOCX, DOC, or Image file (max 15MB)</span>
+                              <input 
+                                type="file" 
+                                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" 
+                                onChange={handleCvUpload} 
+                                className="hidden" 
+                              />
+                            </label>
+                          )}
+
+                          <div className="space-y-1 pt-1">
+                            <span className="text-[10px] text-muted-foreground font-medium block">Or paste CV Cloud Link (Google Drive / Dropbox):</span>
+                            <Input 
+                              value={cvLink}
+                              onChange={(e) => setCvLink(e.target.value)}
+                              placeholder="e.g. https://drive.google.com/file/d/..."
+                              className="h-8 text-xs rounded-lg"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Cover Letter Upload & Text */}
+                        <div className="space-y-2 p-3.5 border border-border/80 rounded-xl bg-card">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                            <span className="flex items-center gap-1.5 text-foreground font-extrabold">
+                              <FileText className="h-3.5 w-3.5 text-orange-600" /> Cover Letter
+                            </span>
+                            <span className="text-[9px] text-muted-foreground font-mono">Document or Text</span>
+                          </label>
+
+                          {coverLetterFile ? (
+                            <div className="flex items-center justify-between p-2.5 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Paperclip className="h-4 w-4 text-orange-600 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-foreground truncate">{coverLetterFile.name}</p>
+                                  <p className="text-[10px] text-muted-foreground">{(coverLetterFile.size / 1024).toFixed(1)} KB attached</p>
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setCoverLetterFile(null)}
+                                className="h-7 w-7 text-red-500 hover:bg-red-500/10 shrink-0"
+                                title="Remove Cover Letter File"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <label className="flex flex-col items-center justify-center p-2.5 border border-dashed border-border hover:border-orange-500/60 rounded-lg cursor-pointer bg-muted/20 hover:bg-orange-500/5 transition-all text-center">
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                                <Upload className="h-3.5 w-3.5 text-orange-600" />
+                                <span>Upload Cover Letter Document</span>
+                              </div>
+                              <input 
+                                type="file" 
+                                accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" 
+                                onChange={handleCoverLetterUpload} 
+                                className="hidden" 
+                              />
+                            </label>
+                          )}
+
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-muted-foreground font-medium block">Or Write / Paste Cover Letter Text:</span>
+                            <Textarea 
+                              value={coverLetterText}
+                              onChange={(e) => setCoverLetterText(e.target.value)}
+                              placeholder="Dear Grefas Team, I am writing to apply for the position because..."
+                              className="text-xs rounded-lg h-20 resize-none"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
+import { sendArkeselSms } from '@/lib/arkeselSms';
 import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -709,7 +710,19 @@ export default function Booking() {
         console.warn("Failed to fetch booking_confirmed template, falling back to default SMS.", err);
       }
 
-      // Trigger automatic receipt & confirmation email via Resend API channel
+      const bookingSmsMsg = customSmsMessage || `Hello ${formData.userName}, your booking request (#${newOrderNumber}) for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time} is received! - Grefas Consult`;
+
+      // Dispatch direct immediate SMS alert to client phone
+      if (formData.userPhone?.trim()) {
+        try {
+          await sendArkeselSms(formData.userPhone.trim(), bookingSmsMsg);
+          console.log("Client booking SMS alert sent immediately via Arkesel!");
+        } catch (smsErr) {
+          console.warn("Direct Arkesel SMS error:", smsErr);
+        }
+      }
+
+      // Trigger automatic receipt & confirmation email & backup SMS via API route
       try {
         await fetch('/api/notify-confirmation', {
           method: 'POST',
@@ -724,7 +737,7 @@ export default function Booking() {
             orderNumber: newOrderNumber,
             teamMemberName: formData.teamMemberName || 'Primary Available Specialist',
             notes: formData.notes,
-            customMessage: customSmsMessage
+            customMessage: bookingSmsMsg
           })
         });
         console.log("Strategic appointment confirmation receipt dispatched successfully via Resend server gateway!");

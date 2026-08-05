@@ -1216,11 +1216,12 @@ Sitemap: https://grefasconsultandentertainment.com/sitemap.xml`);
     const results = { email: "skipped", sms: "skipped" };
 
     // Send SMS confirmation to applicant via Arkesel SMS gateway
-    if (contact) {
+    const phoneToUse = (contact || whatsappNumber || "").trim();
+    if (phoneToUse) {
       try {
         results.sms = await sendSMS(
-          contact,
-          customMessage || `Hello ${fullName}, your Grefas Casting application is received successfully! Status: Pending. Our team will review your profile. - Grefas`
+          phoneToUse,
+          customMessage || `Hello ${fullName}, your Grefas application was received successfully! Status: Pending. Our team will review your profile. - Grefas`
         );
       } catch (smsErr: any) {
         console.error("Failed to send casting confirmation SMS:", smsErr);

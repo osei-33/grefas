@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ea580c" />
+      <stop offset="100%" stop-color="#f97316" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#ea580c" flood-opacity="0.4" />
+    </filter>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="url(#bg)" />
+  <rect x="12" y="12" width="168" height="168" rx="32" fill="none" stroke="#ea580c" stroke-width="2" stroke-opacity="0.3" />
+  
+  <!-- Stylized G logo -->
+  <g filter="url(#shadow)">
+    <path d="M128 72 C120 54, 98 48, 76 56 C54 64, 46 88, 52 112 C58 136, 80 148, 106 142 C126 138, 138 122, 138 104 L96 104 L96 88 L156 88 L156 104 C156 132, 136 156, 102 160 C68 164, 38 146, 30 114 C22 80, 36 48, 68 36 C100 24, 132 34, 148 60 Z" fill="url(#brand)" />
+    <circle cx="146" cy="50" r="10" fill="#ea580c" />
+  </g>
+</svg>

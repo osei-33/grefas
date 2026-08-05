@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -626,6 +626,19 @@ export default function Admin() {
                 {isActive('/admin/intakes') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
               <Link
+                to="/admin/careers"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                  isActive('/admin/careers') || isActive('/admin/career-applications')
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <UserCheck className={`h-4 w-4 ${isActive('/admin/careers') || isActive('/admin/career-applications') ? 'text-orange-600' : ''}`} />
+                <span>Career Applications</span>
+                {(isActive('/admin/careers') || isActive('/admin/career-applications')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+              <Link
                 to="/admin/gallery"
                 onClick={() => setIsSidebarOpen(false)}
                 className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -899,6 +912,8 @@ export default function Admin() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/services" element={<ManageServices />} />
           <Route path="/intakes" element={<AdminServiceRequests />} />
+          <Route path="/careers" element={<ManageCareerApplications />} />
+          <Route path="/career-applications" element={<ManageCareerApplications />} />
           <Route path="/gallery" element={<ManageGallery />} />
           <Route path="/portfolio" element={<ManagePortfolio />} />
           <Route path="/bookings" element={<ManageBookings />} />
@@ -3068,6 +3083,619 @@ function AdminServiceRequests() {
                 className="h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-4"
               >
                 Verify & Record Payment
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ManageCareerApplications() {
+  const [applications, setApplications] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [roleFilter, setRoleFilter] = useState('All');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Editable Work With Us Subtitle
+  const [subtitleText, setSubtitleText] = useState('Grefas is always looking for brilliant actors, passionate crew members, video editors, scriptwriters, and consulting staff. Fill in your professional details below to join our talent database.');
+  const [savingSubtitle, setSavingSubtitle] = useState(false);
+
+  // Document Modal Preview State
+  const [docModal, setDocModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    applicantName: string;
+    url?: string;
+    fileName?: string;
+    text?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    applicantName: ''
+  });
+
+  // Admin Notes State
+  const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
+  const [savingNotesId, setSavingNotesId] = useState<string | null>(null);
+
+  const navigate = useNavigate();
+
+  // Load Subtitle Text from settings/global
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().workWithUsSubtitle) {
+        setSubtitleText(docSnap.data().workWithUsSubtitle);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Fetch Career Applications (exclusively from 'career_applications' collection)
+  useEffect(() => {
+    setLoading(true);
+
+    const unsubCareers = onSnapshot(
+      query(collection(db, 'career_applications'), orderBy('createdAt', 'desc')),
+      (careerSnap) => {
+        const careerList = careerSnap.docs.map(d => ({ id: d.id, sourceCollection: 'career_applications', ...d.data() }));
+        setApplications(careerList);
+        setLoading(false);
+      },
+      (error) => {
+        console.warn("ManageCareerApplications fetch error:", error);
+        handleFirestoreError(error, OperationType.LIST, 'career_applications');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubCareers();
+  }, []);
+
+  const handleSaveSubtitle = async () => {
+    if (!subtitleText.trim()) {
+      return toast.error('Subtitle text cannot be empty.');
+    }
+    setSavingSubtitle(true);
+    try {
+      await setDoc(doc(db, 'settings', 'global'), { workWithUsSubtitle: subtitleText.trim() }, { merge: true });
+      toast.success('Work With Us page header text updated live!');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'settings/global');
+    } finally {
+      setSavingSubtitle(false);
+    }
+  };
+
+  const handleStatusChange = async (appId: string, sourceCol: string, newStatus: string) => {
+    try {
+      const targetCol = sourceCol || 'career_applications';
+      await updateDoc(doc(db, targetCol, appId), { status: newStatus });
+      toast.success(`Candidate status updated to "${newStatus}"`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${sourceCol || 'career_applications'}/${appId}`);
+    }
+  };
+
+  const handleSaveNote = async (appId: string, sourceCol: string) => {
+    const note = editingNotes[appId];
+    setSavingNotesId(appId);
+    try {
+      const targetCol = sourceCol || 'career_applications';
+      await updateDoc(doc(db, targetCol, appId), { adminNotes: note || '' });
+      toast.success('Admin note saved successfully!');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${sourceCol || 'career_applications'}/${appId}`);
+    } finally {
+      setSavingNotesId(null);
+    }
+  };
+
+  const handleDeleteApp = async (appId: string) => {
+    const app = applications.find(a => a.id === appId);
+    const targetCol = app?.sourceCollection || 'career_applications';
+    try {
+      await deleteDoc(doc(db, targetCol, appId));
+      toast.success('Career application removed from database');
+      setDeleteId(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `${targetCol}/${appId}`);
+    }
+  };
+
+  const filteredApps = applications.filter((item) => {
+    const matchesSearch =
+      !searchQuery ||
+      item.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.emailAddress?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.contact?.includes(searchQuery) ||
+      item.address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.roleTypes && item.roleTypes.some((r: string) => r.toLowerCase().includes(searchQuery.toLowerCase()))) ||
+      (item.roleType && item.roleType.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesStatus =
+      statusFilter === 'All' ||
+      item.status === statusFilter ||
+      (statusFilter === 'Pending' && !item.status);
+
+    const matchesRole =
+      roleFilter === 'All' ||
+      (item.roleTypes && item.roleTypes.includes(roleFilter)) ||
+      (item.roleType && item.roleType.includes(roleFilter));
+
+    return matchesSearch && matchesStatus && matchesRole;
+  });
+
+  const totalApps = applications.length;
+  const pendingApps = applications.filter(a => !a.status || a.status === 'Pending').length;
+  const shortlistedApps = applications.filter(a => a.status === 'Shortlisted').length;
+  const hiredApps = applications.filter(a => a.status === 'Hired').length;
+
+  return (
+    <div className="space-y-6">
+      {/* Top Header & Metrics */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-border/60 pb-5">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <UserCheck className="h-6 w-6 text-orange-600" /> Career Applications & Talent Desk
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Review job submissions, CVs, cover letters, and applicant credentials submitted via the "Work With Us" page.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-orange-200 dark:border-orange-800 flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5" /> Total: {totalApps}
+          </span>
+          <span className="bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" /> Pending: {pendingApps}
+          </span>
+          <span className="bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 flex items-center gap-1.5">
+            <Star className="h-3.5 w-3.5" /> Shortlisted: {shortlistedApps}
+          </span>
+          <span className="bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-400 text-xs font-bold px-3 py-1.5 rounded-lg border border-green-200 dark:border-green-800 flex items-center gap-1.5">
+            <CheckCircle className="h-3.5 w-3.5" /> Hired: {hiredApps}
+          </span>
+        </div>
+      </div>
+
+      {/* Editable Work With Us Page Header Subtitle Banner */}
+      <Card className="border border-orange-500/30 bg-orange-500/5 shadow-xs">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-xs font-bold uppercase tracking-wider text-orange-600 flex items-center gap-2">
+            <Edit className="h-4 w-4" /> Work With Us Page Subtitle Editor
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Edit the description text that appears under "Apply to Work With Us" on the client-facing website.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Textarea 
+            value={subtitleText}
+            onChange={(e) => setSubtitleText(e.target.value)}
+            rows={2}
+            className="text-xs bg-background border-border resize-none"
+            placeholder="Type header subtitle text..."
+          />
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-muted-foreground italic">
+              💡 Updates live across the Work With Us page immediately upon saving.
+            </p>
+            <Button
+              size="sm"
+              onClick={handleSaveSubtitle}
+              disabled={savingSubtitle}
+              className="h-8 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white cursor-pointer px-4"
+            >
+              {savingSubtitle ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+              Save Subtitle Text
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Search & Filters */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-sm w-full">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, email, phone, role, address..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 h-9 text-xs"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+          <div className="flex items-center space-x-1 bg-muted p-1 rounded-lg shrink-0">
+            {['All', 'Pending', 'Shortlisted', 'Interview Scheduled', 'Hired', 'Rejected'].map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-all cursor-pointer ${
+                  statusFilter === status 
+                    ? 'bg-background text-foreground shadow-xs' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Applications List */}
+      {loading ? (
+        <div className="flex min-h-[300px] items-center justify-center border border-dashed rounded-xl bg-card">
+          <div className="text-center space-y-2">
+            <Loader2 className="h-8 w-8 animate-spin text-orange-600 mx-auto" />
+            <p className="text-xs text-muted-foreground">Loading candidate submissions...</p>
+          </div>
+        </div>
+      ) : filteredApps.length === 0 ? (
+        <div className="flex min-h-[300px] flex-col items-center justify-center text-center rounded-xl border border-dashed border-border p-8 bg-card">
+          <UserCheck className="h-10 w-10 text-muted-foreground opacity-40 mb-3" />
+          <h3 className="text-sm font-bold text-foreground">No Applications Found</h3>
+          <p className="text-xs text-muted-foreground max-w-md mt-1">
+            {searchQuery || statusFilter !== 'All' || roleFilter !== 'All' 
+              ? 'No candidate submissions match your current search and filter selections.' 
+              : 'Candidates who submit the Work With Us application form will appear here with complete details.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredApps.map((item) => {
+            const hasCv = item.cvUrl || item.cvFileName || item.cvLink;
+            const hasCoverLetter = item.coverLetterUrl || item.coverLetterFileName || item.coverLetterText;
+
+            return (
+              <Card key={item.id} className="border border-border bg-card hover:shadow-md transition-shadow flex flex-col justify-between">
+                <CardHeader className="pb-3 border-b border-border/50 bg-muted/10">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-11 w-11 rounded-lg border border-border shrink-0 bg-muted flex items-center justify-center text-muted-foreground font-black text-sm text-orange-600">
+                        {item.fullName ? item.fullName.charAt(0).toUpperCase() : 'C'}
+                      </div>
+                      <div className="min-w-0">
+                        <CardTitle className="text-sm font-bold truncate" title={item.fullName}>
+                          {item.fullName}
+                        </CardTitle>
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                          {item.age && (
+                            <span className="bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 font-bold px-1.5 py-0.5 rounded text-[10px]">
+                              {item.age} Yrs
+                            </span>
+                          )}
+                          {item.createdAt && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(item.createdAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        item.status === 'Hired' ? 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-400' :
+                        item.status === 'Shortlisted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400' :
+                        item.status === 'Interview Scheduled' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' :
+                        item.status === 'Rejected' ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400' :
+                        'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
+                      }`}>
+                        {item.status || 'Pending'}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteId(item.id)}
+                        className="h-7 w-7 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 shrink-0"
+                        title="Delete Application"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="pt-3 pb-3 space-y-3 text-xs">
+                  {/* Applied Roles */}
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                      Roles Applied For:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {Array.isArray(item.roleTypes) && item.roleTypes.length > 0 ? (
+                        item.roleTypes.map((r: string, idx: number) => (
+                          <span key={idx} className="bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800/60 font-semibold text-[10px] px-2 py-0.5 rounded">
+                            {r}
+                          </span>
+                        ))
+                      ) : item.roleType ? (
+                        item.roleType.split(', ').map((r: string, idx: number) => (
+                          <span key={idx} className="bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800/60 font-semibold text-[10px] px-2 py-0.5 rounded">
+                            {r}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground text-[10px]">General Talent</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Contact Information */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-muted-foreground">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Phone className="h-3.5 w-3.5 text-orange-600 shrink-0" />
+                      <a href={`tel:${item.contact}`} className="hover:text-foreground hover:underline font-mono">
+                        {item.contact}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <MessageCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <a 
+                        href={`https://wa.me/${item.whatsappNumber?.replace(/[^0-9]/g, '')}`} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="hover:text-emerald-600 hover:underline font-mono"
+                      >
+                        {item.whatsappNumber} (WhatsApp)
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-1.5 truncate col-span-1 sm:col-span-2">
+                      <Mail className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                      <a href={`mailto:${item.emailAddress}`} className="hover:text-foreground hover:underline truncate">
+                        {item.emailAddress}
+                      </a>
+                    </div>
+                    {item.address && (
+                      <div className="flex items-center gap-1.5 truncate col-span-1 sm:col-span-2">
+                        <MapPin className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                        <span className="truncate">{item.address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Experience & Availability */}
+                  <div className="flex items-center gap-3 text-[11px] pt-1 border-t border-border/40">
+                    <span className="font-semibold text-foreground">Exp: <span className="text-muted-foreground font-normal">{item.experienceLevel || 'Intermediate'}</span></span>
+                    <span className="font-semibold text-foreground">Avail: <span className="text-muted-foreground font-normal">{item.availability || 'Full-time'}</span></span>
+                  </div>
+
+                  {/* Attached Documents (CV & Cover Letter) */}
+                  <div className="p-2.5 rounded-lg bg-muted/30 border border-border/60 space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                      Attached Candidate Documents:
+                    </span>
+
+                    <div className="flex flex-wrap gap-2">
+                      {/* CV Button */}
+                      {hasCv ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (item.cvUrl) {
+                              setDocModal({
+                                isOpen: true,
+                                title: 'Curriculum Vitae (CV) / Resume',
+                                applicantName: item.fullName,
+                                url: item.cvUrl,
+                                fileName: item.cvFileName || 'CV Document'
+                              });
+                            } else if (item.cvLink) {
+                              window.open(item.cvLink, '_blank');
+                            }
+                          }}
+                          className="h-8 text-xs font-semibold bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200 hover:bg-orange-100"
+                        >
+                          <FileText className="h-3.5 w-3.5 mr-1 text-orange-600" />
+                          View CV / Resume
+                        </Button>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground italic">No CV uploaded</span>
+                      )}
+
+                      {/* Cover Letter Button */}
+                      {hasCoverLetter ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setDocModal({
+                              isOpen: true,
+                              title: 'Cover Letter',
+                              applicantName: item.fullName,
+                              url: item.coverLetterUrl,
+                              fileName: item.coverLetterFileName,
+                              text: item.coverLetterText
+                            });
+                          }}
+                          className="h-8 text-xs font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border-blue-200 hover:bg-blue-100"
+                        >
+                          <Paperclip className="h-3.5 w-3.5 mr-1 text-blue-600" />
+                          View Cover Letter
+                        </Button>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground italic">No Cover Letter</span>
+                      )}
+
+                      {/* Portfolio Button */}
+                      {item.portfolioLink && (
+                        <a
+                          href={item.portfolioLink.startsWith('http') ? item.portfolioLink : `https://${item.portfolioLink}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center h-8 px-2.5 rounded-md border border-border bg-background text-xs font-semibold text-foreground hover:bg-muted"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 mr-1 text-purple-600" /> Reel / Portfolio
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Short Bio */}
+                  {item.bio && (
+                    <div className="p-2 bg-muted/20 rounded border border-border/40 text-[11px]">
+                      <span className="font-bold text-foreground">Bio / Highlights: </span>
+                      <span className="text-muted-foreground">{item.bio}</span>
+                    </div>
+                  )}
+
+                  {/* Signature Verification */}
+                  {item.signature && (
+                    <div className="text-[10px] text-muted-foreground flex items-center justify-between">
+                      <span>Digital Signature: <span className="font-serif italic font-bold text-foreground">{item.signature}</span></span>
+                      <span className="text-emerald-600 font-bold flex items-center gap-0.5">
+                        <ShieldCheck className="h-3 w-3" /> Certified
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Admin Notes */}
+                  <div className="pt-2 border-t border-border/40 space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                      Admin Desk Notes:
+                    </span>
+                    <div className="flex gap-2">
+                      <Input
+                        value={editingNotes[item.id] !== undefined ? editingNotes[item.id] : (item.adminNotes || '')}
+                        onChange={(e) => setEditingNotes({ ...editingNotes, [item.id]: e.target.value })}
+                        placeholder="Add hiring note, interview feedback, rating..."
+                        className="h-8 text-xs flex-1 bg-background"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => handleSaveNote(item.id, item.sourceCollection)}
+                        disabled={savingNotesId === item.id}
+                        className="h-8 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white px-2.5 cursor-pointer"
+                      >
+                        {savingNotesId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Status Selection Buttons */}
+                  <div className="pt-2 border-t border-border/40 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                      Update Candidate Status:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {['Pending', 'Shortlisted', 'Interview Scheduled', 'Hired', 'Rejected'].map((statusOpt) => (
+                        <button
+                          key={statusOpt}
+                          onClick={() => handleStatusChange(item.id, item.sourceCollection, statusOpt)}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded transition duration-200 cursor-pointer border ${
+                            item.status === statusOpt || (statusOpt === 'Pending' && !item.status)
+                              ? 'bg-orange-600 border-orange-600 text-white shadow-xs'
+                              : 'bg-muted/40 border-border hover:bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {statusOpt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quick Action: Generate Contract Letter */}
+                  <div className="pt-2 border-t border-border/40 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate('/admin/letters')}
+                      className="h-7 text-[11px] font-semibold text-orange-600 border-orange-200 hover:bg-orange-50"
+                    >
+                      <FileText className="h-3 w-3 mr-1" /> Issue Official Letter / Contract
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {deleteId && (
+        <AdminDeleteModal
+          title="Delete Career Application"
+          message="Are you sure you want to remove this candidate's application from the database? This action is permanent."
+          onConfirm={() => handleDeleteApp(deleteId)}
+          onCancel={() => setDeleteId(null)}
+        />
+      )}
+
+      {/* Document Viewer Modal */}
+      {docModal.isOpen && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card w-full max-w-3xl rounded-xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
+              <div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-orange-600" /> {docModal.title}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Applicant: <span className="font-semibold text-foreground">{docModal.applicantName}</span>
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDocModal({ isOpen: false, title: '', applicantName: '' })}
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              {docModal.text && (
+                <div className="p-4 bg-muted/30 border border-border rounded-xl text-xs leading-relaxed whitespace-pre-wrap font-sans text-foreground">
+                  {docModal.text}
+                </div>
+              )}
+
+              {docModal.url && (
+                docModal.url.startsWith('data:image/') ? (
+                  <div className="flex justify-center p-2 bg-muted/20 rounded-xl border border-border">
+                    <img src={docModal.url} alt="Uploaded Document" className="max-h-[500px] object-contain rounded-lg" />
+                  </div>
+                ) : docModal.url.startsWith('data:application/pdf') || docModal.url.includes('.pdf') ? (
+                  <div className="h-[450px] w-full rounded-xl overflow-hidden border border-border bg-muted/10">
+                    <iframe src={docModal.url} className="w-full h-full border-none" title="PDF Document Viewer" />
+                  </div>
+                ) : (
+                  <div className="p-6 text-center space-y-3 bg-muted/20 rounded-xl border border-border">
+                    <FileText className="h-10 w-10 text-orange-600 mx-auto" />
+                    <p className="text-xs font-semibold text-foreground">{docModal.fileName || 'Attached Document'}</p>
+                    <a
+                      href={docModal.url}
+                      download={docModal.fileName || 'candidate-document'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs"
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1.5" /> Download / View Document
+                    </a>
+                  </div>
+                )
+              )}
+            </div>
+
+            <div className="px-5 py-3 border-t border-border/60 bg-muted/20 flex justify-end">
+              <Button
+                size="sm"
+                onClick={() => setDocModal({ isOpen: false, title: '', applicantName: '' })}
+                className="h-8 text-xs font-semibold"
+              >
+                Close Window
               </Button>
             </div>
           </div>
@@ -5869,6 +6497,7 @@ function ManageSettings() {
           vacancyAlertTitle: data.vacancyAlertTitle || 'We are Hiring! Active Vacancy Available',
           vacancyAlertMessage: data.vacancyAlertMessage || 'We are currently looking for brilliant actors, skit creators, creative writers, video editors, and production crew to join our team in Nyinahin-Ashanti. Click below to view open roles and apply!',
           vacancyButtonText: data.vacancyButtonText || 'Apply Now',
+          workWithUsSubtitle: data.workWithUsSubtitle || 'Grefas is always looking for brilliant actors, passionate crew members, video editors, scriptwriters, and consulting staff. Fill in your professional details below to join our talent database.',
           letterheadJointTitle: data.letterheadJointTitle || 'GREFAS ENTERTAINMENT & CONSULT',
           letterheadJointSubtitle: data.letterheadJointSubtitle || 'Theatre, Film Casting, Artiste Management, Production & Business Consulting',
           letterheadEntTitle: data.letterheadEntTitle || 'GREFAS ENTERTAINMENT & PRODUCTIONS',
@@ -6307,6 +6936,22 @@ function ManageSettings() {
                   />
                   <p className="text-[11px] text-muted-foreground italic">
                     This message will be shown to public visitors on the homepage to invite them to apply through the careers desk.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-border/40">
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <FileText className="h-4 w-4 text-orange-600" /> Work With Us Page Header Subtitle Text
+                  </label>
+                  <Textarea
+                    value={settings.workWithUsSubtitle || ''}
+                    onChange={(e) => setSettings({ ...settings, workWithUsSubtitle: e.target.value })}
+                    placeholder="Enter the description text displayed under the heading on the Work With Us page..."
+                    rows={3}
+                    className="bg-background border-border"
+                  />
+                  <p className="text-[11px] text-muted-foreground italic">
+                    This text replaces the header description on the "Work With Us" page for candidates in real time.
                   </p>
                 </div>
               </div>

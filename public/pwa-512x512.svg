@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="brand512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ea580c" />
+      <stop offset="100%" stop-color="#f97316" />
+    </linearGradient>
+    <filter id="shadow512" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#ea580c" flood-opacity="0.5" />
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg512)" />
+  <rect x="32" y="32" width="448" height="448" rx="88" fill="none" stroke="#ea580c" stroke-width="4" stroke-opacity="0.3" />
+  
+  <!-- Stylized G logo -->
+  <g filter="url(#shadow512)">
+    <path d="M341 192 C320 144, 261 128, 202 149 C144 170, 122 234, 138 298 C154 362, 213 394, 282 378 C336 368, 368 325, 368 277 L256 277 L256 234 L416 234 L416 277 C416 352, 362 416, 272 426 C181 437, 101 389, 80 304 C58 213, 96 128, 181 96 C266 64, 352 90, 394 160 Z" fill="url(#brand512)" />
+    <circle cx="389" cy="133" r="26" fill="#ea580c" />
+  </g>
+</svg>

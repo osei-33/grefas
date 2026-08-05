@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Send } from 'lucide-react';
 import AuthDialog from './AuthDialog';
+import PwaInstallPrompt from './PwaInstallPrompt';
 
 interface LayoutProps {
   children: ReactNode;
@@ -558,6 +559,7 @@ export default function Layout({ children }: LayoutProps) {
 
       <Chat />
       <WhatsAppButton phone={settings?.phone} />
+      <PwaInstallPrompt />
 
       {/* Footer */}
       <footer className="border-t border-border bg-card py-12">
