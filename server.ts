@@ -1383,38 +1383,29 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
 
       let responseText = "";
       try {
-        console.log("Attempting letter generation with gemini-2.5-flash...");
+        console.log("Attempting letter generation with gemini-3.6-flash...");
         const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-3.6-flash",
           contents: prompt,
         });
         responseText = response.text || "";
       } catch (firstErr: any) {
-        console.log("Primary model gemini-2.5-flash unavailable/quota limited. Trying fallback gemini-2.0-flash...", firstErr.message || firstErr);
+        console.log("Primary model gemini-3.6-flash unavailable/quota limited. Trying fallback gemini-flash-latest...", firstErr.message || firstErr);
         try {
           const response = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
+            model: "gemini-flash-latest",
             contents: prompt,
           });
           responseText = response.text || "";
         } catch (secondErr: any) {
-          console.log("Secondary model gemini-2.0-flash unavailable. Trying fallback gemini-1.5-flash...", secondErr.message || secondErr);
-          try {
-            const response = await ai.models.generateContent({
-              model: "gemini-1.5-flash",
-              contents: prompt,
-            });
-            responseText = response.text || "";
-          } catch (thirdErr: any) {
-            console.log("All remote Gemini models quota limited or offline. Invoking local text generator...", thirdErr.message || thirdErr);
-            // Bulletproof local fallback generator
-            const contextText = additionalContext ? `In regard to ${additionalContext}, we want to reiterate our commitment to excellence.` : "We are writing to officially outline our terms and look forward to a highly successful cooperation.";
-            responseText = `We are pleased to write to you on behalf of Grefas Entertainment & Productions concerning our ongoing discussions and mutual interests in the creative industry. As we move forward with our strategic plans, we want to express our sincere appreciation for your interest and proposed engagement with our organization.
+          console.log("All remote Gemini models quota limited or offline. Invoking local text generator...", secondErr.message || secondErr);
+          // Bulletproof local fallback generator
+          const contextText = additionalContext ? `In regard to ${additionalContext}, we want to reiterate our commitment to excellence.` : "We are writing to officially outline our terms and look forward to a highly successful cooperation.";
+          responseText = `We are pleased to write to you on behalf of Grefas Entertainment & Productions concerning our ongoing discussions and mutual interests in the creative industry. As we move forward with our strategic plans, we want to express our sincere appreciation for your interest and proposed engagement with our organization.
 
 ${contextText} Our team is fully dedicated to ensuring that all aspects of this undertaking are executed with the highest standards of professionalism and artistic integrity. We believe that this collaboration will yield exceptional results and create outstanding value for both parties.
 
 To facilitate the next steps, we propose that we schedule a formal review session to finalize the details and establish a clear timeline for our upcoming projects. Please review the attached contract guidelines, and let us know your availability at your earliest convenience so we can proceed accordingly.`;
-          }
         }
       }
 
@@ -1509,11 +1500,11 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
           return res.json({ success: true, url: `data:image/jpeg;base64,${base64Bytes}` });
         }
       } catch (firstErr: any) {
-        console.log("Imagen 3.0 primary model unavailable or quota limited. Trying fallback gemini-2.5-flash...", firstErr.message || firstErr);
-        // 2. Try Gemini 2.5 Flash image output
+        console.log("Imagen 3.0 primary model unavailable or quota limited. Trying fallback gemini-3.1-flash-lite-image...", firstErr.message || firstErr);
+        // 2. Try Gemini Flash Lite Image output
         try {
           const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.1-flash-lite-image',
             contents: {
               parts: [
                 {
