@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
+import { logAuditActivity } from '@/lib/auditLogger';
 import { 
   ShieldCheck, 
   FileText, 
@@ -131,6 +132,13 @@ export default function ManageLegalPolicies() {
     setSaving(true);
     try {
       await setDoc(doc(db, 'settings', 'global'), policyData, { merge: true });
+      await logAuditActivity({
+        type: 'policy_update',
+        module: 'Legal & Policies',
+        action: 'UPDATED_LEGAL_POLICIES',
+        description: `Updated legal governance policies and privacy desk configuration (Tab: ${activeTab.toUpperCase()}).`,
+        metadata: { tab: activeTab, updatedDate: policyData.policyLastUpdatedDate }
+      });
       toast.success('Legal Policies & Privacy Desk settings updated successfully! Public pages reflect changes live.');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'settings/global');

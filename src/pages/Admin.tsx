@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
+import { logAuditActivity } from '@/lib/auditLogger';
 import { compressImage, blobToBase64 } from '@/lib/utils';
 import { 
   signInWithEmailAndPassword, 
@@ -39,6 +40,7 @@ import SmsDashboard from '@/components/SmsDashboard';
 import ManageLetters from '@/components/ManageLetters';
 import ManageEmployeesPayroll from '@/components/ManageEmployeesPayroll';
 import ManageLegalPolicies from '@/components/ManageLegalPolicies';
+import ManageSitemap from './ManageSitemap';
 import SEO from '@/components/SEO';
 
 const isAdminEmail = (email: string | null | undefined) => {
@@ -820,11 +822,24 @@ export default function Admin() {
                 <span>My Profile & Signature</span>
                 {isActive('/admin/profile') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
-              {role === 'admin' && (
+              {hasAdminAccess && (
                 <>
                   <div className="pt-4 pb-2">
                     <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3">System Control</h2>
                   </div>
+                  <Link
+                    to="/admin/activity"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      (isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs'))
+                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Clock className={`h-4 w-4 ${(isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs')) ? 'text-orange-600' : ''}`} />
+                    <span>System Audit Trail</span>
+                    {(isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                  </Link>
                   <Link
                     to="/admin/users"
                     onClick={() => setIsSidebarOpen(false)}
@@ -837,19 +852,6 @@ export default function Admin() {
                     <Users className={`h-4 w-4 ${isActive('/admin/users') ? 'text-orange-600' : ''}`} />
                     <span>Manage Users</span>
                     {isActive('/admin/users') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-                  </Link>
-                  <Link
-                    to="/admin/activity"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      isActive('/admin/activity') 
-                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <Clock className={`h-4 w-4 ${isActive('/admin/activity') ? 'text-orange-600' : ''}`} />
-                    <span>Client Activity Log</span>
-                    {isActive('/admin/activity') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                   <Link
                     to="/admin/chat"
@@ -889,6 +891,19 @@ export default function Admin() {
                     <ShieldCheck className={`h-4 w-4 ${isActive('/admin/policies') ? 'text-orange-600' : ''}`} />
                     <span>Legal Policies</span>
                     {isActive('/admin/policies') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                  </Link>
+                  <Link
+                    to="/admin/sitemap"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      (isActive('/admin/sitemap') || isActive('/admin/seo'))
+                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Globe className={`h-4 w-4 ${(isActive('/admin/sitemap') || isActive('/admin/seo')) ? 'text-orange-600' : ''}`} />
+                    <span>SEO & Sitemap</span>
+                    {(isActive('/admin/sitemap') || isActive('/admin/seo')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                   <Link
                     to="/admin/settings"
@@ -946,11 +961,16 @@ export default function Admin() {
           <Route path="/testimonials" element={<ManageTestimonials />} />
           <Route path="/announcements" element={<ManageVisitorAlerts />} />
           <Route path="/policies" element={<ManageLegalPolicies />} />
+          <Route path="/sitemap" element={<ManageSitemap />} />
+          <Route path="/seo" element={<ManageSitemap />} />
           <Route path="/profile" element={<AdminProfile />} />
-          {role === 'admin' && (
+          <Route path="/activity" element={<ManageActivityLog />} />
+          <Route path="/audit" element={<ManageActivityLog />} />
+          <Route path="/audit-trail" element={<ManageActivityLog />} />
+          <Route path="/logs" element={<ManageActivityLog />} />
+          {hasAdminAccess && (
             <>
               <Route path="/users" element={<ManageUsers />} />
-              <Route path="/activity" element={<ManageActivityLog />} />
               <Route path="/chat" element={<ManageChat />} />
               <Route path="/sms" element={<SmsDashboard />} />
               <Route path="/settings" element={<ManageSettings />} />
@@ -9483,182 +9503,643 @@ function ManageActivityLog() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [filterModule, setFilterModule] = useState('all');
+  const [selectedUser, setSelectedUser] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [viewMode, setViewMode] = useState<'timeline' | 'table'>('timeline');
+
+  const parseLogTime = (log: any): number => {
+    if (!log) return 0;
+    if (log.createdAt) {
+      if (typeof log.createdAt === 'string') {
+        const parsed = new Date(log.createdAt).getTime();
+        if (!isNaN(parsed)) return parsed;
+      }
+      if (typeof log.createdAt === 'number') return log.createdAt;
+      if (log.createdAt && typeof log.createdAt.seconds === 'number') return log.createdAt.seconds * 1000;
+      if (typeof log.createdAt.toDate === 'function') return log.createdAt.toDate().getTime();
+    }
+    if (log.timestamp) {
+      if (typeof log.timestamp === 'string') {
+        const parsed = new Date(log.timestamp).getTime();
+        if (!isNaN(parsed)) return parsed;
+      }
+      if (typeof log.timestamp === 'number') return log.timestamp;
+      if (log.timestamp && typeof log.timestamp.seconds === 'number') return log.timestamp.seconds * 1000;
+      if (typeof log.timestamp.toDate === 'function') return log.timestamp.toDate().getTime();
+    }
+    return 0;
+  };
 
   useEffect(() => {
-    const q = query(collection(db, 'activity_logs'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    let unsubAudit: (() => void) | null = null;
+    let unsubActivity: (() => void) | null = null;
+    let auditData: any[] = [];
+    let activityData: any[] = [];
+
+    const mergeAndSetLogs = () => {
+      const map = new Map<string, any>();
+      [...auditData, ...activityData].forEach(item => {
+        if (item.id) {
+          map.set(item.id, item);
+        }
+      });
+      const combined = Array.from(map.values());
+      combined.sort((a, b) => parseLogTime(b) - parseLogTime(a));
+      setLogs(combined);
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'activity_logs');
+    };
+
+    try {
+      const refAudit = collection(db, 'audit_logs');
+      unsubAudit = onSnapshot(refAudit, (snapshot) => {
+        auditData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        mergeAndSetLogs();
+      }, (err) => {
+        console.warn("Audit logs listener warning:", err);
+        setLoading(false);
+      });
+
+      const refActivity = collection(db, 'activity_logs');
+      unsubActivity = onSnapshot(refActivity, (snapshot) => {
+        activityData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        mergeAndSetLogs();
+      }, (err) => {
+        console.warn("Activity logs listener warning:", err);
+        setLoading(false);
+      });
+    } catch (e) {
+      console.error("Audit logs snapshot exception:", e);
       setLoading(false);
-    });
-    return () => unsubscribe();
+    }
+
+    return () => {
+      if (unsubAudit) unsubAudit();
+      if (unsubActivity) unsubActivity();
+    };
   }, []);
 
+  // Compute unique user emails for user-specific filtering
+  const availableUsers = Array.from(
+    new Set(logs.map(l => (l.userEmail || '').trim()).filter(Boolean))
+  ).sort();
+
+  // Compute unique modules present in logs
+  const availableModules = Array.from(
+    new Set(logs.map(l => (l.module || '').trim()).filter(Boolean))
+  ).sort();
+
   const filteredLogs = logs.filter(log => {
-    const matchesSearch = 
-      (log.userEmail || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (log.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (log.description || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const queryLower = searchQuery.toLowerCase().trim();
+    const detailsText = (log.description || log.details || '').toLowerCase();
+    const actionText = (log.action || log.actionType || log.type || '').toLowerCase();
     
-    const matchesFilter = filterType === 'all' || log.type === filterType;
-    return matchesSearch && matchesFilter;
+    const matchesSearch = 
+      !queryLower ||
+      (log.userEmail || '').toLowerCase().includes(queryLower) ||
+      (log.userName || '').toLowerCase().includes(queryLower) ||
+      detailsText.includes(queryLower) ||
+      (log.module || '').toLowerCase().includes(queryLower) ||
+      actionText.includes(queryLower) ||
+      (log.targetName || '').toLowerCase().includes(queryLower);
+    
+    const matchesType = filterType === 'all' || log.type === filterType;
+    const matchesModule = filterModule === 'all' || log.module === filterModule;
+    const matchesUser = selectedUser === 'all' || (log.userEmail || '').toLowerCase() === selectedUser.toLowerCase();
+
+    // Date range filtering
+    let matchesDateRange = true;
+    const logTime = parseLogTime(log);
+    if (logTime > 0) {
+      if (startDate) {
+        const startMs = new Date(`${startDate}T00:00:00`).getTime();
+        if (!isNaN(startMs) && logTime < startMs) {
+          matchesDateRange = false;
+        }
+      }
+      if (endDate && matchesDateRange) {
+        const endMs = new Date(`${endDate}T23:59:59.999`).getTime();
+        if (!isNaN(endMs) && logTime > endMs) {
+          matchesDateRange = false;
+        }
+      }
+    }
+
+    return matchesSearch && matchesType && matchesModule && matchesUser && matchesDateRange;
   });
 
-  // Calculate statistics
-  const totalLogins = logs.filter(l => l.type === 'login').length;
-  const totalSubmissions = logs.filter(l => l.type === 'application_submission').length;
-  const totalOtps = logs.filter(l => l.type === 'sms_verification').length;
-  const totalStatusChanges = logs.filter(l => l.type === 'status_change').length;
+  const isFilterActive = searchQuery !== '' || filterType !== 'all' || filterModule !== 'all' || selectedUser !== 'all' || startDate !== '' || endDate !== '';
 
-  const getActivityColor = (type: string) => {
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setFilterType('all');
+    setFilterModule('all');
+    setSelectedUser('all');
+    setStartDate('');
+    setEndDate('');
+  };
+
+  // Calculate statistics
+  const totalLogs = logs.length;
+  const totalCreates = logs.filter(l => l.type === 'create').length;
+  const totalUpdates = logs.filter(l => l.type === 'update').length;
+  const totalDeletes = logs.filter(l => l.type === 'delete').length;
+  const totalSecurity = logs.filter(l => l.type === 'login' || l.type === 'role_change' || l.type === 'policy_update').length;
+
+  const getActivityBadge = (type: string, action?: string) => {
     switch (type) {
-      case 'login':
-        return 'bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-400';
-      case 'application_submission':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400';
-      case 'sms_verification':
-        return 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-400';
+      case 'create':
+        return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30';
+      case 'update':
+        return 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30';
+      case 'delete':
+        return 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30';
       case 'status_change':
-        return 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400';
-      case 'password_reset':
-        return 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400';
+        return 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30';
+      case 'role_change':
+        return 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30';
+      case 'policy_update':
+        return 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-indigo-500/30';
+      case 'login':
+        return 'bg-teal-500/15 text-teal-700 dark:text-teal-400 border-teal-500/30';
+      case 'sms_sent':
+        return 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30';
       default:
-        return 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400';
+        return 'bg-slate-500/15 text-slate-700 dark:text-slate-400 border-slate-500/30';
     }
   };
 
-  const formatActivityType = (type: string) => {
+  const formatActivityType = (type: string, action?: string) => {
+    if (action) return action.replace(/_/g, ' ').toUpperCase();
     return (type || '').replace(/_/g, ' ').toUpperCase();
+  };
+
+  const handleExportCSV = () => {
+    if (filteredLogs.length === 0) {
+      toast.error("No logs available to export.");
+      return;
+    }
+    try {
+      const headers = ['Timestamp', 'Type', 'Action Type', 'Module', 'User Name', 'User Email', 'Role', 'Target Name', 'Target ID', 'Details / Description'];
+      const rows = filteredLogs.map(log => [
+        log.createdAt ? format(parseISO(log.createdAt), 'yyyy-MM-dd HH:mm:ss') : 'N/A',
+        log.type || '',
+        log.action || log.actionType || '',
+        log.module || 'General',
+        `"${(log.userName || '').replace(/"/g, '""')}"`,
+        `"${(log.userEmail || '').replace(/"/g, '""')}"`,
+        log.userRole || 'user',
+        `"${(log.targetName || '').replace(/"/g, '""')}"`,
+        log.targetId || '',
+        `"${(log.description || log.details || '').replace(/"/g, '""')}"`
+      ]);
+
+      const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `grefas_audit_trail_${format(new Date(), 'yyyy-MM-dd_HHmm')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Audit Log CSV exported successfully!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export CSV report.");
+    }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-black uppercase tracking-tight text-foreground">Client Engagement Log</h1>
-          <p className="text-xs text-muted-foreground">Monitor real-time candidate registration, verification, status changes, and portal logins.</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-black uppercase tracking-tight text-foreground">Firestore Audit Trail</h1>
+            <span className="px-2 py-0.5 text-[10px] font-black uppercase bg-orange-500/10 text-orange-600 rounded-full border border-orange-500/20 flex items-center gap-1">
+              {loading ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin text-orange-600" />
+                  <span>Fetching Firestore...</span>
+                </>
+              ) : (
+                <>
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Firestore audit_logs Active</span>
+                </>
+              )}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Real-time change logs fetched from Firestore <code className="text-orange-600 font-mono font-bold bg-muted px-1 py-0.5 rounded">audit_logs</code> collection with email, timestamp, action type, and modification details.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleExportCSV}
+            variant="outline"
+            className="h-9 text-xs font-bold rounded-xl gap-2 border-border"
+          >
+            <Download className="h-3.5 w-3.5 text-orange-600" />
+            Export CSV Audit Trail
+          </Button>
         </div>
       </div>
 
-      {/* Grid Statistics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="rounded-xl border border-border shadow-xs">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-green-100 dark:bg-green-950/20 text-green-600 rounded-lg animate-pulse">
-              <UserIcon className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Client Logins</p>
-              <h4 className="text-lg font-black">{totalLogins}</h4>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Grid Statistics / Skeleton */}
+      {loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Card key={i} className="rounded-xl border border-border shadow-xs animate-pulse bg-muted/40">
+              <CardContent className="p-3.5 flex items-center gap-3">
+                <div className="p-2 bg-muted rounded-lg w-8 h-8" />
+                <div className="space-y-1.5 flex-1">
+                  <div className="h-2.5 bg-muted rounded w-3/4" />
+                  <div className="h-4 bg-muted rounded w-1/2" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Card className="rounded-xl border border-border shadow-xs">
+            <CardContent className="p-3.5 flex items-center gap-3">
+              <div className="p-2 bg-slate-100 dark:bg-slate-800 text-foreground rounded-lg">
+                <Clock className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Total Audit Logs</p>
+                <h4 className="text-lg font-black">{totalLogs}</h4>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="rounded-xl border border-border shadow-xs">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-blue-100 dark:bg-blue-950/20 text-blue-600 rounded-lg animate-pulse">
-              <FileText className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Career Apps</p>
-              <h4 className="text-lg font-black">{totalSubmissions}</h4>
-            </div>
-          </CardContent>
-        </Card>
+          <Card className="rounded-xl border border-border shadow-xs">
+            <CardContent className="p-3.5 flex items-center gap-3">
+              <div className="p-2 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 rounded-lg">
+                <Plus className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Creations / Adds</p>
+                <h4 className="text-lg font-black text-emerald-600 dark:text-emerald-400">{totalCreates}</h4>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="rounded-xl border border-border shadow-xs">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-orange-100 dark:bg-orange-950/20 text-orange-600 rounded-lg animate-pulse">
-              <Phone className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">SMS OTPs Sent</p>
-              <h4 className="text-lg font-black">{totalOtps}</h4>
-            </div>
-          </CardContent>
-        </Card>
+          <Card className="rounded-xl border border-border shadow-xs">
+            <CardContent className="p-3.5 flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-950/40 text-blue-600 rounded-lg">
+                <Edit className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Edits / Updates</p>
+                <h4 className="text-lg font-black text-blue-600 dark:text-blue-400">{totalUpdates}</h4>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="rounded-xl border border-border shadow-xs">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 bg-purple-100 dark:bg-purple-950/20 text-purple-600 rounded-lg animate-pulse">
-              <SettingsIcon className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Status Updates</p>
-              <h4 className="text-lg font-black">{totalStatusChanges}</h4>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          <Card className="rounded-xl border border-border shadow-xs">
+            <CardContent className="p-3.5 flex items-center gap-3">
+              <div className="p-2 bg-rose-100 dark:bg-rose-950/40 text-rose-600 rounded-lg">
+                <Trash2 className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Deletions</p>
+                <h4 className="text-lg font-black text-rose-600 dark:text-rose-400">{totalDeletes}</h4>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Filtering Options */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+          <Card className="rounded-xl border border-border shadow-xs col-span-2 md:col-span-1">
+            <CardContent className="p-3.5 flex items-center gap-3">
+              <div className="p-2 bg-amber-100 dark:bg-amber-950/40 text-amber-600 rounded-lg">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Security & Governance</p>
+                <h4 className="text-lg font-black text-amber-600 dark:text-amber-400">{totalSecurity}</h4>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Comprehensive Filtering Section */}
+      <Card className="rounded-2xl border border-border shadow-sm p-4 bg-card space-y-3">
+        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-foreground">
+            <Search className="h-3.5 w-3.5 text-orange-600" />
+            Audit Search & History Filters
+          </span>
+          {isFilterActive && (
+            <button
+              onClick={clearAllFilters}
+              className="text-[11px] font-extrabold text-orange-600 hover:text-orange-700 flex items-center gap-1 underline cursor-pointer"
+            >
+              <X className="h-3 w-3" /> Reset All Filters
+            </button>
+          )}
+        </div>
+
+        {/* Search Input Bar */}
+        <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by name, email, or description..."
+            placeholder="Search details of modification, user email, module, action type, target..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 text-xs rounded-xl"
+            className="pl-9 text-xs rounded-xl h-10 bg-background"
           />
         </div>
-        <div className="flex gap-2">
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="h-10 text-xs rounded-xl border border-border bg-background px-3 font-semibold text-foreground focus:outline-hidden cursor-pointer"
-          >
-            <option value="all">All Activities</option>
-            <option value="login">Logins</option>
-            <option value="sms_verification">SMS OTPs</option>
-            <option value="application_submission">Submissions</option>
-            <option value="status_change">Status Changes</option>
-            <option value="password_reset">Resets</option>
-          </select>
-        </div>
-      </div>
 
-      {/* Activity Timeline Card */}
+        {/* Advanced Filters Grid: User, Date Range, Module, Action Type, View Mode */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 pt-1">
+          {/* User-Specific Filter Dropdown */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">
+              Filter by User Email
+            </label>
+            <select
+              value={selectedUser}
+              onChange={(e) => setSelectedUser(e.target.value)}
+              className="w-full h-9 text-xs rounded-xl border border-border bg-background px-2.5 font-semibold text-foreground focus:outline-hidden cursor-pointer"
+            >
+              <option value="all">All Users ({availableUsers.length})</option>
+              {availableUsers.map(uEmail => (
+                <option key={uEmail} value={uEmail}>{uEmail}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Range Start Filter */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">
+              From Date
+            </label>
+
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="h-9 text-xs rounded-xl border border-border bg-background px-2.5 font-semibold text-foreground"
+            />
+          </div>
+
+          {/* Date Range End Filter */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">
+              To Date
+            </label>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="h-9 text-xs rounded-xl border border-border bg-background px-2.5 font-semibold text-foreground"
+            />
+          </div>
+
+          {/* Action Type Filter */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">
+              Action Type
+            </label>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="w-full h-9 text-xs rounded-xl border border-border bg-background px-2.5 font-semibold text-foreground focus:outline-hidden cursor-pointer"
+            >
+              <option value="all">All Action Types</option>
+              <option value="create">Creations & Additions</option>
+              <option value="update">Edits & Modifications</option>
+              <option value="delete">Deletions & Removals</option>
+              <option value="status_change">Status Changes</option>
+              <option value="role_change">User & Role Updates</option>
+              <option value="policy_update">Legal Policies</option>
+              <option value="login">Logins & Security</option>
+              <option value="sms_sent">SMS Dispatches</option>
+            </select>
+          </div>
+
+          {/* Module Filter */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1 block">
+              Module Scope
+            </label>
+            <select
+              value={filterModule}
+              onChange={(e) => setFilterModule(e.target.value)}
+              className="w-full h-9 text-xs rounded-xl border border-border bg-background px-2.5 font-semibold text-foreground focus:outline-hidden cursor-pointer"
+            >
+              <option value="all">All Modules</option>
+              {availableModules.map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* View Mode Switcher bar */}
+        <div className="flex items-center justify-between border-t border-border pt-2.5 mt-1">
+          <div className="text-[11px] font-medium text-muted-foreground">
+            Showing <strong className="text-foreground">{filteredLogs.length}</strong> of <strong className="text-foreground">{logs.length}</strong> total audit records
+          </div>
+          <div className="flex bg-muted p-0.5 rounded-xl border border-border">
+            <button
+              type="button"
+              onClick={() => setViewMode('timeline')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                viewMode === 'timeline' 
+                  ? 'bg-background text-foreground shadow-xs' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Timeline View
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                viewMode === 'table' 
+                  ? 'bg-background text-foreground shadow-xs' 
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Data Table View
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      {/* Main Audit Display Card */}
       <Card className="rounded-2xl border border-border shadow-md">
-        <CardHeader className="border-b px-6 py-4">
-          <CardTitle className="text-sm font-black uppercase tracking-wider text-foreground">Timeline History</CardTitle>
-          <CardDescription className="text-xs">Real-time chronologically sorted candidate events.</CardDescription>
+        <CardHeader className="border-b px-6 py-4 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-sm font-black uppercase tracking-wider text-foreground flex items-center gap-2">
+              <span>Firestore audit_logs Records</span>
+              <span className="text-xs font-semibold normal-case text-muted-foreground">
+                ({filteredLogs.length} entries matching)
+              </span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Immutable change log records containing user email, timestamp, action type, and modification details.
+            </CardDescription>
+          </div>
         </CardHeader>
+
         <CardContent className="p-6">
           {loading ? (
-            <div className="flex min-h-[200px] items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-orange-600" />
+            /* Skeleton Loading Screen for Audit Logs */
+            <div className="space-y-6">
+              {[1, 2, 3, 4, 5].map((idx) => (
+                <div key={idx} className="flex gap-4 items-start animate-pulse">
+                  <div className="w-8 h-8 rounded-full bg-muted shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <div className="h-3 bg-muted rounded w-32" />
+                      <div className="h-3 bg-muted rounded w-24" />
+                      <div className="h-4 bg-muted rounded w-16" />
+                    </div>
+                    <div className="h-12 bg-muted/60 rounded-xl w-full" />
+                    <div className="h-3 bg-muted/40 rounded w-40" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : filteredLogs.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
+            <div className="text-center py-16 text-muted-foreground">
               <Info className="h-8 w-8 mx-auto text-muted-foreground/60 mb-2 animate-bounce" />
-              <p className="text-xs font-bold">No activity logs match your filter criteria.</p>
+              <p className="text-xs font-bold">No audit log entries match your filter criteria.</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Try clearing filters or adjusting your date range.</p>
+              {isFilterActive && (
+                <Button
+                  onClick={clearAllFilters}
+                  variant="outline"
+                  className="mt-3 h-8 text-xs font-bold rounded-xl"
+                >
+                  Clear All Filters
+                </Button>
+              )}
             </div>
-          ) : (
+          ) : viewMode === 'timeline' ? (
             <div className="relative border-l-2 border-border ml-3 pl-6 space-y-6">
               {filteredLogs.map((log) => (
                 <div key={log.id} className="relative animate-in fade-in slide-in-from-left-4 duration-200">
                   {/* Timeline bullet dot */}
-                  <div className="absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 border-background bg-orange-600" />
+                  <div className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 border-background ${
+                    log.type === 'create' ? 'bg-emerald-500' :
+                    log.type === 'update' ? 'bg-blue-500' :
+                    log.type === 'delete' ? 'bg-rose-500' :
+                    log.type === 'status_change' ? 'bg-purple-500' :
+                    log.type === 'role_change' ? 'bg-amber-500' :
+                    log.type === 'policy_update' ? 'bg-indigo-500' :
+                    log.type === 'sms_sent' ? 'bg-orange-500' : 'bg-slate-400'
+                  }`} />
                   
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-black text-foreground">{log.userName || 'Anonymous Client'}</span>
-                      <span className="text-[10px] text-muted-foreground font-mono">{log.userEmail || ''}</span>
-                      <span className={`text-[9px] font-black tracking-widest px-1.5 py-0.5 rounded-sm uppercase ${getActivityColor(log.type)}`}>
-                        {formatActivityType(log.type)}
+                      <span className="text-[11px] font-black text-foreground">
+                        {log.userName || log.userEmail || 'System / Guest'}
                       </span>
+
+                      {/* Explicit User Email Field */}
+                      <span className="text-[10px] text-orange-600 font-mono font-bold bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20">
+                        {log.userEmail || 'no-email@system'}
+                      </span>
+
+                      {log.userRole && (
+                        <span className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-muted text-muted-foreground border border-border">
+                          {log.userRole}
+                        </span>
+                      )}
+
+                      {/* Action Type Field */}
+                      <span className={`text-[9px] font-black tracking-widest px-2 py-0.5 rounded-md border uppercase ${getActivityBadge(log.type, log.action || log.actionType)}`}>
+                        {formatActivityType(log.type, log.action || log.actionType)}
+                      </span>
+
+                      {log.module && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-muted/80 text-foreground border border-border">
+                          Module: {log.module}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-foreground/80 font-medium">{log.description}</p>
-                    <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground font-mono">
-                      <Clock className="h-3 w-3" />
-                      {log.createdAt ? format(parseISO(log.createdAt), 'PPP p') : 'Just now'}
+
+                    {/* Details of Modification Field */}
+                    <div className="text-xs text-foreground font-medium bg-muted/30 p-3 rounded-xl border border-border/50 space-y-1">
+                      <div className="font-semibold text-foreground">
+                        {log.description || log.details || 'No modification details recorded.'}
+                      </div>
+                      {log.metadata && Object.keys(log.metadata).length > 0 && (
+                        <div className="text-[10px] font-mono text-muted-foreground pt-1 border-t border-border/40">
+                          Metadata: {JSON.stringify(log.metadata)}
+                        </div>
+                      )}
+                    </div>
+
+                    {(log.targetName || log.targetId) && (
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
+                        <span>Target: <strong className="text-foreground">{log.targetName || log.targetId}</strong></span>
+                        {log.targetId && log.targetName && <span className="opacity-60">(ID: {log.targetId})</span>}
+                      </div>
+                    )}
+
+                    {/* Timestamp Field */}
+                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+                      <Clock className="h-3 w-3 text-orange-600" />
+                      <span>Timestamp: </span>
+                      <strong className="text-foreground">
+                        {log.createdAt ? format(parseISO(log.createdAt), 'PPP p') : 'Just now'}
+                      </strong>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+          ) : (
+            /* Structured Data Table View */
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40 font-black uppercase text-[10px] tracking-wider text-muted-foreground">
+                    <th className="p-3">Timestamp</th>
+                    <th className="p-3">User Email & Name</th>
+                    <th className="p-3">Role</th>
+                    <th className="p-3">Module</th>
+                    <th className="p-3">Action Type</th>
+                    <th className="p-3">Details of Modification</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="p-3 font-mono text-[10px] whitespace-nowrap text-muted-foreground">
+                        {log.createdAt ? format(parseISO(log.createdAt), 'yyyy-MM-dd HH:mm:ss') : 'N/A'}
+                      </td>
+                      <td className="p-3 font-bold text-foreground">
+                        <div>{log.userName || 'System User'}</div>
+                        <div className="text-[10px] text-orange-600 font-mono">{log.userEmail || '-'}</div>
+                      </td>
+                      <td className="p-3">
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-sm bg-muted border border-border">
+                          {log.userRole || 'user'}
+                        </span>
+                      </td>
+                      <td className="p-3 font-semibold text-foreground">
+                        {log.module || 'General'}
+                      </td>
+                      <td className="p-3">
+                        <span className={`text-[9px] font-black tracking-widest px-2 py-0.5 rounded-md border uppercase ${getActivityBadge(log.type, log.action || log.actionType)}`}>
+                          {log.action || log.actionType || log.type}
+                        </span>
+                      </td>
+                      <td className="p-3 max-w-sm text-foreground/90 leading-relaxed" title={log.description || log.details}>
+                        {log.description || log.details || 'No details provided'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>

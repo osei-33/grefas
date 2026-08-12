@@ -9,6 +9,7 @@ import fs from "fs";
 import { v2 as cloudinary } from "cloudinary";
 import multer from "multer";
 import { sendArkeselSms, checkArkeselBalance } from "./src/lib/arkeselSms";
+import { generateDynamicSitemap } from "./src/lib/sitemapGenerator";
 
 // Node version check
 const nodeVersion = process.versions.node.split(".")[0];
@@ -347,74 +348,78 @@ async function startServer() {
   // SEO: Dynamic robots.txt for search engines
   app.get("/robots.txt", (req, res) => {
     res.type("text/plain");
+    const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+    const host = req.get('host') || 'grefasconsultandentertainment.com';
+    const domain = process.env.APP_URL || `${protocol}://${host}`;
+    
     res.send(`User-agent: *
 Allow: /
 Disallow: /admin/
 Disallow: /api/
 
-Sitemap: https://grefasconsultandentertainment.com/sitemap.xml`);
+Sitemap: ${domain}/sitemap.xml`);
   });
 
-  // SEO: Dynamic sitemap.xml for Google indexing
-  app.get("/sitemap.xml", (req, res) => {
-    res.type("application/xml");
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://grefasconsultandentertainment.com/</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/about</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/services</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/portfolio</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/gallery</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/team</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/booking</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/work-with-us</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/contact</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-</urlset>`);
+  // SEO: Dynamic sitemap.xml for Google indexing - automatically queries active services and content pages from Firestore
+  app.get("/sitemap.xml", async (req, res) => {
+    try {
+      const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+      const host = req.get('host') || 'grefasconsultandentertainment.com';
+      const currentBaseUrl = process.env.APP_URL || `${protocol}://${host}`;
+
+      const sitemapResult = await generateDynamicSitemap(currentBaseUrl);
+      res.type("application/xml");
+      res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
+      res.send(sitemapResult.xml);
+    } catch (err: any) {
+      console.error("Failed to generate dynamic sitemap:", err);
+      res.status(500).type("text/plain").send("Error generating dynamic sitemap.xml");
+    }
+  });
+
+  // API endpoint: Rebuild sitemap manually or via webhook
+  app.post("/api/sitemap/generate", async (req, res) => {
+    try {
+      const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+      const host = req.get('host') || 'grefasconsultandentertainment.com';
+      const currentBaseUrl = req.body?.baseUrl || process.env.APP_URL || `${protocol}://${host}`;
+
+      const sitemapResult = await generateDynamicSitemap(currentBaseUrl);
+      res.json({
+        status: "ok",
+        message: "Dynamic sitemap generated and written to sitemap.xml on disk",
+        serviceCount: sitemapResult.serviceCount,
+        blogCount: sitemapResult.blogCount,
+        portfolioCount: sitemapResult.portfolioCount,
+        totalUrls: sitemapResult.totalUrls,
+        lastGeneratedAt: sitemapResult.lastGeneratedAt
+      });
+    } catch (err: any) {
+      console.error("API error building sitemap:", err);
+      res.status(500).json({ error: err.message || "Failed to generate sitemap" });
+    }
+  });
+
+  // API endpoint: Get sitemap status info
+  app.get("/api/sitemap/status", async (req, res) => {
+    try {
+      const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+      const host = req.get('host') || 'grefasconsultandentertainment.com';
+      const currentBaseUrl = process.env.APP_URL || `${protocol}://${host}`;
+
+      const sitemapResult = await generateDynamicSitemap(currentBaseUrl);
+      res.json({
+        status: "ok",
+        serviceCount: sitemapResult.serviceCount,
+        blogCount: sitemapResult.blogCount,
+        portfolioCount: sitemapResult.portfolioCount,
+        totalUrls: sitemapResult.totalUrls,
+        lastGeneratedAt: sitemapResult.lastGeneratedAt,
+        sitemapUrl: `${currentBaseUrl}/sitemap.xml`
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to fetch sitemap status" });
+    }
   });
 
   // Get Email API configuration and health status

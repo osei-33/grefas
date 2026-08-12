@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
+import { logAuditActivity } from '@/lib/auditLogger';
 import { sendArkeselSms } from '@/lib/arkeselSms';
 import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -612,7 +613,7 @@ export default function Booking() {
       setOrderNumber(newOrderNumber);
 
       // Use addDoc to create a new booking with random ID
-      await addDoc(collection(db, 'bookings'), {
+      const newBookingRef = await addDoc(collection(db, 'bookings'), {
         ...formData,
         orderNumber: newOrderNumber,
         date: dateStr,
@@ -623,6 +624,17 @@ export default function Booking() {
         paymentRef: paymentRef,
         price: consultationPrice,
         createdAt: serverTimestamp()
+      });
+
+      await logAuditActivity({
+        type: 'create',
+        module: 'Bookings',
+        action: 'CREATED_BOOKING',
+        description: `New consultation booking ${newOrderNumber} created by ${formData.userName} (${formData.serviceTitle || 'Consultation'}) on ${dateStr} at ${formData.time}.`,
+        targetId: newBookingRef.id,
+        targetName: newOrderNumber,
+        actorEmail: formData.userEmail,
+        actorName: formData.userName
       });
 
       // Create a notification for the user as a receipt

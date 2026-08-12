@@ -1,57 +1,129 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://grefasconsultandentertainment.com/</loc>
-    <lastmod>2026-07-24</lastmod>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/</loc>
+    <lastmod>2026-08-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://grefasconsultandentertainment.com/about</loc>
-    <lastmod>2026-07-24</lastmod>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/about</loc>
+    <lastmod>2026-08-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://grefasconsultandentertainment.com/services</loc>
-    <lastmod>2026-07-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/portfolio</loc>
-    <lastmod>2026-07-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/gallery</loc>
-    <lastmod>2026-07-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/team</loc>
-    <lastmod>2026-07-24</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://grefasconsultandentertainment.com/booking</loc>
-    <lastmod>2026-07-24</lastmod>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services</loc>
+    <lastmod>2026-08-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://grefasconsultandentertainment.com/work-with-us</loc>
-    <lastmod>2026-07-24</lastmod>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/portfolio</loc>
+    <lastmod>2026-08-12</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/gallery</loc>
+    <lastmod>2026-08-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://grefasconsultandentertainment.com/contact</loc>
-    <lastmod>2026-07-24</lastmod>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/team</loc>
+    <lastmod>2026-08-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/booking</loc>
+    <lastmod>2026-08-12</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/work-with-us</loc>
+    <lastmod>2026-08-12</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/contact</loc>
+    <lastmod>2026-08-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/privacy-policy</loc>
+    <lastmod>2026-08-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services/8SjuxElumhQbVgL4RpmE</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services/DkEcuf8pS7WTyxOsGpEM</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services/Lt5bk6UVydTcc6mycxzl</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services/NmkIaVHTDHkuVQXt5RWv</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services/WEZ5K7OWvQp39fikO3WU</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services/a5gTbCCiFZ3hxIcMau9F</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services/a81fKA40PLhriQDs0v5F</loc>
+    <lastmod>2026-07-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/services/pmMc7SVfGPp67OWenfU6</loc>
+    <lastmod>2026-04-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/blog/cz06n8ftK762icOZOlew</loc>
+    <lastmod>2026-06-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/blog/jCJmVFSiUzV30ZFoBdun</loc>
+    <lastmod>2026-06-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app/blog/lAzK6XPFmwc7TxuBPkgp</loc>
+    <lastmod>2026-06-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
 </urlset>

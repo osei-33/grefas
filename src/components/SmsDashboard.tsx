@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '@/firebase';
+import { logAuditActivity } from '@/lib/auditLogger';
 import { 
   collection, 
   doc, 
@@ -362,6 +363,13 @@ export default function SmsDashboard() {
       if (res.ok) {
         const data = await res.json();
         if (data.results && data.results.sms && !data.results.sms.startsWith('failed') && data.results.sms !== 'skipped') {
+          await logAuditActivity({
+            type: 'sms_sent',
+            module: 'SMS Gateway',
+            action: 'SENT_TEST_SMS',
+            description: `Sent verification test SMS to ${testPhone}.`,
+            metadata: { recipient: testPhone, notes: testMessage }
+          });
           toast.success('Verification SMS sent successfully via Arkesel Gateway!');
           setTestMessage('');
           setTimeout(() => fetchSmsData(true), 1500);

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { db, storage, handleFirestoreError, OperationType } from '@/firebase';
+import { logAuditActivity } from '@/lib/auditLogger';
 import { 
   collection, 
   onSnapshot, 
@@ -266,11 +267,27 @@ export default function ManageBlog() {
       if (editingPostId) {
         // Update existing document
         await updateDoc(doc(db, 'blogs', editingPostId), postData);
+        await logAuditActivity({
+          type: 'update',
+          module: 'Blog',
+          action: 'UPDATED_BLOG_POST',
+          description: `Updated blog post "${title}" (${category}).`,
+          targetId: editingPostId,
+          targetName: title
+        });
         toast.success("Blog post updated successfully!");
         setEditingPostId(null);
       } else {
         // Create new document
-        await addDoc(collection(db, 'blogs'), postData);
+        const newRef = await addDoc(collection(db, 'blogs'), postData);
+        await logAuditActivity({
+          type: 'create',
+          module: 'Blog',
+          action: 'CREATED_BLOG_POST',
+          description: `Created and published new blog post "${title}" in ${category}.`,
+          targetId: newRef.id,
+          targetName: title
+        });
         toast.success("Blog post published successfully!");
         setIsAdding(false);
       }
@@ -293,7 +310,16 @@ export default function ManageBlog() {
   const confirmDelete = async () => {
     if (!deleteConfirmId) return;
     try {
+      const targetPost = posts.find(p => p.id === deleteConfirmId);
       await deleteDoc(doc(db, 'blogs', deleteConfirmId));
+      await logAuditActivity({
+        type: 'delete',
+        module: 'Blog',
+        action: 'DELETED_BLOG_POST',
+        description: `Deleted blog post "${targetPost?.title || deleteConfirmId}".`,
+        targetId: deleteConfirmId,
+        targetName: targetPost?.title
+      });
       toast.success("Blog post deleted successfully!");
       if (editingPostId === deleteConfirmId) {
         setEditingPostId(null);

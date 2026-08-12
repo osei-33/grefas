@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
+import { logAuditActivity } from '@/lib/auditLogger';
 import { 
   collection, 
   addDoc, 
@@ -404,9 +405,25 @@ export default function ManageLetters() {
 
       if (editingLetterId) {
         await updateDoc(doc(db, 'letters', editingLetterId), letterData);
+        await logAuditActivity({
+          type: 'update',
+          module: 'Official Letters',
+          action: 'UPDATED_LETTER',
+          description: `Updated official letter "${subject}" for recipient ${recipientName}.`,
+          targetId: editingLetterId,
+          targetName: subject
+        });
         toast.success('Official letter updated successfully!');
       } else {
-        await addDoc(collection(db, 'letters'), letterData);
+        const newRef = await addDoc(collection(db, 'letters'), letterData);
+        await logAuditActivity({
+          type: 'create',
+          module: 'Official Letters',
+          action: 'CREATED_LETTER',
+          description: `Created new official letter "${subject}" for ${recipientName}.`,
+          targetId: newRef.id,
+          targetName: subject
+        });
         toast.success('Official letter saved successfully!');
       }
       
