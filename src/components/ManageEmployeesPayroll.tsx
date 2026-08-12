@@ -80,7 +80,7 @@ interface SalaryRecord {
   createdAt: string;
 }
 
-export default function ManageEmployeesPayroll() {
+function ManageEmployeesPayroll() {
   const [activeTab, setActiveTab] = useState<'employees' | 'payroll'>('employees');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
@@ -156,36 +156,58 @@ export default function ManageEmployeesPayroll() {
 
   // Fetch Employees
   useEffect(() => {
-    const q = query(collection(db, 'employees'), orderBy('fullName', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Employee[] = [];
-      snapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as Employee);
+    let unsubscribe = () => {};
+    try {
+      const q = query(collection(db, 'employees'), orderBy('fullName', 'asc'));
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const list: Employee[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as Employee);
+        });
+        setEmployees(list);
+        setLoadingEmployees(false);
+      }, (error) => {
+        console.warn("Firestore listener warning (employees):", error);
+        getDocs(collection(db, 'employees')).then(snap => {
+          const list: Employee[] = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() } as Employee));
+          setEmployees(list);
+        }).catch(err => console.error("Fallback employee fetch failed:", err))
+          .finally(() => setLoadingEmployees(false));
       });
-      setEmployees(list);
+    } catch (err) {
+      console.error("Error subscribing to employees:", err);
       setLoadingEmployees(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'employees');
-      setLoadingEmployees(false);
-    });
+    }
 
     return () => unsubscribe();
   }, []);
 
   // Fetch Salaries
   useEffect(() => {
-    const q = query(collection(db, 'salaries'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: SalaryRecord[] = [];
-      snapshot.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as SalaryRecord);
+    let unsubscribe = () => {};
+    try {
+      const q = query(collection(db, 'salaries'), orderBy('createdAt', 'desc'));
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const list: SalaryRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as SalaryRecord);
+        });
+        setSalaries(list);
+        setLoadingSalaries(false);
+      }, (error) => {
+        console.warn("Firestore listener warning (salaries):", error);
+        getDocs(collection(db, 'salaries')).then(snap => {
+          const list: SalaryRecord[] = [];
+          snap.forEach(d => list.push({ id: d.id, ...d.data() } as SalaryRecord));
+          setSalaries(list);
+        }).catch(err => console.error("Fallback salary fetch failed:", err))
+          .finally(() => setLoadingSalaries(false));
       });
-      setSalaries(list);
+    } catch (err) {
+      console.error("Error subscribing to salaries:", err);
       setLoadingSalaries(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'salaries');
-      setLoadingSalaries(false);
-    });
+    }
 
     return () => unsubscribe();
   }, []);
@@ -820,24 +842,36 @@ export default function ManageEmployeesPayroll() {
     printWindow.document.close();
   };
 
-  // Filter lists
+  // Filter lists with safe nullish protection
   const filteredEmployees = employees.filter(e => {
-    const matchesSearch = e.fullName.toLowerCase().includes(empSearch.toLowerCase()) || 
-                          e.email.toLowerCase().includes(empSearch.toLowerCase()) ||
-                          e.phone.includes(empSearch) ||
-                          e.role.toLowerCase().includes(empSearch.toLowerCase());
+    const fullName = (e.fullName || '').toLowerCase();
+    const email = (e.email || '').toLowerCase();
+    const phone = e.phone || '';
+    const role = (e.role || '').toLowerCase();
+    const search = (empSearch || '').toLowerCase();
+
+    const matchesSearch = fullName.includes(search) || 
+                          email.includes(search) ||
+                          phone.includes(search) ||
+                          role.includes(search);
     const matchesRole = empRoleFilter === 'all' || e.role === empRoleFilter;
     return matchesSearch && matchesRole;
   });
 
   const filteredSalaries = salaries.filter(s => {
-    return s.employeeName.toLowerCase().includes(payrollSearch.toLowerCase()) || 
-           s.employeeEmail.toLowerCase().includes(payrollSearch.toLowerCase()) ||
-           s.payPeriod.toLowerCase().includes(payrollSearch.toLowerCase()) ||
-           s.paymentMethod.toLowerCase().includes(payrollSearch.toLowerCase());
+    const name = (s.employeeName || '').toLowerCase();
+    const email = (s.employeeEmail || '').toLowerCase();
+    const period = (s.payPeriod || '').toLowerCase();
+    const method = (s.paymentMethod || '').toLowerCase();
+    const search = (payrollSearch || '').toLowerCase();
+
+    return name.includes(search) || 
+           email.includes(search) ||
+           period.includes(search) ||
+           method.includes(search);
   });
 
-  const uniqueRoles = Array.from(new Set(employees.map(e => e.role)));
+  const uniqueRoles = Array.from(new Set(employees.map(e => e.role).filter(Boolean)));
 
   return (
     <div className="space-y-6">
@@ -987,15 +1021,15 @@ export default function ManageEmployeesPayroll() {
                     <div className="space-y-1 text-xs">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Mail className="h-3.5 w-3.5 shrink-0 text-orange-500/80" />
-                        <span className="truncate">{emp.email}</span>
+                        <span className="truncate">{emp.email || 'No email provided'}</span>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Smartphone className="h-3.5 w-3.5 shrink-0 text-orange-500/80" />
-                        <span>{emp.phone}</span>
+                        <span>{emp.phone || 'No phone'}</span>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Calendar className="h-3.5 w-3.5 shrink-0 text-orange-500/80" />
-                        <span>Joined {new Date(emp.joiningDate).toLocaleDateString()}</span>
+                        <span>Joined {emp.joiningDate ? (isNaN(Date.parse(emp.joiningDate)) ? emp.joiningDate : new Date(emp.joiningDate).toLocaleDateString()) : 'N/A'}</span>
                       </div>
                     </div>
 
@@ -1004,7 +1038,7 @@ export default function ManageEmployeesPayroll() {
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] font-bold text-muted-foreground uppercase">Base Remuneration</span>
                         <span className="text-xs font-black text-orange-600">
-                          GHS {emp.baseSalary.toLocaleString()} / <span className="text-[10px] text-muted-foreground font-normal">{emp.payFrequency.replace('ly', '')}</span>
+                          GHS {(Number(emp.baseSalary) || 0).toLocaleString()} / <span className="text-[10px] text-muted-foreground font-normal">{(emp.payFrequency || 'Monthly').replace('ly', '')}</span>
                         </span>
                       </div>
                       <div className="flex justify-between items-center pt-1 border-t border-muted border-dashed">
@@ -1012,7 +1046,7 @@ export default function ManageEmployeesPayroll() {
                           <Building2 className="h-3 w-3" /> Remittance Bank
                         </span>
                         <span className="text-[11px] font-bold text-foreground">
-                          {emp.bankName ? `${emp.bankName} (${emp.accountNumber})` : 'Not configured'}
+                          {emp.bankName ? `${emp.bankName} (${emp.accountNumber || ''})` : 'Not configured'}
                         </span>
                       </div>
                     </div>
@@ -1081,7 +1115,7 @@ export default function ManageEmployeesPayroll() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wider text-orange-600">Total Outflow</p>
                 <p className="text-lg font-black text-foreground mt-0.5">
-                  GHS {salaries.reduce((sum, s) => s.status === 'Paid' ? sum + s.netSalary : sum, 0).toLocaleString()}
+                  GHS {salaries.reduce((sum, s) => s.status === 'Paid' ? sum + (Number(s.netSalary) || 0) : sum, 0).toLocaleString()}
                 </p>
               </div>
               <TrendingUp className="h-7 w-7 text-orange-500 opacity-65" />
@@ -1126,20 +1160,20 @@ export default function ManageEmployeesPayroll() {
                       <tr key={sal.id} className="border-b hover:bg-muted/20 transition-colors">
                         <td className="p-4">
                           <div>
-                            <p className="font-bold text-foreground text-sm">{sal.employeeName}</p>
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">{sal.employeeRole}</p>
+                            <p className="font-bold text-foreground text-sm">{sal.employeeName || 'Staff Member'}</p>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">{sal.employeeRole || 'Staff'}</p>
                           </div>
                         </td>
                         <td className="p-4">
                           <div>
-                            <p className="font-bold">{sal.payPeriod}</p>
-                            <p className="text-[10px] text-muted-foreground">Paid {new Date(sal.paidDate).toLocaleDateString()}</p>
+                            <p className="font-bold">{sal.payPeriod || 'N/A'}</p>
+                            <p className="text-[10px] text-muted-foreground">Paid {sal.paidDate ? (isNaN(Date.parse(sal.paidDate)) ? sal.paidDate : new Date(sal.paidDate).toLocaleDateString()) : 'N/A'}</p>
                           </div>
                         </td>
-                        <td className="p-4 text-right font-semibold">GHS {sal.baseAmount.toLocaleString()}</td>
-                        <td className="p-4 text-right text-green-600 font-semibold">+{sal.allowances.toLocaleString()}</td>
-                        <td className="p-4 text-right text-red-600 font-semibold">-{sal.deductions.toLocaleString()}</td>
-                        <td className="p-4 text-right font-black text-foreground">GHS {sal.netSalary.toLocaleString()}</td>
+                        <td className="p-4 text-right font-semibold">GHS {(Number(sal.baseAmount) || 0).toLocaleString()}</td>
+                        <td className="p-4 text-right text-green-600 font-semibold">+{(Number(sal.allowances) || 0).toLocaleString()}</td>
+                        <td className="p-4 text-right text-red-600 font-semibold">-{(Number(sal.deductions) || 0).toLocaleString()}</td>
+                        <td className="p-4 text-right font-black text-foreground">GHS {(Number(sal.netSalary) || 0).toLocaleString()}</td>
                         <td className="p-4 text-center">
                           <span className={`inline-block text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                             sal.status === 'Paid'
@@ -1689,5 +1723,51 @@ export default function ManageEmployeesPayroll() {
         </div>
       )}
     </div>
+  );
+}
+
+class StaffPayrollErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Error caught in Staff & Payroll component boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card className="my-8 p-6 text-center border-orange-200 bg-orange-50/20 rounded-2xl shadow-xs">
+          <CardContent className="space-y-4 pt-4">
+            <AlertCircle className="h-10 w-10 text-orange-600 mx-auto" />
+            <h2 className="text-lg font-bold text-foreground">Staff & Payroll Workspace Error</h2>
+            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+              {this.state.error?.message || "An unexpected issue occurred while rendering the payroll desk."}
+            </p>
+            <Button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-5 h-9 rounded-xl cursor-pointer"
+            >
+              Reload Payroll Workspace
+            </Button>
+          </CardContent>
+        </Card>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function StaffPayrollDesk() {
+  return (
+    <StaffPayrollErrorBoundary>
+      <ManageEmployeesPayroll />
+    </StaffPayrollErrorBoundary>
   );
 }

@@ -958,6 +958,8 @@ export default function Admin() {
           <Route path="/newsletter" element={<ManageNewsletter />} />
           <Route path="/letters" element={<ManageLetters />} />
           <Route path="/payroll" element={<ManageEmployeesPayroll />} />
+          <Route path="/staff" element={<ManageEmployeesPayroll />} />
+          <Route path="/employees" element={<ManageEmployeesPayroll />} />
           <Route path="/testimonials" element={<ManageTestimonials />} />
           <Route path="/announcements" element={<ManageVisitorAlerts />} />
           <Route path="/policies" element={<ManageLegalPolicies />} />

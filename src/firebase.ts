@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer, setDoc, terminate, clearIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, doc, getDocFromServer, setDoc, terminate, clearIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -8,10 +8,8 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Connect with improved settings for stability in the preview environment
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-}, firebaseConfig.firestoreDatabaseId);
+// Use standard getFirestore for stable WebChannel streaming in browser/iframe environments
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 /**
  * Handle Firestore errors according to integration guidelines
@@ -60,17 +58,19 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   }
   
-  // Only log and throw if it's NOT a connectivity/offline error
+  // Only log and throw if it's NOT a connectivity/offline error or internal SDK watch assertion
   const lowercaseError = errInfo.error.toLowerCase();
   if (
     lowercaseError.includes('offline') || 
     lowercaseError.includes('could not reach') || 
     lowercaseError.includes('unavailable') || 
     lowercaseError.includes('connection failed') || 
-    lowercaseError.includes('network')
+    lowercaseError.includes('network') ||
+    lowercaseError.includes('internal assertion failed') ||
+    lowercaseError.includes('unexpected state')
   ) {
-    console.debug('Firestore is currently offline or unreachable (handled):', path, errInfo.error);
-    return; // Don't throw for offline errors to prevent UI crashes
+    console.debug('Firestore internal event or connection state (handled):', path, errInfo.error);
+    return; // Don't throw for handled transient errors to prevent UI crashes
   }
 
   console.error('Firestore Error: ', JSON.stringify(errInfo));
