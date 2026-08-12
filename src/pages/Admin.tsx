@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -956,7 +956,7 @@ export default function Admin() {
               <Route path="/settings" element={<ManageSettings />} />
             </>
           )}
-          <Route path="*" element={<div className="flex h-full items-center justify-center text-muted-foreground">Access Denied or Page Not Found</div>} />
+          <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
       </main>
 

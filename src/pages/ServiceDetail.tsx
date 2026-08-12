@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { 
@@ -169,14 +169,7 @@ export default function ServiceDetail() {
   }
 
   if (!service) {
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-20 text-center">
-        <h2 className="text-2xl font-bold">Service not found</h2>
-        <Link to="/services" className="mt-4 inline-flex items-center text-orange-600 hover:underline">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to services
-        </Link>
-      </div>
-    );
+    return <Navigate to="/services" replace />;
   }
 
   return (
