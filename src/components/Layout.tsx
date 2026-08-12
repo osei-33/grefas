@@ -653,6 +653,26 @@ export default function Layout({ children }: LayoutProps) {
               </ul>
             </div>
             <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">Legal & Policies</h3>
+              <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+                <li>
+                  <Link to="/privacy-policy?tab=privacy" className="hover:text-orange-600 transition-colors" id="footer-link-privacy">
+                    Privacy Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/privacy-policy?tab=terms" className="hover:text-orange-600 transition-colors" id="footer-link-terms">
+                    Terms of Service
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/privacy-policy?tab=refund" className="hover:text-orange-600 transition-colors" id="footer-link-refund">
+                    Refund Policy
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            <div>
               <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">Newsletter</h3>
               <p className="mt-4 text-sm text-muted-foreground">
                 Subscribe to receive our latest updates, articles, and exclusive business & event offers direct to your inbox.

@@ -14,6 +14,7 @@ import Team from './pages/Team';
 import Admin from './pages/Admin';
 import MyApplications from './pages/MyApplications';
 import WorkWithUs from './pages/WorkWithUs';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import NotFound from './pages/NotFound';
 import { Toaster } from 'sonner';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -68,6 +69,14 @@ export default function App() {
                 <Route path="/my-applications" element={<MyApplications />} />
                 <Route path="/applications" element={<Navigate to="/my-applications" replace />} />
                 <Route path="/my-apps" element={<Navigate to="/my-applications" replace />} />
+
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                <Route path="/privacy" element={<Navigate to="/privacy-policy?tab=privacy" replace />} />
+                <Route path="/terms-of-service" element={<Navigate to="/privacy-policy?tab=terms" replace />} />
+                <Route path="/terms" element={<Navigate to="/privacy-policy?tab=terms" replace />} />
+                <Route path="/refund-policy" element={<Navigate to="/privacy-policy?tab=refund" replace />} />
+                <Route path="/refund" element={<Navigate to="/privacy-policy?tab=refund" replace />} />
+                <Route path="/legal" element={<Navigate to="/privacy-policy" replace />} />
 
                 <Route path="/admin/*" element={<Admin />} />
                 <Route path="/login" element={<Navigate to="/admin" replace />} />

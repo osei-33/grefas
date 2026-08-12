@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -6372,7 +6372,15 @@ function ManageSettings() {
     advertDescription: 'Explore our latest premium entertainment and casting showcases from Nyinahin-Ashanti.',
     advertImageUrl: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2Zic3VzbjRraHBhYTRqYWZ1cnpsbHVpZXB0czdrY3I2dnpqdjU1NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKUM3Y5MgX9sLYs/giphy.gif',
     advertVideoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
-    advertLink: '/services'
+    advertLink: '/services',
+    privacyPolicyContent: '',
+    termsOfServiceContent: '',
+    refundPolicyContent: '',
+    privacyDeskTitle: 'Grefas Data Privacy Desk',
+    privacyDeskLocation: 'Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223)',
+    privacyDeskEmail: 'legal@grefas.com',
+    privacyDeskPhone: '+233 24 000 0000',
+    policyLastUpdatedDate: 'August 10, 2026'
   });
   const [loading, setLoading] = useState(true);
 
@@ -6511,7 +6519,15 @@ function ManageSettings() {
           advertDescription: data.advertDescription || 'Explore our latest premium entertainment and casting showcases from Nyinahin-Ashanti.',
           advertImageUrl: data.advertImageUrl || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2Zic3VzbjRraHBhYTRqYWZ1cnpsbHVpZXB0czdrY3I2dnpqdjU1NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKUM3Y5MgX9sLYs/giphy.gif',
           advertVideoUrl: data.advertVideoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4',
-          advertLink: data.advertLink || '/services'
+          advertLink: data.advertLink || '/services',
+          privacyPolicyContent: data.privacyPolicyContent || '',
+          termsOfServiceContent: data.termsOfServiceContent || '',
+          refundPolicyContent: data.refundPolicyContent || '',
+          privacyDeskTitle: data.privacyDeskTitle || 'Grefas Data Privacy Desk',
+          privacyDeskLocation: data.privacyDeskLocation || 'Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223)',
+          privacyDeskEmail: data.privacyDeskEmail || 'legal@grefas.com',
+          privacyDeskPhone: data.privacyDeskPhone || '+233 24 000 0000',
+          policyLastUpdatedDate: data.policyLastUpdatedDate || 'August 10, 2026'
         });
       }
       setLoading(false);
@@ -7140,6 +7156,120 @@ function ManageSettings() {
                         className="bg-background border-border"
                       />
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Legal Policies & Privacy Desk Settings Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+              <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-orange-600" /> Legal Policies & Grefas Data Privacy Desk Config
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Edit the official Privacy Policy, Terms of Service, Refund Policy, and Data Privacy Desk contact details displayed to clients.
+              </p>
+
+              <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-6">
+                {/* Effective Date & Privacy Desk Info */}
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold text-foreground border-b border-border pb-1">1. Grefas Data Privacy Desk Information</h4>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Desk / Department Title</label>
+                      <Input
+                        value={settings.privacyDeskTitle || ''}
+                        onChange={(e) => setSettings({ ...settings, privacyDeskTitle: e.target.value })}
+                        placeholder="e.g. Grefas Data Privacy Desk"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Last Updated / Effective Date</label>
+                      <Input
+                        value={settings.policyLastUpdatedDate || ''}
+                        onChange={(e) => setSettings({ ...settings, policyLastUpdatedDate: e.target.value })}
+                        placeholder="e.g. August 10, 2026"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Physical Office Location / Address</label>
+                      <Input
+                        value={settings.privacyDeskLocation || ''}
+                        onChange={(e) => setSettings({ ...settings, privacyDeskLocation: e.target.value })}
+                        placeholder="e.g. Nyinahin-Ashanti, Ashanti Region, Ghana"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Legal / Privacy Email</label>
+                      <Input
+                        value={settings.privacyDeskEmail || ''}
+                        onChange={(e) => setSettings({ ...settings, privacyDeskEmail: e.target.value })}
+                        placeholder="e.g. legal@grefas.com"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-foreground">Legal Desk Phone Number</label>
+                      <Input
+                        value={settings.privacyDeskPhone || ''}
+                        onChange={(e) => setSettings({ ...settings, privacyDeskPhone: e.target.value })}
+                        placeholder="e.g. +233 24 000 0000"
+                        className="bg-background border-border"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Custom Policy Content Overrides */}
+                <div className="space-y-4 pt-2 border-t border-border/40">
+                  <h4 className="text-sm font-semibold text-foreground border-b border-border pb-1">2. Custom Policy Documents Overrides (Optional)</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Leave any field empty to use the standard default structured policy document. Input custom content below to override a policy with your own text.
+                  </p>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <Lock className="h-3.5 w-3.5 text-orange-600" /> Custom Privacy Policy Text
+                    </label>
+                    <Textarea
+                      value={settings.privacyPolicyContent || ''}
+                      onChange={(e) => setSettings({ ...settings, privacyPolicyContent: e.target.value })}
+                      placeholder="Optional custom Privacy Policy text... (Leave empty to use standard defaults)"
+                      rows={4}
+                      className="bg-background border-border font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-orange-600" /> Custom Terms of Service Text
+                    </label>
+                    <Textarea
+                      value={settings.termsOfServiceContent || ''}
+                      onChange={(e) => setSettings({ ...settings, termsOfServiceContent: e.target.value })}
+                      placeholder="Optional custom Terms of Service text... (Leave empty to use standard defaults)"
+                      rows={4}
+                      className="bg-background border-border font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <CreditCard className="h-3.5 w-3.5 text-orange-600" /> Custom Refund Policy Text
+                    </label>
+                    <Textarea
+                      value={settings.refundPolicyContent || ''}
+                      onChange={(e) => setSettings({ ...settings, refundPolicyContent: e.target.value })}
+                      placeholder="Optional custom Refund Policy text... (Leave empty to use standard defaults)"
+                      rows={4}
+                      className="bg-background border-border font-mono text-xs"
+                    />
                   </div>
                 </div>
               </div>
@@ -7939,7 +8069,7 @@ function ManageBookings() {
     toast.success("Preparing PDF document report for printing...");
   };
 
-  const BookingPassesReportView = () => {
+  const renderBookingPassesReportView = () => {
     const filteredPasses = passes.filter(p => {
       const s = passesSearch.trim().toLowerCase();
       if (!s) return true;
@@ -9310,7 +9440,7 @@ function ManageBookings() {
       )}
 
       {viewMode === 'passes_report' && (
-        <BookingPassesReportView />
+        renderBookingPassesReportView()
       )}
 
       {deleteConfig && (

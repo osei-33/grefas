@@ -13,12 +13,30 @@ export default defineConfig(({mode}) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        'react': path.resolve(__dirname, './node_modules/react'),
+        'react-dom': path.resolve(__dirname, './node_modules/react-dom'),
       },
+      dedupe: [
+        'react',
+        'react-dom',
+        'firebase',
+        '@firebase/app',
+        '@firebase/auth',
+        '@firebase/component',
+        '@firebase/firestore',
+        '@firebase/storage'
+      ],
     },
     esbuild: {
       target: 'es2022',
     },
     optimizeDeps: {
+      include: [
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
+        'firebase/storage'
+      ],
       esbuildOptions: {
         target: 'es2022',
       },
