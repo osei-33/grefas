@@ -264,9 +264,9 @@ export default function Team() {
   return (
     <div className="bg-background py-20 px-4 sm:px-6 lg:px-8">
       <SEO 
-        title="Our Team of Specialists"
-        description="Book executive advisement and planning sessions with Grefas Consult & Entertainment leading specialists. Partner with Dr. Linda Serwaah and other top consultants in Ghana."
-        keywords="Grefas team, advisory consultants Ashanti, Dr Linda Serwaah, executive planner Ghana"
+        title="Our Expert Team & Advisors"
+        description="Meet the experienced team of business strategists, casting directors, video producers, and event coordinators at Grefas Consult & Entertainment in Nyinahin-Ashanti, led by founder Dr. Linda Serwaah."
+        keywords="Grefas team, Dr Linda Serwaah, Ghana corporate advisors, casting directors Nyinahin, event producers Ashanti Region, Grefas staff"
       />
       <div className="mx-auto max-w-7xl">
         

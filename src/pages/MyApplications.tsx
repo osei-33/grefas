@@ -882,8 +882,9 @@ export default function MyApplications() {
   return (
     <div className="min-h-screen bg-muted/20 dark:bg-background/95 py-12 px-4 sm:px-6 lg:px-8">
       <SEO 
-        title="My Casting Applications | Grefas Entertainment" 
-        description="Check your real-time audition, casting, and skit making registration status in Ghana."
+        title="My Talent & Application Portal"
+        description="Track and manage your audition submissions, career application status, interview schedules, and service passes securely with Grefas Consult & Entertainment."
+        keywords="Grefas portal, application status Ghana, audition tracker Nyinahin, Grefas career dashboard"
       />
 
       <div className="max-w-4xl mx-auto">

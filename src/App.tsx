@@ -82,7 +82,7 @@ export default function App() {
                 <Route path="/login" element={<Navigate to="/admin" replace />} />
                 <Route path="/admin-login" element={<Navigate to="/admin" replace />} />
 
-                <Route path="*" element={<NotFound />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Layout>
             <Toaster position="top-center" />

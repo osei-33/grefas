@@ -438,9 +438,9 @@ export default function Contact() {
   return (
     <div className="bg-background py-20">
       <SEO 
-        title="Contact Us"
-        description="Get in touch with Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region. Contact us for strategic advising, concert events, and general organization management."
-        keywords="Contact Grefas, Nyinahin office, phone Grefas, Grefas address"
+        title="Contact Us & Nyinahin Office Location"
+        description="Contact Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223). Reach our consulting and production team via call, WhatsApp, or instant messaging."
+        keywords="Contact Grefas, Nyinahin office address, Grefas phone number, Ashanti Region consulting contact, GPS AI-0008-9223"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center">

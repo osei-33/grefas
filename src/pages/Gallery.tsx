@@ -743,9 +743,9 @@ export default function Gallery() {
   return (
     <div className="bg-background min-h-screen">
       <SEO 
-        title="Gallery"
-        description="Experience the visual journey of Grefas Consult & Entertainment. Discover highlights of our major consult missions, concerts, corporate galas, and live events in Nyinahin-Ashanti, Ashanti Region."
-        keywords="Grefas photo gallery, entertainment videos Ghana, Nyinahin event video, corporate gala Africa"
+        title="Photo & Video Gallery Showcase"
+        description="View photos and video highlights from Grefas Consult & Entertainment live concerts, movie shoots, corporate summits, and community talent workshops in Nyinahin-Ashanti, Ashanti Region, Ghana."
+        keywords="Grefas gallery, Nyinahin event photos, Ashanti concert videos, movie production photos Ghana, Grefas media gallery"
       />
       {/* Hero Section with Pattern */}
       <div className="relative overflow-hidden pt-24 pb-16 bg-muted/10">

@@ -829,9 +829,9 @@ export default function Booking() {
   return (
     <div className="bg-background py-20">
       <SEO 
-        title="Book Appointment"
-        description="Book local Grefas advisory sessions or world-class entertainment packages. Schedule consulting times and check real-time availability in Nyinahin-Ashanti, Ghana."
-        keywords="book Grefas, event booking Ghana, schedule consultation Ashanti Region, real-time appointments"
+        title="Book Consultation or Event Package"
+        description="Schedule a consultation session or book event entertainment packages with Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana. Instant booking pass generation, Mobile Money payments, and real-time scheduling."
+        keywords="book Grefas, schedule consultation Nyinahin, event booking Ghana, Mobile Money appointment, Grefas booking pass"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">

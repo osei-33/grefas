@@ -38,6 +38,8 @@ import ManageBlog from './ManageBlog';
 import SmsDashboard from '@/components/SmsDashboard';
 import ManageLetters from '@/components/ManageLetters';
 import ManageEmployeesPayroll from '@/components/ManageEmployeesPayroll';
+import ManageLegalPolicies from '@/components/ManageLegalPolicies';
+import SEO from '@/components/SEO';
 
 const isAdminEmail = (email: string | null | undefined) => {
   if (!email) return false;
@@ -524,6 +526,10 @@ export default function Admin() {
 
   return (
     <div className="flex flex-col md:flex-row min-h-[80vh] bg-background relative overflow-hidden">
+      <SEO 
+        title="Admin Portal" 
+        description="Secure management portal for Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana." 
+      />
       {/* Mobile Sidebar Toggle */}
       <div className="md:hidden flex items-center p-4 border-b border-border bg-card justify-between sticky top-0 z-30">
         <h2 className="text-sm font-bold text-orange-600">Admin Panel</h2>
@@ -872,6 +878,19 @@ export default function Admin() {
                     {isActive('/admin/sms') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                   <Link
+                    to="/admin/policies"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      isActive('/admin/policies') 
+                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
+                  >
+                    <ShieldCheck className={`h-4 w-4 ${isActive('/admin/policies') ? 'text-orange-600' : ''}`} />
+                    <span>Legal Policies</span>
+                    {isActive('/admin/policies') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                  </Link>
+                  <Link
                     to="/admin/settings"
                     onClick={() => setIsSidebarOpen(false)}
                     className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
@@ -926,6 +945,7 @@ export default function Admin() {
           <Route path="/payroll" element={<ManageEmployeesPayroll />} />
           <Route path="/testimonials" element={<ManageTestimonials />} />
           <Route path="/announcements" element={<ManageVisitorAlerts />} />
+          <Route path="/policies" element={<ManageLegalPolicies />} />
           <Route path="/profile" element={<AdminProfile />} />
           {role === 'admin' && (
             <>

@@ -1456,9 +1456,9 @@ export default function Services() {
     <>
       <div className="bg-background py-20 print:hidden">
         <SEO 
-        title="Our Services"
-        description="Explore the services of Grefas Consult & Entertainment, including strategic business consulting, live entertainment events, artist management, production, and audio-video solutions in Ashanti Region, Ghana."
-        keywords="Grefas services, business consulting Ghana, talent agency Nyinahin, event organization, artist manager Ghana"
+        title="Professional Consulting, Production & Entertainment Services"
+        description="Explore Grefas Consult & Entertainment services: Strategic Management Consulting, Visa Interview Prep, Theatre & Film Casting, Artiste Management, Sound Equipment Rental, and Live Music Event Production in Ashanti Region, Ghana."
+        keywords="Grefas services, management consulting Ghana, visa interview preparation, movie casting Nyinahin, artiste management Ashanti, sound equipment rental Ghana, event video production"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Breadcrumbs />

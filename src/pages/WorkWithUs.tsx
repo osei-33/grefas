@@ -614,8 +614,9 @@ export default function WorkWithUs() {
   return (
     <div className="min-h-screen bg-background pt-24 pb-16">
       <SEO 
-        title="Apply to Work With Us - Grefas Consult & Entertainment" 
-        description="Join Grefas Consult & Entertainment. Apply for Actor, Skit Creator, Video Editor, or Production Crew positions." 
+        title="Careers & Auditions - Apply to Work With Us" 
+        description="Join the Grefas talent database! Apply for roles as Actors, Skit Creators, Scriptwriters, Video Editors, Sound Engineers, or Corporate Staff at Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana." 
+        keywords="Grefas careers, auditions Ghana, actor jobs Nyinahin, film crew jobs Ashanti Region, work with Grefas, casting application Ghana"
       />
 
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">

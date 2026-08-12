@@ -182,9 +182,9 @@ export default function ServiceDetail() {
   return (
     <div className="bg-background min-h-screen pb-20">
       <SEO 
-        title={service.title}
-        description={service.description || `Read details regarding ${service.title} provided by Grefas Consult & Entertainment in Ashanti Region.`}
-        keywords={`Grefas ${service.title}, ${service.title} Nyinahin, ${service.title} Ghana, ${service.title} services`}
+        title={`${service.title} | Professional Services`}
+        description={service.description ? `${service.description} Offered by Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region, Ghana.` : `Learn details regarding ${service.title} offered by Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana. Book appointments and explore service specifications.`}
+        keywords={`Grefas ${service.title}, ${service.title} Nyinahin, ${service.title} Ashanti Region, ${service.title} Ghana consulting, Grefas booking`}
       />
       {/* Hero Section */}
       <div className={`relative h-[40vh] min-h-[300px] w-full overflow-hidden ${service.color || 'bg-orange-600'}`}>

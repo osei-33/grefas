@@ -82,28 +82,64 @@ export default function PrivacyPolicy() {
   const lastUpdatedDate = settings.policyLastUpdatedDate || "August 10, 2026";
 
   return (
-    <div className="min-h-screen bg-background text-foreground pt-24 pb-20">
+    <div className="min-h-screen bg-background text-foreground pt-24 pb-20 print:pt-0 print:pb-0 print:bg-white print:text-black">
       <style>{`
         @media print {
-          nav, header, footer, .no-print, #privacy-floating-contact-btn {
+          nav, header, footer, .no-print, #privacy-floating-contact-btn, .sidebar-selector, #privacy-hero-banner {
             display: none !important;
           }
-          body {
-            background: white !important;
-            color: black !important;
+          body, html, #root, main, .min-h-screen {
+            background: #ffffff !important;
+            color: #000000 !important;
             padding: 0 !important;
             margin: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            position: static !important;
           }
-          .print-container {
-            max-width: 100% !important;
-            width: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+            transition: none !important;
+            animation: none !important;
+            filter: none !important;
           }
-          .print-card {
+          .printable-card {
             border: none !important;
             box-shadow: none !important;
             padding: 0 !important;
+            margin: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            display: block !important;
+          }
+          .printable-card * {
+            color: #000000 !important;
+            background: transparent !important;
+          }
+          .print-header {
+            display: block !important;
+            border-bottom: 2px solid #ea580c !important;
+            padding-bottom: 12px !important;
+            margin-bottom: 20px !important;
+          }
+          h1, h2, h3, h4, strong, b {
+            color: #000000 !important;
+            page-break-after: avoid;
+            break-after: avoid;
+          }
+          p, li, span, div {
+            color: #1f2937 !important;
+          }
+          ul, ol {
+            padding-left: 20px !important;
           }
         }
       `}</style>
@@ -115,11 +151,12 @@ export default function PrivacyPolicy() {
             ? 'Terms of Service' 
             : 'Refund Policy'
         }
-        description="Official Privacy Policy, Terms of Service, and Refund Policy for Grefas Consult & Entertainment based in Nyinahin-Ashanti, Ghana."
+        description={`Read the official ${activeTab === 'privacy' ? 'Privacy Policy' : activeTab === 'terms' ? 'Terms of Service' : 'Refund Policy'} of Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region, Ghana. Clear standards governing data protection, service terms, and refund guarantees.`}
+        keywords={`Grefas ${activeTab}, legal policy Ghana, privacy policy Nyinahin, terms of service Ashanti Region, refund policy Grefas`}
       />
 
       {/* Hero Header */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-orange-500/10 via-background to-background py-12 border-b border-border/50">
+      <section id="privacy-hero-banner" className="relative overflow-hidden bg-gradient-to-b from-orange-500/10 via-background to-background py-12 border-b border-border/50 no-print">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -174,11 +211,11 @@ export default function PrivacyPolicy() {
       </section>
 
       {/* Main Content & Navigation */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10 print:mt-0 print:px-0">
         <div className="flex flex-col lg:flex-row gap-8">
 
           {/* Sticky Tab Sidebar */}
-          <div className="w-full lg:w-64 shrink-0">
+          <div className="w-full lg:w-64 shrink-0 no-print sidebar-selector">
             <div className="lg:sticky lg:top-28 space-y-2 bg-card border border-border rounded-2xl p-3 shadow-sm">
               <span className="text-xs font-bold text-muted-foreground uppercase px-3 py-1.5 block tracking-wider">
                 Select Policy
@@ -235,6 +272,24 @@ export default function PrivacyPolicy() {
 
           {/* Active Policy Content */}
           <div className="flex-1 min-w-0">
+            {/* Print-Only Document Header */}
+            <div className="hidden print:block print-header">
+              <div className="flex items-center justify-between pb-3 border-b-2 border-orange-600">
+                <div>
+                  <h1 className="text-xl font-bold text-black uppercase tracking-wider">GREFAS CONSULT & ENTERTAINMENT</h1>
+                  <p className="text-xs text-gray-700">Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223)</p>
+                  <p className="text-xs text-gray-500">Official Governance & Legal Policy Document</p>
+                </div>
+                <div className="text-right text-xs text-gray-700">
+                  <p className="font-bold text-orange-600 uppercase">
+                    {activeTab === 'privacy' ? 'PRIVACY POLICY' : activeTab === 'terms' ? 'TERMS OF SERVICE' : 'REFUND POLICY'}
+                  </p>
+                  <p>Effective Date: {lastUpdatedDate}</p>
+                  <p>Contact: {settings.privacyDeskEmail || 'legal@grefas.com'}</p>
+                </div>
+              </div>
+            </div>
+
             <AnimatePresence mode="wait">
 
               {/* PRIVACY POLICY TAB */}
@@ -245,7 +300,7 @@ export default function PrivacyPolicy() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.3 }}
-                  className="bg-card border border-border rounded-2xl p-6 sm:p-10 shadow-sm space-y-8"
+                  className="printable-card bg-card border border-border rounded-2xl p-6 sm:p-10 shadow-sm space-y-8"
                 >
                   <div className="border-b border-border pb-6">
                     <div className="flex items-center gap-3 text-orange-600">
@@ -401,7 +456,7 @@ export default function PrivacyPolicy() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.3 }}
-                  className="bg-card border border-border rounded-2xl p-6 sm:p-10 shadow-sm space-y-8"
+                  className="printable-card bg-card border border-border rounded-2xl p-6 sm:p-10 shadow-sm space-y-8"
                 >
                   <div className="border-b border-border pb-6">
                     <div className="flex items-center gap-3 text-orange-600">
@@ -481,7 +536,7 @@ export default function PrivacyPolicy() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.3 }}
-                  className="bg-card border border-border rounded-2xl p-6 sm:p-10 shadow-sm space-y-8"
+                  className="printable-card bg-card border border-border rounded-2xl p-6 sm:p-10 shadow-sm space-y-8"
                 >
                   <div className="border-b border-border pb-6">
                     <div className="flex items-center gap-3 text-orange-600">
@@ -581,7 +636,7 @@ export default function PrivacyPolicy() {
       </div>
 
       {/* Footer Contact Banner */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16 no-print">
         <div className="bg-muted/40 border border-border rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="space-y-1 text-center sm:text-left">
             <h3 className="text-base font-bold text-foreground flex items-center justify-center sm:justify-start gap-2">

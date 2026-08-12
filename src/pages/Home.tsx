@@ -251,9 +251,9 @@ export default function Home() {
   return (
     <div className="relative overflow-hidden">
       <SEO 
-        title="Official Website"
-        description="Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region is your premier partner for professional consulting and world-class entertainment services."
-        keywords="Home Grefas, Nyinahin, Ashanti Region, Ghana Consult, Entertainment Ghana, Grefas official website"
+        title="Premier Strategic Business Consulting & Entertainment Agency in Nyinahin-Ashanti, Ghana"
+        description="Welcome to Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region, Ghana. Leading agency for strategic corporate advisory, movie and skit production, talent casting, artiste management, and visa interview preparation."
+        keywords="Grefas Consult, Grefas Entertainment, Nyinahin-Ashanti consulting, Ashanti Region corporate advisory, movie casting Ghana, artiste management Ghana, visa interview prep Nyinahin, event video production Ghana"
       />
 
       {/* Vacancy Alert Banner */}

@@ -61,9 +61,9 @@ export default function Portfolio() {
       <div className="absolute bottom-1/4 left-0 w-80 h-80 bg-blue-600/5 rounded-full blur-3xl pointer-events-none -z-10" />
 
       <SEO 
-        title="Portfolio"
-        description="Browse the historical success work portfolio of Grefas Consult & Entertainment. Take a look at our completed client advisory cases, major regional entertainment events, star productions, and artist programs."
-        keywords="Grefas portfolio, event showcase Ghana, commercial consulting projects, entertainment showcase Ashanti"
+        title="Client Portfolio & Work Showcase"
+        description="Browse the project portfolio of Grefas Consult & Entertainment. Explore completed corporate advisory cases, live music festivals, film productions, and artist development projects in Nyinahin-Ashanti, Ashanti Region, Ghana."
+        keywords="Grefas portfolio, corporate advisory projects Ghana, event production showcase, movie casting portfolio, Ashanti media showcase, Grefas client cases"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Breadcrumbs />

@@ -36,9 +36,9 @@ export default function About() {
   return (
     <div className="bg-background py-20">
       <SEO 
-        title="About Us"
-        description="Learn more about Grefas Consult & Entertainment. Providing professional strategic consulting, event management, and world-class artist coordination in Nyinahin-Ashanti, Ghana."
-        keywords="About Grefas, Grefas team, Grefas vision, entertainment consult Nyinahin"
+        title="About Us | Vision, Mission & Leadership"
+        description="Discover Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region. Founded by Dr. Linda Serwaah, we deliver excellence in corporate consulting, film production, artiste management, and youth talent empowerment across Ghana."
+        keywords="About Grefas Consult, Dr Linda Serwaah, Grefas leadership, Nyinahin business history, Ghana entertainment agency, corporate consulting Ashanti Region"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
