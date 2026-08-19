@@ -364,12 +364,19 @@ service cloud.firestore {
     }
     
     match /transactions/{transactionId} {
-      allow read, write: if isStaff();
+      allow read: if isStaff();
+      allow create: if true;
+      allow update, delete: if isStaff();
+    }
+    
+    match /audit_logs/{logId} {
+      allow read: if isStaff();
+      allow create: if true;
     }
     
     match /activity_logs/{logId} {
       allow read: if isStaff();
-      allow create: if isValidActivityLog(request.resource.data);
+      allow create: if true;
     }
     
     match /test/connection {

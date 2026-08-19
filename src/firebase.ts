@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, initializeFirestore, doc, getDocFromServer, setDoc, terminate, clearIndexedDbPersistence } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -8,8 +8,10 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Use standard getFirestore for stable WebChannel streaming in browser/iframe environments
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Use initializeFirestore with auto-detect long-polling for resilient connectivity in iframe/preview environments
+export const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+}, firebaseConfig.firestoreDatabaseId || '(default)');
 
 /**
  * Handle Firestore errors according to integration guidelines
@@ -76,28 +78,3 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
-
-// Improved connection check with backoff logic
-async function verifyConnection(retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        continue;
-      }
-      
-      await getDocFromServer(doc(db, 'settings', 'global'));
-      console.log("Firestore connection verified");
-      return;
-    } catch (error) {
-      if (i === retries - 1) {
-        console.warn("Firestore connection attempt failed after retries. Operating in offline-first mode.");
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
-      }
-    }
-  }
-}
-
-// Start verification in background (disabled to suppress noisy connection warnings in sandboxed browser environments)
-// verifyConnection();

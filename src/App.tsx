@@ -19,15 +19,17 @@ import NotFound from './pages/NotFound';
 import { Toaster } from 'sonner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LanguageProvider } from './lib/LanguageContext';
+import { PaystackProvider } from './providers/PaystackProvider';
 
 export default function App() {
   return (
     <ErrorBoundary>
       <HelmetProvider>
         <LanguageProvider>
-          <Router>
-            <Layout>
-              <Routes>
+          <PaystackProvider>
+            <Router>
+              <Layout>
+                <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/about-us" element={<Navigate to="/about" replace />} />
@@ -87,7 +89,8 @@ export default function App() {
             </Layout>
             <Toaster position="top-center" />
           </Router>
-        </LanguageProvider>
+        </PaystackProvider>
+      </LanguageProvider>
       </HelmetProvider>
     </ErrorBoundary>
   );

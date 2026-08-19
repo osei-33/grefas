@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import { compressImage, blobToBase64 } from '@/lib/utils';
+import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
@@ -1168,47 +1169,66 @@ export default function Services() {
     setIsPaying(true);
     setCurrentPaymentStep(0);
     const steps = [
-      "Connecting to secure payment gateway server...",
-      `Routing request to ${paymentProvider === 'card' ? 'Visa/Mastercard Clearing Desk' : (momoProvider + ' Central Node')}...`,
+      "Initializing Paystack payment gateway...",
+      `Connecting to Paystack ${paymentProvider === 'card' ? 'Card Engine' : (momoProvider + ' Central MoMo Node')}...`,
       paymentProvider === 'card' 
         ? "Processing 3D-Secure authentication..." 
-        : "Sending secure authorization prompt notification to phone...",
-      "Clearing transaction and securing client reservation funds..."
+        : `Sending USSD authorization prompt to ${momoNumber}...`,
+      "Verifying transaction settlement with Paystack..."
     ];
     setPaymentSteps(steps);
 
-    // Simulate payment sequence with steps
     try {
+      const refCode = generatePaystackReference('GREFAS-CASTING');
+      
+      // Initialize with Paystack
+      await initializePaystackPayment({
+        email: formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com',
+        amount: Number(intakePrice),
+        currency: 'GHS',
+        reference: refCode,
+        metadata: {
+          fullName: formData.fullName,
+          roleType: formData.roleType,
+          contact: formData.contact,
+          paymentProvider,
+          momoProvider: paymentProvider !== 'card' ? momoProvider : undefined,
+          phone: momoNumber || formData.contact
+        },
+        channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
+      });
+
       await new Promise(resolve => setTimeout(resolve, 600));
       setCurrentPaymentStep(1);
       await new Promise(resolve => setTimeout(resolve, 800));
       setCurrentPaymentStep(2);
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 900));
       setCurrentPaymentStep(3);
-      await new Promise(resolve => setTimeout(resolve, 600));
 
-      // Generate Reference
-      const refCode = `${paymentProvider === 'card' ? 'CARD' : 'MOMO'}-GREFAS-${Math.floor(100000 + Math.random() * 900000)}`;
+      // Verify with Paystack
+      await verifyPaystackPayment(refCode);
       setPaymentRef(refCode);
 
       // Write direct to Firestore Transactions Collection
       const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
       await addDoc(collection(db, 'transactions'), {
-        description: `Audition / Casting Fee: ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
+        description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
         amount: Number(intakePrice),
         type: 'credit',
         category: 'Audition / Casting Fee',
         ref: refCode,
+        gateway: 'Paystack',
+        channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
         recordedBy: recordedByEmail,
         createdAt: new Date(),
         transactionDate: new Date().toISOString()
       });
 
       setPriceConfirmed(true);
-      toast.success(`Secure payment of GH₵ ${intakePrice.toFixed(2)} completed successfully!`);
-    } catch (err) {
-      console.error("Payment execution failure:", err);
-      toast.error("Security verification failed. Please try again.");
+      toast.success(`Paystack payment of GH₵ ${intakePrice.toFixed(2)} verified successfully!`);
+    } catch (err: any) {
+      console.error("Paystack payment execution failure:", err);
+      toast.error(err.message || "Payment verification failed. Please try again.");
     } finally {
       setIsPaying(false);
     }

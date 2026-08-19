@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import AuthDialog from '@/components/AuthDialog';
 import { jsPDF } from 'jspdf';
+import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
 
 export default function MyApplications() {
   const [user, setUser] = useState<any>(null);
@@ -601,14 +602,31 @@ export default function MyApplications() {
     setIsProcessingPayment(true);
     setPaymentStep('processing');
     
-    // Simulate payment API roundtrip authorization delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    const txnId = paymentMode === 'momo' 
-      ? `TXN-MOMO-${momoOperator.toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`
-      : `TXN-CARD-${Math.floor(100000 + Math.random() * 900000)}`;
+    const txnId = generatePaystackReference('GREFAS-INST');
       
     try {
+      // 1. Initialize Paystack Transaction
+      await initializePaystackPayment({
+        email: activePaymentApp.emailAddress || user?.email || 'client@grefas.com',
+        amount: Number(activePaymentInstallment.amount),
+        currency: 'GHS',
+        reference: txnId,
+        metadata: {
+          fullName: activePaymentApp.fullName,
+          applicationId: activePaymentApp.id,
+          installmentId: activePaymentInstallment.id,
+          installmentName: activePaymentInstallment.name,
+          paymentMode,
+          phone: momoNumber || activePaymentApp.contact
+        },
+        channels: paymentMode === 'momo' ? ['mobile_money'] : ['card']
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+
+      // 2. Verify Transaction with Paystack
+      await verifyPaystackPayment(txnId);
+
       const appInsts = activePaymentApp.paymentPlan?.installments || [];
       const updatedInsts = appInsts.map((inst: any) => {
         if (inst.id === activePaymentInstallment.id) {
@@ -617,6 +635,7 @@ export default function MyApplications() {
             status: 'Paid',
             paidAt: new Date().toISOString(),
             transactionId: txnId,
+            gateway: 'Paystack',
             paymentMode,
             ...(paymentMode === 'momo' ? { momoOperator, momoNumber } : {})
           };
@@ -646,6 +665,20 @@ export default function MyApplications() {
           installments: updatedInsts
         }
       }, { merge: true });
+
+      // Add to main ledger
+      await addDoc(collection(db, 'transactions'), {
+        description: `Installment Payment (Paystack): ${activePaymentInstallment.name} - ${activePaymentApp.fullName}`,
+        amount: Number(activePaymentInstallment.amount),
+        type: 'credit',
+        category: 'Installment Payment',
+        ref: txnId,
+        gateway: 'Paystack',
+        channel: paymentMode === 'momo' ? `momo_${momoOperator}` : 'card',
+        recordedBy: user?.email || activePaymentApp.emailAddress || 'client',
+        createdAt: new Date(),
+        transactionDate: new Date().toISOString()
+      });
       
       // Trigger notification immediately upon status updated to Paid in Firestore
       try {

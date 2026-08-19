@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe } from 'lucide-react';
+import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -4049,6 +4049,7 @@ function ManageServices() {
 
 function ManageTransactions() {
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [newTransaction, setNewTransaction] = useState({
@@ -4057,13 +4058,25 @@ function ManageTransactions() {
     type: 'credit',
     category: 'Consultation Booking',
     ref: '',
+    bookingId: '',
+    bookingOrderNumber: '',
+    status: 'successful',
     customDate: format(new Date(), 'yyyy-MM-dd')
   });
 
+  const [statusTab, setStatusTab] = useState<'all' | 'successful' | 'pending' | 'failed' | 'bookings'>('all');
   const [filterType, setFilterType] = useState<'all' | 'credit' | 'debit'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [selectedReceiptData, setSelectedReceiptData] = useState<any | null>(null);
+
+  // Paystack Gateway State
+  const [paystackConfig, setPaystackConfig] = useState<any>(null);
+  const [lookupRef, setLookupRef] = useState('');
+  const [isVerifyingPaystack, setIsVerifyingPaystack] = useState(false);
+  const [paystackVerifyResult, setPaystackVerifyResult] = useState<any>(null);
+  const [showPaystackPanel, setShowPaystackPanel] = useState(false);
 
   // Categories list
   const creditCategories = [
@@ -4084,15 +4097,58 @@ function ManageTransactions() {
   ];
 
   useEffect(() => {
+    fetch('/api/paystack/config')
+      .then(res => res.json())
+      .then(data => setPaystackConfig(data))
+      .catch(err => console.warn("Failed to fetch Paystack configuration:", err));
+  }, []);
+
+  const handleLookupPaystack = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lookupRef.trim()) {
+      toast.error("Please enter a valid Paystack transaction reference");
+      return;
+    }
+    setIsVerifyingPaystack(true);
+    setPaystackVerifyResult(null);
+    try {
+      const res = await fetch(`/api/paystack/verify/${encodeURIComponent(lookupRef.trim())}`);
+      const data = await res.json();
+      setPaystackVerifyResult(data);
+      if (data.status && data.data?.status === 'success') {
+        toast.success(`Paystack Transaction verified: GHS ${(data.data.amount / 100).toFixed(2)} (${data.data.channel || 'momo'})`);
+      } else if (data.status) {
+        toast.info(`Transaction status: ${data.data?.status || 'unknown'}`);
+      } else {
+        toast.error(data.message || "Failed to verify transaction with Paystack");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error verifying Paystack reference");
+    } finally {
+      setIsVerifyingPaystack(false);
+    }
+  };
+
+  useEffect(() => {
     const q = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeTrans = onSnapshot(q, (snapshot) => {
       setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (error) => {
       console.error("Error fetching transactions:", error);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    const unsubscribeBookings = onSnapshot(collection(db, 'bookings'), (snapshot) => {
+      setBookings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.warn("Bookings listener warning:", error);
+    });
+
+    return () => {
+      unsubscribeTrans();
+      unsubscribeBookings();
+    };
   }, []);
 
   const handleAddTransaction = async (e: React.FormEvent) => {
@@ -4117,6 +4173,10 @@ function ManageTransactions() {
         type: newTransaction.type,
         category: newTransaction.category,
         ref: newTransaction.ref.trim(),
+        bookingId: newTransaction.bookingId.trim() || undefined,
+        bookingOrderNumber: newTransaction.bookingOrderNumber.trim() || undefined,
+        status: newTransaction.status || 'successful',
+        gateway: 'Paystack',
         recordedBy: auth.currentUser?.email || 'admin',
         createdAt: serverTimestamp(),
         transactionDate: selectedDate.toISOString()
@@ -4130,6 +4190,9 @@ function ManageTransactions() {
         type: 'credit',
         category: 'Consultation Booking',
         ref: '',
+        bookingId: '',
+        bookingOrderNumber: '',
+        status: 'successful',
         customDate: format(new Date(), 'yyyy-MM-dd')
       });
     } catch (error) {
@@ -4157,7 +4220,7 @@ function ManageTransactions() {
       }
 
       // Define columns
-      const headers = ["Date", "Description", "Type", "Category", "Payment Ref", "Amount (GHS)", "Recorded By"];
+      const headers = ["Date", "Description", "Type", "Category", "Payment Status", "Payment Ref", "Associated Booking ID", "Amount (GHS)", "Recorded By"];
       
       // Map rows
       const rows = filteredTransactions.map(t => {
@@ -4172,7 +4235,9 @@ function ManageTransactions() {
           `"${(t.description || '').replace(/"/g, '""')}"`,
           t.type === 'credit' ? 'CREDIT (Income)' : 'DEBIT (Expense)',
           t.category || 'N/A',
+          t.status || 'successful',
           t.ref || 'N/A',
+          t.bookingOrderNumber || t.bookingId || 'N/A',
           t.amount || 0,
           t.recordedBy || 'N/A'
         ];
@@ -4189,7 +4254,7 @@ function ManageTransactions() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `Grefas_Ledger_Report_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+      link.setAttribute("download", `Grefas_Transactions_Report_${format(new Date(), 'yyyy-MM-dd')}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -4214,25 +4279,48 @@ function ManageTransactions() {
 
   // Filter and Search
   const filteredTransactions = transactions.filter(t => {
+    // Status Tab filter
+    if (statusTab === 'successful') {
+      const isSuccess = t.status === 'successful' || t.status === 'success' || (!t.status && t.type === 'credit');
+      if (!isSuccess) return false;
+    } else if (statusTab === 'pending') {
+      const isPending = t.status === 'pending' || t.status === 'processing';
+      if (!isPending) return false;
+    } else if (statusTab === 'failed') {
+      const isFailed = t.status === 'failed' || t.status === 'abandoned';
+      if (!isFailed) return false;
+    } else if (statusTab === 'bookings') {
+      const isBooking = t.category === 'Consultation Booking' || Boolean(t.bookingId || t.bookingOrderNumber);
+      if (!isBooking) return false;
+    }
+
     const matchesType = filterType === 'all' || t.type === filterType;
     const matchesCategory = filterCategory === 'all' || t.category === filterCategory;
     const matchesSearch = !searchQuery || 
-      t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.ref && t.ref.toLowerCase().includes(searchQuery.toLowerCase()));
+      (t.description && t.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (t.category && t.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (t.ref && t.ref.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (t.bookingId && t.bookingId.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (t.bookingOrderNumber && t.bookingOrderNumber.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (t.customerName && t.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (t.customerEmail && t.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesType && matchesCategory && matchesSearch;
   });
+
+  const successfulCount = transactions.filter(t => t.status === 'successful' || t.status === 'success' || (!t.status && t.type === 'credit')).length;
+  const pendingCount = transactions.filter(t => t.status === 'pending' || t.status === 'processing').length;
+  const bookingCount = transactions.filter(t => t.category === 'Consultation Booking' || Boolean(t.bookingId || t.bookingOrderNumber)).length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Financial Ledger & Transactions</h1>
+          <h1 className="text-3xl font-bold text-foreground">Financial Ledger & Payment Transactions</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Track all revenues, consultation bookings, payroll disbursements, and operational expenses in Nyinahin.
+            Real-time tracking of all Paystack transactions, consultation bookings, payroll disbursements, and associated booking records.
           </p>
         </div>
-        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white">
+        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white font-bold">
           {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Record Transaction</>}
         </Button>
       </div>
@@ -4281,7 +4369,7 @@ function ManageTransactions() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card border border-border shadow-sm">
+        <Card className="bg-card border-border shadow-sm">
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Balance Remaining</p>
@@ -4295,6 +4383,105 @@ function ManageTransactions() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Paystack Payment Gateway Card */}
+      <Card className="bg-card border border-emerald-500/30 shadow-sm overflow-hidden">
+        <div className="bg-emerald-500/10 px-6 py-4 border-b border-emerald-500/20 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-black text-sm shadow">
+              P
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-foreground text-base">Paystack Payment Gateway</h3>
+                <span className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full font-mono uppercase tracking-wider">
+                  {paystackConfig?.configured ? 'Active & Configured' : 'Live Gateway'}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Official payment provider for MTN MoMo, Telecel Cash, AT Money, and Visa/Mastercard transactions.
+              </p>
+            </div>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowPaystackPanel(!showPaystackPanel)}
+            className="border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 text-xs font-semibold"
+          >
+            {showPaystackPanel ? 'Hide Verification Tool' : 'Verify Paystack Reference'}
+          </Button>
+        </div>
+
+        <CardContent className="p-6 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-muted/40 p-3 rounded-xl border border-border/50">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Default Currency</span>
+              <span className="text-sm font-bold text-foreground font-mono mt-0.5 block">{paystackConfig?.currency || 'GHS'} (Ghanaian Cedis)</span>
+            </div>
+            <div className="bg-muted/40 p-3 rounded-xl border border-border/50">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Supported Channels</span>
+              <span className="text-xs font-medium text-foreground mt-0.5 block">Mobile Money (MTN, Telecel, AT), Cards</span>
+            </div>
+            <div className="bg-muted/40 p-3 rounded-xl border border-border/50">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Public Key Status</span>
+              <span className="text-xs font-mono font-bold text-emerald-600 mt-0.5 block">
+                {paystackConfig?.publicKey ? `${paystackConfig.publicKey.slice(0, 12)}...` : 'Environment Ready'}
+              </span>
+            </div>
+            <div className="bg-muted/40 p-3 rounded-xl border border-border/50">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Webhook Endpoint</span>
+              <span className="text-xs font-mono text-muted-foreground mt-0.5 block">/api/paystack/webhook</span>
+            </div>
+          </div>
+
+          {showPaystackPanel && (
+            <div className="pt-4 border-t border-border space-y-4">
+              <div>
+                <h4 className="text-sm font-bold text-foreground">Live Paystack Transaction Verifier</h4>
+                <p className="text-xs text-muted-foreground">
+                  Enter any transaction reference (e.g. <code className="text-foreground font-bold">GREFAS-BOOK-XXXXXX</code> or <code className="text-foreground font-bold">GREFAS-CASTING-XXXXXX</code>) to query the Paystack API directly.
+                </p>
+              </div>
+
+              <form onSubmit={handleLookupPaystack} className="flex gap-2 max-w-xl">
+                <Input
+                  placeholder="Enter Paystack Ref (e.g., GREFAS-BOOK-123456)"
+                  value={lookupRef}
+                  onChange={(e) => setLookupRef(e.target.value)}
+                  className="font-mono text-xs"
+                />
+                <Button 
+                  type="submit" 
+                  disabled={isVerifyingPaystack}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 text-xs font-bold"
+                >
+                  {isVerifyingPaystack ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Query Gateway'}
+                </Button>
+              </form>
+
+              {paystackVerifyResult && (
+                <div className={`p-4 rounded-xl border text-xs space-y-2 font-mono ${
+                  paystackVerifyResult.status && paystackVerifyResult.data?.status === 'success'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200'
+                    : 'bg-muted border-border text-foreground'
+                }`}>
+                  <div className="flex items-center justify-between font-bold">
+                    <span>STATUS: {paystackVerifyResult.status ? (paystackVerifyResult.data?.status?.toUpperCase() || 'OK') : 'FAILED'}</span>
+                    <span>AMOUNT: GHS {((paystackVerifyResult.data?.amount || 0) / 100).toFixed(2)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                    <div>Channel: {paystackVerifyResult.data?.channel || 'N/A'}</div>
+                    <div>Gateway Response: {paystackVerifyResult.data?.gateway_response || 'N/A'}</div>
+                    <div>Customer: {paystackVerifyResult.data?.customer?.email || 'N/A'}</div>
+                    <div>Paid At: {paystackVerifyResult.data?.paid_at ? new Date(paystackVerifyResult.data.paid_at).toLocaleString() : 'N/A'}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {isAdding && (
         <Card className="bg-card border-border shadow-md">
@@ -4377,9 +4564,22 @@ function ManageTransactions() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Payment Reference (MOMO, Receipt #, etc.)</label>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Payment Status</label>
+                  <select
+                    value={newTransaction.status}
+                    onChange={e => setNewTransaction({ ...newTransaction, status: e.target.value })}
+                    className="flex h-10 w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none"
+                  >
+                    <option value="successful">Successful (Paid)</option>
+                    <option value="pending">Pending</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Payment Reference (Paystack, MOMO, etc.)</label>
                   <Input
                     placeholder="Optional transaction reference"
                     value={newTransaction.ref}
@@ -4388,65 +4588,144 @@ function ManageTransactions() {
                   />
                 </div>
 
-                <div className="flex items-end">
-                  <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold h-10">
-                    Record Entry
-                  </Button>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Associated Booking Order # / ID</label>
+                  <Input
+                    placeholder="e.g., GREF-20260819-1234"
+                    value={newTransaction.bookingOrderNumber}
+                    onChange={e => setNewTransaction({ ...newTransaction, bookingOrderNumber: e.target.value })}
+                    className="bg-muted/50 border-border font-mono text-xs"
+                  />
                 </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white font-bold h-10 px-8">
+                  Record Entry
+                </Button>
               </div>
             </form>
           </CardContent>
         </Card>
       )}
 
-      {/* Filter and Table Section */}
+      {/* Filter and Table Section with Status Tabs */}
       <Card className="bg-card border-border shadow-sm">
         <CardHeader className="pb-3 border-b border-border/40">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
-              <Clock className="h-5 w-5 text-orange-600" /> Transaction History
-            </CardTitle>
-            
-            <div className="flex flex-wrap items-center gap-2.5">
-              <div className="relative w-full md:w-64">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search ledger..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="pl-9 h-9 text-xs bg-muted/30 border-border"
-                />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-orange-600" /> Transaction Ledger
+                </CardTitle>
+                <span className="text-xs font-bold bg-muted px-2.5 py-1 rounded-full text-muted-foreground">
+                  {filteredTransactions.length} {filteredTransactions.length === 1 ? 'record' : 'records'}
+                </span>
               </div>
+              
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="relative w-full md:w-64">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search ledger or booking ID..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="pl-9 h-9 text-xs bg-muted/30 border-border"
+                  />
+                </div>
 
-              <select
-                value={filterType}
-                onChange={e => setFilterType(e.target.value as any)}
-                className="h-9 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-foreground focus:outline-none"
-              >
-                <option value="all">All Types</option>
-                <option value="credit">Credits only</option>
-                <option value="debit">Debits only</option>
-              </select>
+                <select
+                  value={filterType}
+                  onChange={e => setFilterType(e.target.value as any)}
+                  className="h-9 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-foreground focus:outline-none"
+                >
+                  <option value="all">All Types</option>
+                  <option value="credit">Credits only</option>
+                  <option value="debit">Debits only</option>
+                </select>
 
-              <select
-                value={filterCategory}
-                onChange={e => setFilterCategory(e.target.value)}
-                className="h-9 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-foreground focus:outline-none"
-              >
-                <option value="all">All Categories</option>
-                {creditCategories.concat(debitCategories).map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+                <select
+                  value={filterCategory}
+                  onChange={e => setFilterCategory(e.target.value)}
+                  className="h-9 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-foreground focus:outline-none"
+                >
+                  <option value="all">All Categories</option>
+                  {creditCategories.concat(debitCategories).map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadCSV}
-                className="h-9 border-border hover:bg-muted text-foreground flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 shrink-0"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadCSV}
+                  className="h-9 border-border hover:bg-muted text-foreground flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 shrink-0"
+                >
+                  <Download className="h-3.5 w-3.5 text-orange-600" /> Export CSV
+                </Button>
+              </div>
+            </div>
+
+            {/* Status Tabs Navigation */}
+            <div className="flex items-center gap-1.5 overflow-x-auto border-t border-border/50 pt-3">
+              <button
+                onClick={() => setStatusTab('all')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statusTab === 'all'
+                    ? 'bg-foreground text-background shadow-xs'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
               >
-                <Download className="h-3.5 w-3.5 text-orange-600" /> Export CSV
-              </Button>
+                <span>All Transactions</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${statusTab === 'all' ? 'bg-background/20 text-background' : 'bg-muted-foreground/15 text-muted-foreground'}`}>
+                  {transactions.length}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setStatusTab('successful')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statusTab === 'successful'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <CheckCircle className="h-3.5 w-3.5" />
+                <span>Successful Transactions</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${statusTab === 'successful' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-600'}`}>
+                  {successfulCount}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setStatusTab('pending')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statusTab === 'pending'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>Pending Transactions</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${statusTab === 'pending' ? 'bg-white/20 text-white' : 'bg-amber-500/10 text-amber-600'}`}>
+                  {pendingCount}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setStatusTab('bookings')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  statusTab === 'bookings'
+                    ? 'bg-orange-600 text-white shadow-xs'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <CalendarIcon className="h-3.5 w-3.5" />
+                <span>Booking Payments</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${statusTab === 'bookings' ? 'bg-white/20 text-white' : 'bg-orange-500/10 text-orange-600'}`}>
+                  {bookingCount}
+                </span>
+              </button>
             </div>
           </div>
         </CardHeader>
@@ -4456,7 +4735,7 @@ function ManageTransactions() {
               <Loader2 className="h-6 w-6 animate-spin text-orange-600" />
             </div>
           ) : filteredTransactions.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">
+            <div className="py-12 text-center text-muted-foreground text-xs">
               No transactions match your search/filter criteria.
             </div>
           ) : (
@@ -4465,8 +4744,10 @@ function ManageTransactions() {
                 <thead>
                   <tr className="bg-muted/30 border-b border-border/60 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                     <th className="p-4">Date</th>
-                    <th className="p-4">Description</th>
-                    <th className="p-4">Category</th>
+                    <th className="p-4">Description & Customer</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">Associated Booking</th>
+                    <th className="p-4">Gateway / Channel</th>
                     <th className="p-4">Reference</th>
                     <th className="p-4 text-right">Amount</th>
                     <th className="p-4 text-center">Actions</th>
@@ -4480,36 +4761,109 @@ function ManageTransactions() {
                         ? format(new Date(t.createdAt.seconds * 1000), 'MMM d, yyyy')
                         : 'Recent';
 
+                    const isSuccess = t.status === 'successful' || t.status === 'success' || (!t.status && t.type === 'credit');
+                    const isPending = t.status === 'pending' || t.status === 'processing';
+                    const isFailed = t.status === 'failed' || t.status === 'abandoned';
+
+                    const bookingRef = t.bookingOrderNumber || (t.bookingId ? `#${t.bookingId.slice(0, 8)}` : null);
+
                     return (
                       <tr key={t.id} className="hover:bg-muted/15 transition-colors">
                         <td className="p-4 whitespace-nowrap text-muted-foreground font-medium">{displayDate}</td>
-                        <td className="p-4">
+                        <td className="p-4 min-w-[220px]">
                           <div className="font-semibold">{t.description}</div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">Recorded by: {t.recordedBy}</div>
+                          {t.customerName && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              Customer: <span className="font-medium text-foreground">{t.customerName}</span> {t.customerEmail && `(${t.customerEmail})`}
+                            </div>
+                          )}
+                          {!t.customerName && t.recordedBy && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">Recorded by: {t.recordedBy}</div>
+                          )}
                         </td>
                         <td className="p-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase ${
-                            t.type === 'credit' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'
-                          }`}>
-                            {t.category}
-                          </span>
+                          {isSuccess ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                              <CheckCircle className="h-3 w-3" /> Successful
+                            </span>
+                          ) : isPending ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                              <Clock className="h-3 w-3" /> Pending
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                              <AlertCircle className="h-3 w-3" /> {t.status || 'Failed'}
+                            </span>
+                          )}
                         </td>
-                        <td className="p-4 whitespace-nowrap font-mono text-[10px] text-muted-foreground">{t.ref || 'N/A'}</td>
+                        <td className="p-4 whitespace-nowrap">
+                          {bookingRef ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-orange-500/10 text-orange-600 border border-orange-500/20">
+                                {bookingRef}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-orange-600"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(t.bookingOrderNumber || t.bookingId);
+                                  toast.success(`Booking ID ${t.bookingOrderNumber || t.bookingId} copied!`);
+                                }}
+                                title="Copy Booking ID"
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground font-mono">None</span>
+                          )}
+                        </td>
+                        <td className="p-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-[11px] uppercase tracking-wider">{t.gateway || 'Paystack'}</span>
+                            {t.channel && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-mono">
+                                {t.channel}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
+                          {t.ref ? (
+                            <span className="truncate max-w-[120px] inline-block" title={t.ref}>
+                              {t.ref}
+                            </span>
+                          ) : 'N/A'}
+                        </td>
                         <td className={`p-4 text-right font-bold text-sm whitespace-nowrap ${
                           t.type === 'credit' ? 'text-emerald-600' : 'text-rose-600'
                         }`}>
                           {t.type === 'credit' ? '+' : '-'} GH₵ {t.amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </td>
                         <td className="p-4 text-center whitespace-nowrap">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => setDeleteId(t.id)}
-                            className="h-7 w-7 text-muted-foreground hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-950/20"
-                            title="Delete Entry"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex items-center justify-center gap-1">
+                            {t.receiptData && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => setSelectedReceiptData(t)}
+                                className="h-7 w-7 text-muted-foreground hover:text-emerald-600 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                                title="View Gateway Receipt"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => setDeleteId(t.id)}
+                              className="h-7 w-7 text-muted-foreground hover:text-red-600 rounded-full hover:bg-red-50 dark:hover:bg-red-950/20"
+                              title="Delete Entry"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -4520,6 +4874,79 @@ function ManageTransactions() {
           )}
         </CardContent>
       </Card>
+
+      {/* Paystack Receipt Details Modal */}
+      {selectedReceiptData && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-lg w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-lg bg-emerald-600 text-white font-black flex items-center justify-center text-xs">P</div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Paystack Transaction Receipt</h3>
+                  <p className="text-xs text-muted-foreground font-mono">{selectedReceiptData.ref}</p>
+                </div>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setSelectedReceiptData(null)}
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="bg-muted/40 p-4 rounded-xl space-y-2 text-xs font-mono">
+              <div className="flex justify-between py-1 border-b border-border/40">
+                <span className="text-muted-foreground">Amount Paid:</span>
+                <span className="font-bold text-emerald-600 text-sm">GH₵ {selectedReceiptData.amount?.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/40">
+                <span className="text-muted-foreground">Status:</span>
+                <span className="font-bold uppercase text-emerald-600">{selectedReceiptData.status || 'SUCCESSFUL'}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/40">
+                <span className="text-muted-foreground">Associated Booking:</span>
+                <span className="font-bold text-orange-600">{selectedReceiptData.bookingOrderNumber || selectedReceiptData.bookingId || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/40">
+                <span className="text-muted-foreground">Channel:</span>
+                <span>{selectedReceiptData.channel || 'Mobile Money'}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/40">
+                <span className="text-muted-foreground">Customer:</span>
+                <span>{selectedReceiptData.customerName || selectedReceiptData.recordedBy}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-muted-foreground">Date:</span>
+                <span>{selectedReceiptData.transactionDate || selectedReceiptData.createdAt ? new Date(selectedReceiptData.transactionDate || selectedReceiptData.createdAt).toLocaleString() : 'N/A'}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(selectedReceiptData, null, 2));
+                  toast.success("Receipt JSON copied to clipboard!");
+                }}
+                className="text-xs font-semibold"
+              >
+                <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy Receipt JSON
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={() => setSelectedReceiptData(null)}
+                className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-5"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteId && (
         <AdminDeleteModal

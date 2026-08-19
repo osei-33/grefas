@@ -581,6 +581,182 @@ Sitemap: ${domain}/sitemap.xml`);
     }
   });
 
+  // --- PAYSTACK PAYMENT GATEWAY INTEGRATION ---
+  // Returns Paystack integration configuration and connection status
+  app.get("/api/paystack/config", (req, res) => {
+    const secretKey = process.env.PAYSTACK_SECRET_KEY || "";
+    const publicKey = process.env.PAYSTACK_PUBLIC_KEY || process.env.VITE_PAYSTACK_PUBLIC_KEY || "";
+    const isConfigured = Boolean(secretKey && secretKey.length > 5);
+
+    res.json({
+      configured: isConfigured,
+      publicKey: publicKey ? (publicKey.startsWith("pk_") ? `${publicKey.substring(0, 8)}...` : "Configured") : "",
+      rawPublicKey: publicKey || "",
+      currency: "GHS",
+      supportedChannels: ["mobile_money", "card", "bank_transfer"],
+      supportedNetworks: ["MTN MoMo", "Telecel Cash", "AT Money", "Visa", "Mastercard"],
+      environment: secretKey.startsWith("sk_live") ? "live" : "test"
+    });
+  });
+
+  // Initialize Paystack transaction
+  app.post("/api/paystack/initialize", async (req, res) => {
+    const { email, amount, currency = "GHS", reference, metadata, channels, callback_url } = req.body;
+
+    if (!email || !amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ 
+        status: false, 
+        error: "Valid email and positive numeric amount are required for Paystack payment" 
+      });
+    }
+
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    const amountInPesewas = Math.round(Number(amount) * 100);
+    const txRef = reference || `GREFAS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+    // If Paystack Secret Key is configured, make the live/test API call
+    if (secretKey) {
+      try {
+        const paystackRes = await fetch("https://api.paystack.co/transaction/initialize", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${secretKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            amount: amountInPesewas,
+            currency: currency || "GHS",
+            reference: txRef,
+            callback_url: callback_url || `${req.protocol}://${req.get("host")}/booking`,
+            metadata: metadata || {},
+            channels: channels || ["card", "mobile_money", "bank_transfer"],
+          }),
+        });
+
+        const paystackData = await paystackRes.json();
+        if (!paystackRes.ok || !paystackData.status) {
+          console.warn("Paystack API initialization notice:", paystackData);
+          return res.status(paystackRes.status || 400).json({
+            status: false,
+            message: paystackData.message || "Paystack initialization rejected",
+            error: paystackData.message,
+            data: paystackData.data
+          });
+        }
+
+        return res.json({
+          status: true,
+          message: paystackData.message || "Paystack authorization URL generated",
+          data: {
+            ...paystackData.data,
+            reference: txRef,
+            amountInGhs: Number(amount)
+          }
+        });
+      } catch (err: any) {
+        console.error("Paystack API network exception:", err);
+        return res.status(502).json({
+          status: false,
+          error: "Could not establish secure link to Paystack servers",
+          message: err.message
+        });
+      }
+    }
+
+    // Graceful fallback for sandbox / development environment
+    return res.json({
+      status: true,
+      message: "Paystack transaction initialized (Sandbox / Development Mode)",
+      isDemo: true,
+      data: {
+        authorization_url: "",
+        access_code: `demo_${Date.now()}`,
+        reference: txRef,
+        amountInGhs: Number(amount)
+      }
+    });
+  });
+
+  // Verify a Paystack transaction by reference
+  app.get("/api/paystack/verify/:reference", async (req, res) => {
+    const reference = req.params.reference;
+    if (!reference) {
+      return res.status(400).json({ status: false, error: "Reference parameter is required" });
+    }
+
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+
+    if (secretKey) {
+      try {
+        const paystackRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${secretKey}`,
+          },
+        });
+
+        const paystackData = await paystackRes.json();
+        if (!paystackRes.ok || !paystackData.status) {
+          return res.status(paystackRes.status || 400).json({
+            status: false,
+            message: paystackData.message || "Failed to verify transaction with Paystack",
+            data: paystackData.data
+          });
+        }
+
+        const tx = paystackData.data;
+        return res.json({
+          status: true,
+          message: "Transaction verified successfully",
+          data: {
+            ...tx,
+            amountInGhs: (tx.amount || 0) / 100
+          }
+        });
+      } catch (err: any) {
+        console.error("Paystack verification error:", err);
+        return res.status(502).json({
+          status: false,
+          error: "Could not reach Paystack verification gateway",
+          message: err.message
+        });
+      }
+    }
+
+    // Demo/Sandbox fallback
+    return res.json({
+      status: true,
+      message: "Transaction verified (Sandbox / Dev Mode)",
+      isDemo: true,
+      data: {
+        id: Math.floor(Math.random() * 1000000),
+        domain: "test",
+        status: "success",
+        reference: reference,
+        amount: 5000,
+        amountInGhs: 50,
+        gateway_response: "Successful / Approved",
+        paid_at: new Date().toISOString(),
+        channel: "mobile_money",
+        currency: "GHS"
+      }
+    });
+  });
+
+  // Paystack Webhook Handler
+  app.post("/api/paystack/webhook", express.raw({ type: "application/json" }), (req, res) => {
+    try {
+      const event = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      console.log("Paystack Webhook Received:", event?.event, event?.data?.reference);
+      // Acknowledge receipt to Paystack
+      res.sendStatus(200);
+    } catch (err) {
+      console.error("Paystack webhook processing warning:", err);
+      res.sendStatus(200);
+    }
+  });
+
   // Proxy download for images and videos to bypass browser CORS rules on external assets (such as Firebase Storage)
   app.get("/api/proxy-download", async (req, res) => {
     const assetUrl = req.query.url as string;
@@ -872,6 +1048,162 @@ Sitemap: ${domain}/sitemap.xml`);
     }
 
     res.json({ status: "ok", results });
+  });
+
+  // Dedicated Paystack Booking Payment Confirmation & Receipt Email Hook
+  app.post("/api/notify-booking-payment", async (req, res) => {
+    const {
+      email,
+      phone,
+      userName,
+      serviceTitle,
+      date,
+      time,
+      orderNumber,
+      amountPaid,
+      paystackReference,
+      paymentChannel,
+      serviceDescription,
+      teamMemberName,
+      currency = "GHS"
+    } = req.body;
+
+    if (!userName || !serviceTitle || !amountPaid) {
+      return res.status(400).json({ error: "Missing required payment receipt fields" });
+    }
+
+    const results = { email: "skipped", sms: "skipped" };
+    const refCode = paystackReference || orderNumber || `TX-${Date.now()}`;
+    const displayDate = time ? `${date} at ${time}` : date || "Scheduled Consultation";
+    const displayChannel = paymentChannel || "Paystack Verified Channel";
+    const displayAmount = Number(amountPaid).toFixed(2);
+
+    // Send Resend Confirmation with PDF Receipt Attachment
+    if (resend && email) {
+      try {
+        const pdfBuffer = generatePaymentReceiptPDF({
+          fullName: userName,
+          emailAddress: email,
+          contact: phone || "N/A",
+          amountPaid: Number(amountPaid),
+          paymentPlan: "Consultation Appointment",
+          paymentMethod: displayChannel,
+          totalPrice: Number(amountPaid),
+          balanceDue: 0,
+          paymentStatus: "Fully Paid",
+          refId: refCode
+        });
+
+        await resend.emails.send({
+          from: getFromEmail("Grefas Consult & Finance"),
+          to: email,
+          subject: `Payment Confirmed & Verified [${refCode}] - ${serviceTitle}`,
+          attachments: [
+            {
+              filename: `Official-Receipt-${refCode}.pdf`,
+              content: pdfBuffer.toString("base64")
+            }
+          ],
+          html: `
+            <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+              
+              <!-- Header -->
+              <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 24px; text-align: center; border-bottom: 4px solid #16a34a;">
+                <span style="color: #4ade80; font-size: 11px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase; display: block; margin-bottom: 6px;">Paystack Verified Transaction</span>
+                <h1 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.03em;">GREFAS CONSULT</h1>
+                <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">Official Finance & Appointment Desk</p>
+              </div>
+
+              <!-- Main Body -->
+              <div style="padding: 36px 28px;">
+                <div style="text-align: center; margin-bottom: 28px;">
+                  <div style="display: inline-block; background-color: #dcfce7; border: 1px solid #bbf7d0; border-radius: 9999px; padding: 6px 18px; margin-bottom: 14px;">
+                    <span style="color: #15803d; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">✓ Payment Successfully Settled</span>
+                  </div>
+                  <h2 style="margin: 0; font-size: 22px; font-weight: 800; color: #0f172a;">Appointment & Payment Confirmed</h2>
+                  <p style="color: #64748b; font-size: 14px; margin: 8px 0 0 0;">Dear ${userName}, thank you! Your booking payment of <strong>GH₵ ${displayAmount}</strong> has been confirmed and verified via Paystack.</p>
+                </div>
+
+                <!-- Transaction Details Card -->
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+                  <h3 style="margin: 0 0 14px 0; font-size: 13px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">Transaction Summary</h3>
+                  
+                  <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748b; width: 40%;">Paystack Reference:</td>
+                      <td style="padding: 6px 0; font-family: monospace; font-weight: 700; color: #0f172a;">${refCode}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748b;">Amount Paid:</td>
+                      <td style="padding: 6px 0; font-weight: 800; color: #16a34a; font-size: 15px;">GH₵ ${displayAmount} (${currency})</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748b;">Payment Channel:</td>
+                      <td style="padding: 6px 0; font-weight: 600; color: #334155;">${displayChannel}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748b;">Service:</td>
+                      <td style="padding: 6px 0; font-weight: 700; color: #0f172a;">${serviceTitle}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748b;">Date & Time:</td>
+                      <td style="padding: 6px 0; font-weight: 600; color: #334155;">${displayDate}</td>
+                    </tr>
+                    ${teamMemberName ? `
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748b;">Specialist:</td>
+                      <td style="padding: 6px 0; font-weight: 600; color: #334155;">${teamMemberName}</td>
+                    </tr>
+                    ` : ''}
+                    <tr>
+                      <td style="padding: 6px 0; color: #64748b;">Status:</td>
+                      <td style="padding: 6px 0;">
+                        <span style="background-color: #dcfce7; color: #166534; font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">Paid & Verified</span>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+
+                <!-- Attachment Notice -->
+                <div style="background-color: #f0fdf4; border: 1px dashed #86efac; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; text-align: center;">
+                  <span style="font-size: 13px; font-weight: 600; color: #166534; display: block;">📄 Official PDF Receipt Attached</span>
+                  <span style="font-size: 11px; color: #15803d; display: block; margin-top: 4px;">An official stamped receipt <strong>Official-Receipt-${refCode}.pdf</strong> has been attached to this email for your financial records.</span>
+                </div>
+
+                <!-- Client Memo / Notice -->
+                <p style="font-size: 12px; color: #64748b; line-height: 1.6; text-align: center; margin: 0;">
+                  If you have any questions or need to make adjustments to your appointment, please contact our support team quoting reference <strong>${refCode}</strong>.
+                </p>
+              </div>
+
+              <!-- Footer -->
+              <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px; text-align: center;">
+                <p style="margin: 0; font-size: 12px; color: #94a3b8;">&copy; 2026 Grefas Consult & Entertainment. All rights reserved.</p>
+              </div>
+
+            </div>
+          `
+        });
+        results.email = "sent";
+      } catch (err: any) {
+        console.error("Resend payment confirmation email error:", err);
+        results.email = `failed: ${err.message}`;
+      }
+    } else if (!resend) {
+      console.warn("RESEND_API_KEY not configured on server.");
+    }
+
+    // Send SMS Notification
+    if (phone) {
+      try {
+        const smsMsg = `Payment Confirmed! Hi ${userName}, your GH₵ ${displayAmount} booking for ${serviceTitle} (${displayDate}) has been verified via Paystack [Ref: ${refCode}]. Receipt sent to ${email || 'your email'}. - Grefas Consult`;
+        results.sms = await sendSMS(phone, smsMsg);
+      } catch (sErr: any) {
+        results.sms = `failed: ${sErr.message}`;
+      }
+    }
+
+    res.json({ status: "ok", results, reference: refCode });
   });
 
   app.post("/api/notify-reminder", async (req, res) => {

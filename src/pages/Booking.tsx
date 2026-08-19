@@ -20,6 +20,9 @@ import SEO from '@/components/SEO';
 import { showBrowserNotification } from '@/lib/utils';
 import AppointmentCountdown from '@/components/AppointmentCountdown';
 import AuthDialog from '@/components/AuthDialog';
+import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
+import { usePaystack } from '@/providers/PaystackProvider';
+import { useResendPayment } from '@/hooks/useResendPayment';
 
 const convertAccraTimeToUserTimezone = (accraTimeStr: string, targetTimezone: string) => {
   try {
@@ -66,6 +69,7 @@ export default function Booking() {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [consultationPrice, setConsultationPrice] = useState<number>(150);
   const [isPaid, setIsPaid] = useState(false);
+  const [paystackReceipt, setPaystackReceipt] = useState<any>(null);
   const [paymentProvider, setPaymentProvider] = useState<'mtn' | 'telecel' | 'at' | 'card'>('mtn');
   const [momoNumber, setMomoNumber] = useState('');
   const [momoProvider, setMomoProvider] = useState('MTN');
@@ -81,6 +85,9 @@ export default function Booking() {
   const [orderNumber, setOrderNumber] = useState('');
   const [copied, setCopied] = useState(false);
   const location = useLocation();
+
+  const { isConfigured: isPaystackConfigured, openPaystackPopup } = usePaystack();
+  const { sendBookingPaymentConfirmation } = useResendPayment();
 
   const handleCopyOrderNumber = () => {
     if (!orderNumber) return;
@@ -541,47 +548,59 @@ export default function Booking() {
     setIsPaying(true);
     setCurrentPaymentStep(0);
     const steps = [
-      "Connecting to secure payment gateway server...",
-      `Routing request to ${paymentProvider === 'card' ? 'Visa/Mastercard Clearing Desk' : (momoProvider + ' Central Node')}...`,
+      "Initializing secure Paystack gateway session...",
+      `Connecting to Paystack ${paymentProvider === 'card' ? 'Visa/Mastercard Engine' : (momoProvider + ' Central MoMo Node')}...`,
       paymentProvider === 'card' 
-        ? "Processing 3D-Secure authentication..." 
-        : "Sending secure authorization prompt notification to phone...",
-      "Clearing transaction and securing client reservation funds..."
+        ? "Processing 3D-Secure card authentication..." 
+        : `Sending USSD authorization prompt to ${momoNumber}...`,
+      "Verifying transaction settlement and confirming booking reservation..."
     ];
     setPaymentSteps(steps);
 
-    // Simulate payment sequence with steps
     try {
+      const refCode = generatePaystackReference('GREFAS-BOOK');
+      
+      // Step 0: Initialize with Paystack
+      await initializePaystackPayment({
+        email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
+        amount: Number(consultationPrice),
+        currency: 'GHS',
+        reference: refCode,
+        metadata: {
+          fullName: formData.userName,
+          serviceTitle: formData.serviceTitle || 'General Consultation',
+          date: date ? format(date, 'yyyy-MM-dd') : '',
+          time: formData.time,
+          paymentProvider,
+          momoProvider: paymentProvider !== 'card' ? momoProvider : undefined,
+          phone: momoNumber || formData.userPhone
+        },
+        channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
+      });
+
       await new Promise(resolve => setTimeout(resolve, 600));
       setCurrentPaymentStep(1);
       await new Promise(resolve => setTimeout(resolve, 800));
       setCurrentPaymentStep(2);
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 900));
       setCurrentPaymentStep(3);
-      await new Promise(resolve => setTimeout(resolve, 600));
 
-      // Generate Reference
-      const refCode = `${paymentProvider === 'card' ? 'CARD' : 'MOMO'}-GREFAS-${Math.floor(100000 + Math.random() * 900000)}`;
+      // Step 3: Verify with Paystack
+      const verifyRes = await verifyPaystackPayment(refCode);
+
+      if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
+        throw new Error(verifyRes.message || "Paystack payment verification failed. No valid transaction receipt was generated.");
+      }
+
       setPaymentRef(refCode);
-
-      // Write direct to Firestore Transactions Collection
-      const recordedByEmail = auth.currentUser?.email || formData.userEmail || 'online_client';
-      await addDoc(collection(db, 'transactions'), {
-        description: `Consultation Booking: ${formData.serviceTitle || 'General Consult'} (Client: ${formData.userName})`,
-        amount: Number(consultationPrice),
-        type: 'credit',
-        category: 'Consultation Booking',
-        ref: refCode,
-        recordedBy: recordedByEmail,
-        createdAt: serverTimestamp(),
-        transactionDate: new Date().toISOString()
-      });
-
+      setPaystackReceipt(verifyRes.data);
       setIsPaid(true);
-      toast.success(`Secure payment of GH₵ ${consultationPrice.toFixed(2)} completed successfully!`);
-    } catch (err) {
-      console.error("Payment execution failure:", err);
-      toast.error("Security verification failed. Please try again.");
+      toast.success(`Paystack payment of GH₵ ${consultationPrice.toFixed(2)} verified successfully! Receipt #${verifyRes.data.id || refCode}`);
+    } catch (err: any) {
+      console.error("Paystack payment execution failure:", err);
+      setIsPaid(false);
+      setPaystackReceipt(null);
+      toast.error(err.message || "Payment verification failed. Please check your credentials and try again.");
     } finally {
       setIsPaying(false);
     }
@@ -589,8 +608,8 @@ export default function Booking() {
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isPaid) {
-      toast.error("Please complete the secure in-app consultation payment before submitting.");
+    if (!isPaid || !paystackReceipt || !paymentRef) {
+      toast.error("A verified Paystack transaction receipt is required before marking this booking as 'Paid'. Please complete the payment first.");
       return;
     }
 
@@ -612,7 +631,10 @@ export default function Booking() {
       const newOrderNumber = generateOrderNumber();
       setOrderNumber(newOrderNumber);
 
-      // Use addDoc to create a new booking with random ID
+      const recordedByEmail = auth.currentUser?.email || formData.userEmail || 'online_client';
+      const actualChannel = paystackReceipt.channel || (paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`);
+
+      // Create a new booking with Verified Paystack receipt
       const newBookingRef = await addDoc(collection(db, 'bookings'), {
         ...formData,
         orderNumber: newOrderNumber,
@@ -621,9 +643,47 @@ export default function Booking() {
         userId: user?.uid || 'anonymous',
         status: 'pending',
         paymentStatus: 'Paid',
+        paymentGateway: 'Paystack',
         paymentRef: paymentRef,
+        paystackReference: paymentRef,
+        paystackReceiptId: String(paystackReceipt.id || paymentRef),
+        paystackReceipt: {
+          id: paystackReceipt.id || null,
+          status: paystackReceipt.status || 'success',
+          reference: paymentRef,
+          amount: paystackReceipt.amount || (consultationPrice * 100),
+          amountInGhs: paystackReceipt.amountInGhs || consultationPrice,
+          paid_at: paystackReceipt.paid_at || new Date().toISOString(),
+          channel: actualChannel,
+          gateway_response: paystackReceipt.gateway_response || 'Approved'
+        },
+        paymentChannel: actualChannel,
+        paidAmount: paystackReceipt.amountInGhs || consultationPrice,
+        paidAt: paystackReceipt.paid_at || new Date().toISOString(),
         price: consultationPrice,
         createdAt: serverTimestamp()
+      });
+
+      // Write direct to Firestore Transactions Collection with association to booking
+      await addDoc(collection(db, 'transactions'), {
+        description: `Consultation Booking (Paystack): ${formData.serviceTitle || 'General Consult'} (Booking Ref: ${newOrderNumber})`,
+        amount: Number(consultationPrice),
+        type: 'credit',
+        category: 'Consultation Booking',
+        ref: paymentRef,
+        gateway: 'Paystack',
+        channel: actualChannel,
+        bookingId: newBookingRef.id,
+        bookingOrderNumber: newOrderNumber,
+        customerName: formData.userName,
+        customerEmail: formData.userEmail,
+        customerPhone: formData.userPhone,
+        serviceTitle: formData.serviceTitle || 'General Consultation',
+        status: 'successful',
+        receiptData: paystackReceipt,
+        recordedBy: recordedByEmail,
+        createdAt: serverTimestamp(),
+        transactionDate: new Date().toISOString()
       });
 
       await logAuditActivity({
@@ -732,6 +792,26 @@ export default function Booking() {
         } catch (smsErr) {
           console.warn("Direct Arkesel SMS error:", smsErr);
         }
+      }
+
+      // Trigger automatic Paystack payment receipt & confirmation email via Resend Hook
+      try {
+        await sendBookingPaymentConfirmation({
+          email: formData.userEmail,
+          userName: formData.userName,
+          phone: formData.userPhone,
+          serviceTitle: formData.serviceTitle || 'General Consultation',
+          date: dateStr,
+          time: formData.time,
+          orderNumber: newOrderNumber,
+          amountPaid: Number(consultationPrice),
+          paystackReference: paymentRef,
+          paymentChannel: actualChannel === 'card' ? 'Visa / Mastercard Card' : `${momoProvider} Mobile Money`,
+          teamMemberName: formData.teamMemberName || 'Primary Available Specialist'
+        });
+        console.log("Paystack payment confirmation email with PDF receipt dispatched via Resend!");
+      } catch (payResendErr) {
+        console.warn("Payment confirmation email notice:", payResendErr);
       }
 
       // Trigger automatic receipt & confirmation email & backup SMS via API route
@@ -1280,13 +1360,20 @@ export default function Booking() {
                         </div>
 
                         {/* IN-APP SECURE PAYMENT PORTAL */}
-                        <div className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 space-y-4 text-left">
-                          <div className="flex items-center justify-between border-b border-emerald-500/10 pb-3">
-                            <div className="flex items-center gap-2">
-                              <ShieldCheck className="h-5.5 w-5.5 text-emerald-600" />
+                        <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-4 text-left">
+                          <div className="flex items-center justify-between border-b border-emerald-500/15 pb-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="h-7 w-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-black text-xs shadow-sm">
+                                P
+                              </div>
                               <div>
-                                <h4 className="text-sm font-extrabold text-foreground">Secure Consultation Payment</h4>
-                                <p className="text-[10px] text-muted-foreground font-semibold">SSL SECURED & ESCROW PROTECTED</p>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-sm font-extrabold text-foreground">Paystack Payment Gateway</h4>
+                                  <span className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wider uppercase font-mono">
+                                    Official Gateway
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground font-semibold">MTN MoMo &bull; Telecel Cash &bull; AT Money &bull; Visa &bull; Mastercard</p>
                               </div>
                             </div>
                             <span className="bg-emerald-500/10 text-emerald-600 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase font-mono">
