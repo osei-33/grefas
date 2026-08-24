@@ -32,6 +32,11 @@ export default defineConfig(({mode}) => {
     },
     optimizeDeps: {
       include: [
+        'react',
+        'react-dom',
+        'react/jsx-runtime',
+        'react-router-dom',
+        'react-helmet-async',
         'firebase/app',
         'firebase/auth',
         'firebase/firestore',

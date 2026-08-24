@@ -4167,20 +4167,27 @@ function ManageTransactions() {
         ? new Date(newTransaction.customDate + 'T12:00:00') 
         : new Date();
 
-      await addDoc(collection(db, 'transactions'), {
+      const txData: Record<string, any> = {
         description: newTransaction.description.trim(),
         amount: Number(newTransaction.amount),
         type: newTransaction.type,
         category: newTransaction.category,
         ref: newTransaction.ref.trim(),
-        bookingId: newTransaction.bookingId.trim() || undefined,
-        bookingOrderNumber: newTransaction.bookingOrderNumber.trim() || undefined,
         status: newTransaction.status || 'successful',
         gateway: 'Paystack',
         recordedBy: auth.currentUser?.email || 'admin',
         createdAt: serverTimestamp(),
         transactionDate: selectedDate.toISOString()
-      });
+      };
+
+      if (newTransaction.bookingId.trim()) {
+        txData.bookingId = newTransaction.bookingId.trim();
+      }
+      if (newTransaction.bookingOrderNumber.trim()) {
+        txData.bookingOrderNumber = newTransaction.bookingOrderNumber.trim();
+      }
+
+      await addDoc(collection(db, 'transactions'), txData);
 
       toast.success("Transaction recorded successfully!");
       setIsAdding(false);
