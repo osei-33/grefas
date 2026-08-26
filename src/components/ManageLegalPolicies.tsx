@@ -57,19 +57,36 @@ You have the right to request access to, correction of, or complete deletion of 
 const DEFAULT_TERMS_OF_SERVICE = `GREFAS CONSULT & ENTERTAINMENT - TERMS OF SERVICE
 
 1. SERVICE SCOPE & ENGAGEMENT
-Grefas provides professional business consulting, theatre and film casting, artiste management, event video production, and media creation. All service agreements, timelines, and deliverable specifications will be documented in confirmed appointment receipts and service passes.
+Grefas Consult & Entertainment provides professional business consulting, theatre and film casting, talent and artiste management, event video production, and multimedia creation. All service agreements, project scopes, delivery milestones, and appointment specifications are formalized through official booking passes, invoices, and confirmed digital transaction receipts.
 
-2. USER RESPONSIBILITIES & CONDUCT
-When using our website or submitting talent applications:
-• You guarantee that all personal details, contact numbers, and portfolio files provided are truthful and authentic.
-• You agree not to upload fraudulent material, offensive content, or intellectual property belonging to third parties without authorization.
-• You must maintain punctuality for scheduled consultation appointments and production shoots in Nyinahin-Ashanti.
+2. RECEIPT OF FUNDS & ACCEPTED PAYMENT METHODS
+• Currency & Pricing: All standard fees, consultation rates, audition registration charges, and production deposits are quoted and billed in Ghana Cedis (GH₵ / GHS) unless expressly stated otherwise in a formal international agreement.
+• Accepted Payment Channels: Payments are received digitally through our verified Paystack payment gateway supporting Ghanaian Mobile Money (MTN MoMo, Telecel Cash, AT Money), Visa and Mastercard debit/credit cards, and direct bank transfers.
+• Booking Deposits & Advance Payments: Scheduled consultation sessions, studio bookings, talent registration fees, and production retainers require full or agreed advance deposit payment authorization prior to confirmation and seat reservation.
+• Official Proof of Payment: Only payments with an authenticated Paystack reference code and matching system receipt ID are recognized as valid settlement. Grefas will never solicit cash transfers to personal or unverified accounts.
 
-3. INTELLECTUAL PROPERTY & MEDIA RIGHTS
-All video productions, scripts, branding elements, and media created under Grefas Entertainment remain protected intellectual property. Specific media distribution rights granted to clients will be explicitly defined in signed production contracts.
+3. PAYMENT PROCESSING, VERIFICATION & SECURITY
+• Secure Processing Infrastructure: All online transactions are processed through Paystack's PCI-DSS Level 1 certified payment infrastructure with 256-bit TLS/SSL encryption. Grefas does not store card numbers, CVVs, or Mobile Money PINs on its servers.
+• Automated Real-Time Verification: Electronic receipts are programmatically verified with the payment gateway upon checkout. Successful transactions automatically generate a verifiable digital receipt, SMS confirmation, and downloadable PDF service pass.
+• Milestone & Installment Plans: Long-term consultancy and multi-phase media productions may be billed via scheduled installment agreements. Each milestone installment is recorded in the client's financial ledger and must be cleared before the release of subsequent deliverables.
 
-4. LIMITATION OF LIABILITY & GOVERNING LAW
-Grefas Consult & Entertainment shall not be held liable for indirect or consequential damages arising from website downtime or third-party telecom delays. These terms are governed by and construed in accordance with the laws of the Republic of Ghana.`;
+4. DISBURSEMENT OF FUNDS, PAYOUTS & REFUNDS
+• Client Refunds: Approved refund requests (subject to our Refund Policy) are disbursed directly to the client's original payment method or registered Mobile Money wallet within 3 to 5 business days following administrative authorization.
+• Talent & Contractor Disbursements: Actor honorariums, production crew compensation, artiste performance fees, and freelance vendor stipends are disbursed via verified Mobile Money or direct bank transfer upon satisfactory milestone completion and sign-off by the production director.
+• Staff & Payroll Disbursements: Regular employee salaries, statutory contributions, and operational allowances are disbursed on designated monthly payroll dates through our integrated financial payroll system.
+• Dispute Resolution & Chargebacks: Any payment disputes, duplicate charges, or billing inquiries must be submitted in writing to billing@grefas.com or our Nyinahin-Ashanti office within 14 days of the transaction date. Fraudulent chargebacks will be pursued in accordance with Ghanaian commercial law.
+
+5. USER RESPONSIBILITIES & CONDUCT
+When using our website, booking appointments, or submitting talent applications:
+• You guarantee that all personal information, contact numbers, and portfolio materials submitted are accurate, current, and authentic.
+• You agree not to upload fraudulent material, offensive content, or unauthorized third-party intellectual property.
+• You agree to honor scheduled appointment times for consultations, studio sessions, and on-location shoots in Nyinahin-Ashanti and across the Ashanti Region.
+
+6. INTELLECTUAL PROPERTY & MEDIA RIGHTS
+All bespoke video productions, stage scripts, sound recordings, branding assets, and promotional materials created by Grefas Consult & Entertainment remain protected intellectual property until all contractually agreed fees have been received in full. Client usage licenses and master distribution rights are governed by specific written production agreements.
+
+7. LIMITATION OF LIABILITY & GOVERNING LAW
+Grefas Consult & Entertainment shall not be liable for indirect, incidental, or consequential damages resulting from platform downtime, telecom network delays, or third-party payment gateway maintenance. These terms are governed by and construed in accordance with the laws of the Republic of Ghana, and any disputes shall be subject to the jurisdiction of Ghanaian courts.`;
 
 const DEFAULT_REFUND_POLICY = `GREFAS CONSULT & ENTERTAINMENT - REFUND POLICY
 

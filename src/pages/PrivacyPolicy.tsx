@@ -482,7 +482,7 @@ export default function PrivacyPolicy() {
                           Service Scope & Engagement
                         </h3>
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                          Grefas provides professional business consulting, theatre and film casting, artiste management, event video production, and media creation. All service agreements, timelines, and deliverable specifications will be documented in confirmed appointment receipts and service passes.
+                          Grefas Consult & Entertainment provides professional business consulting, theatre and film casting, talent and artiste management, event video production, and multimedia creation. All service agreements, project scopes, delivery milestones, and appointment specifications are formalized through official booking passes, invoices, and confirmed digital transaction receipts.
                         </p>
                       </div>
 
@@ -490,6 +490,56 @@ export default function PrivacyPolicy() {
                       <div className="space-y-3">
                         <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 text-xs font-bold">2</span>
+                          Receipt of Funds & Accepted Payment Methods
+                        </h3>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          All client transactions, deposits, and service fees adhere to clear, verifiable financial standards:
+                        </p>
+                        <ul className="list-disc pl-6 text-sm text-muted-foreground space-y-1.5">
+                          <li><strong>Currency & Pricing:</strong> All standard fees, consultation rates, audition registration charges, and production deposits are quoted and billed in <strong>Ghana Cedis (GH₵ / GHS)</strong> unless expressly stated otherwise in a formal contract.</li>
+                          <li><strong>Accepted Payment Channels:</strong> Payments are received digitally through our verified Paystack gateway supporting Ghanaian Mobile Money (MTN MoMo, Telecel Cash, AT Money), Visa/Mastercard debit and credit cards, and direct bank transfers.</li>
+                          <li><strong>Booking Deposits & Retainers:</strong> Scheduled consultation sessions, studio bookings, talent registration fees, and production retainers require full or agreed advance deposit payment authorization prior to confirmation and seat reservation.</li>
+                          <li><strong>Official Proof of Payment:</strong> Only transactions with an authenticated Paystack reference code and matching system receipt ID are recognized as valid settlement. Grefas will never solicit cash transfers to unverified personal accounts.</li>
+                        </ul>
+                      </div>
+
+                      {/* Section 3 */}
+                      <div className="space-y-3">
+                        <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 text-xs font-bold">3</span>
+                          Payment Processing, Verification & Security
+                        </h3>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          We employ industry-leading standards to safeguard all payment operations:
+                        </p>
+                        <ul className="list-disc pl-6 text-sm text-muted-foreground space-y-1.5">
+                          <li><strong>Secure Processing Infrastructure:</strong> All online transactions are processed via Paystack's PCI-DSS Level 1 certified infrastructure with 256-bit TLS/SSL encryption. Grefas never stores card numbers, CVVs, or Mobile Money PINs on its servers.</li>
+                          <li><strong>Automated Real-Time Verification:</strong> Payments are programmatically verified with the gateway at checkout. Successful transactions instantly trigger an electronic receipt, SMS alert, and downloadable PDF service pass.</li>
+                          <li><strong>Milestone & Installment Plans:</strong> Long-term consulting and multi-phase media projects may be billed via scheduled installment agreements recorded in the client's financial ledger.</li>
+                        </ul>
+                      </div>
+
+                      {/* Section 4 */}
+                      <div className="space-y-3">
+                        <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 text-xs font-bold">4</span>
+                          Disbursement of Funds, Payouts & Refunds
+                        </h3>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          Disbursements to clients, talent, and staff are executed transparently through audited channels:
+                        </p>
+                        <ul className="list-disc pl-6 text-sm text-muted-foreground space-y-1.5">
+                          <li><strong>Client Refunds:</strong> Verified refund requests approved under our Refund Policy are disbursed directly to the client's original payment method or registered Mobile Money wallet within 3 to 5 business days.</li>
+                          <li><strong>Talent & Contractor Disbursements:</strong> Actor honorariums, production crew compensation, artiste performance fees, and freelance vendor stipends are disbursed via verified Mobile Money or direct bank transfer upon milestone sign-off by the production director.</li>
+                          <li><strong>Staff & Payroll Disbursements:</strong> Regular employee salaries, statutory contributions, and operational allowances are disbursed on designated monthly payroll dates through our integrated financial payroll system.</li>
+                          <li><strong>Dispute Resolution & Chargebacks:</strong> Billing disputes or duplicate charges must be submitted in writing to billing@grefas.com or our Nyinahin-Ashanti office within 14 days of the transaction date.</li>
+                        </ul>
+                      </div>
+
+                      {/* Section 5 */}
+                      <div className="space-y-3">
+                        <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 text-xs font-bold">5</span>
                           User Responsibilities & Conduct
                         </h3>
                         <p className="text-sm text-muted-foreground leading-relaxed">
@@ -502,21 +552,21 @@ export default function PrivacyPolicy() {
                         </ul>
                       </div>
 
-                      {/* Section 3 */}
+                      {/* Section 6 */}
                       <div className="space-y-3">
                         <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 text-xs font-bold">3</span>
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 text-xs font-bold">6</span>
                           Intellectual Property & Media Rights
                         </h3>
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                          All video productions, scripts, branding elements, and media created under Grefas Entertainment remain protected intellectual property. Specific media distribution rights granted to clients will be explicitly defined in signed production contracts.
+                          All video productions, scripts, branding elements, and media created under Grefas Entertainment remain protected intellectual property until all contractually agreed fees have been received in full. Specific media distribution rights granted to clients will be explicitly defined in signed production contracts.
                         </p>
                       </div>
 
-                      {/* Section 4 */}
+                      {/* Section 7 */}
                       <div className="space-y-3">
                         <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 text-xs font-bold">4</span>
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 text-xs font-bold">7</span>
                           Limitation of Liability & Governing Law
                         </h3>
                         <p className="text-sm text-muted-foreground leading-relaxed">
