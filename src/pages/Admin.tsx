@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -42,6 +42,7 @@ import ManageEmployeesPayroll from '@/components/ManageEmployeesPayroll';
 import ManageLegalPolicies from '@/components/ManageLegalPolicies';
 import ManageSitemap from './ManageSitemap';
 import SEO from '@/components/SEO';
+import { getPaystackWebhookEvents, simulateTestWebhook } from '@/lib/paystack';
 
 const isAdminEmail = (email: string | null | undefined) => {
   if (!email) return false;
@@ -4077,6 +4078,63 @@ function ManageTransactions() {
   const [isVerifyingPaystack, setIsVerifyingPaystack] = useState(false);
   const [paystackVerifyResult, setPaystackVerifyResult] = useState<any>(null);
   const [showPaystackPanel, setShowPaystackPanel] = useState(false);
+  const [paystackPanelTab, setPaystackPanelTab] = useState<'verifier' | 'webhooks' | 'test'>('verifier');
+  const [webhookEvents, setWebhookEvents] = useState<any[]>([]);
+  const [isLoadingWebhooks, setIsLoadingWebhooks] = useState(false);
+  const [isSimulatingWebhook, setIsSimulatingWebhook] = useState(false);
+  const [simEvent, setSimEvent] = useState<'charge.success' | 'charge.failed'>('charge.success');
+  const [simAmount, setSimAmount] = useState('50.00');
+  const [simEmail, setSimEmail] = useState('client.test@grefas.com');
+  const [simPhone, setSimPhone] = useState('+233244123456');
+  const [simChannel, setSimChannel] = useState('mobile_money');
+
+  const fetchWebhookLogs = async () => {
+    setIsLoadingWebhooks(true);
+    try {
+      const data = await getPaystackWebhookEvents();
+      if (data.status && data.data) {
+        setWebhookEvents(data.data);
+      }
+    } catch (err: any) {
+      console.warn('Failed to fetch webhook events:', err);
+    } finally {
+      setIsLoadingWebhooks(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showPaystackPanel && paystackPanelTab === 'webhooks') {
+      fetchWebhookLogs();
+    }
+  }, [showPaystackPanel, paystackPanelTab]);
+
+  const handleTriggerSimulatedWebhook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSimulatingWebhook(true);
+    try {
+      const numAmount = parseFloat(simAmount) || 50;
+      const testRef = `GREFAS-TEST-${Date.now()}`;
+      const res = await simulateTestWebhook({
+        event: simEvent,
+        amount: Math.round(numAmount * 100),
+        email: simEmail,
+        phone: simPhone,
+        channel: simChannel,
+        reference: testRef
+      });
+      if (res.status) {
+        toast.success(`Simulated '${simEvent}' event dispatched! Reference: ${res.data?.reference || testRef}`);
+        await fetchWebhookLogs();
+        setPaystackPanelTab('webhooks');
+      } else {
+        toast.error(res.message || 'Failed to trigger simulated webhook');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error triggering test webhook');
+    } finally {
+      setIsSimulatingWebhook(false);
+    }
+  };
 
   // Categories list
   const creditCategories = [
@@ -4443,47 +4501,295 @@ function ManageTransactions() {
           </div>
 
           {showPaystackPanel && (
-            <div className="pt-4 border-t border-border space-y-4">
-              <div>
-                <h4 className="text-sm font-bold text-foreground">Live Paystack Transaction Verifier</h4>
-                <p className="text-xs text-muted-foreground">
-                  Enter any transaction reference (e.g. <code className="text-foreground font-bold">GREFAS-BOOK-XXXXXX</code> or <code className="text-foreground font-bold">GREFAS-CASTING-XXXXXX</code>) to query the Paystack API directly.
-                </p>
+            <div className="pt-4 border-t border-border space-y-5">
+              {/* Tab Navigation */}
+              <div className="flex flex-wrap gap-2 border-b border-border pb-3">
+                <button
+                  type="button"
+                  onClick={() => setPaystackPanelTab('verifier')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    paystackPanelTab === 'verifier'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  ğŸ” Transaction Verifier
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaystackPanelTab('webhooks');
+                    fetchWebhookLogs();
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    paystackPanelTab === 'webhooks'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Radio className="h-3.5 w-3.5 animate-pulse text-emerald-400" />
+                  Webhook Events Monitor
+                  {webhookEvents.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 bg-black/20 text-white rounded-full text-[10px]">
+                      {webhookEvents.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaystackPanelTab('test')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    paystackPanelTab === 'test'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  Test Webhook Generator
+                </button>
               </div>
 
-              <form onSubmit={handleLookupPaystack} className="flex gap-2 max-w-xl">
-                <Input
-                  placeholder="Enter Paystack Ref (e.g., GREFAS-BOOK-123456)"
-                  value={lookupRef}
-                  onChange={(e) => setLookupRef(e.target.value)}
-                  className="font-mono text-xs"
-                />
-                <Button 
-                  type="submit" 
-                  disabled={isVerifyingPaystack}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 text-xs font-bold"
-                >
-                  {isVerifyingPaystack ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Query Gateway'}
-                </Button>
-              </form>
+              {/* Tab 1: Live Verifier */}
+              {paystackPanelTab === 'verifier' && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-foreground">Query Paystack Transaction by Reference</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Directly verify any transaction reference with the Paystack REST API.
+                    </p>
+                  </div>
 
-              {paystackVerifyResult && (
-                <div className={`p-4 rounded-xl border text-xs space-y-2 font-mono ${
-                  paystackVerifyResult.status && paystackVerifyResult.data?.status === 'success'
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200'
-                    : 'bg-muted border-border text-foreground'
-                }`}>
-                  <div className="flex items-center justify-between font-bold">
-                    <span>STATUS: {paystackVerifyResult.status ? (paystackVerifyResult.data?.status?.toUpperCase() || 'OK') : 'FAILED'}</span>
-                    <span>AMOUNT: GHS {((paystackVerifyResult.data?.amount || 0) / 100).toFixed(2)}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-                    <div>Channel: {paystackVerifyResult.data?.channel || 'N/A'}</div>
-                    <div>Gateway Response: {paystackVerifyResult.data?.gateway_response || 'N/A'}</div>
-                    <div>Customer: {paystackVerifyResult.data?.customer?.email || 'N/A'}</div>
-                    <div>Paid At: {paystackVerifyResult.data?.paid_at ? new Date(paystackVerifyResult.data.paid_at).toLocaleString() : 'N/A'}</div>
-                  </div>
+                  <form onSubmit={handleLookupPaystack} className="flex gap-2 max-w-xl">
+                    <Input
+                      placeholder="Enter Paystack Ref (e.g., GREFAS-BOOK-123456)"
+                      value={lookupRef}
+                      onChange={(e) => setLookupRef(e.target.value)}
+                      className="font-mono text-xs"
+                    />
+                    <Button 
+                      type="submit" 
+                      disabled={isVerifyingPaystack}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 text-xs font-bold"
+                    >
+                      {isVerifyingPaystack ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Query Gateway'}
+                    </Button>
+                  </form>
+
+                  {paystackVerifyResult && (
+                    <div className={`p-4 rounded-xl border text-xs space-y-2 font-mono ${
+                      paystackVerifyResult.status && paystackVerifyResult.data?.status === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200'
+                        : 'bg-muted border-border text-foreground'
+                    }`}>
+                      <div className="flex items-center justify-between font-bold">
+                        <span>STATUS: {paystackVerifyResult.status ? (paystackVerifyResult.data?.status?.toUpperCase() || 'OK') : 'FAILED'}</span>
+                        <span>AMOUNT: GHS {((paystackVerifyResult.data?.amount || 0) / 100).toFixed(2)}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                        <div>Channel: {paystackVerifyResult.data?.channel || 'N/A'}</div>
+                        <div>Gateway Response: {paystackVerifyResult.data?.gateway_response || 'N/A'}</div>
+                        <div>Customer: {paystackVerifyResult.data?.customer?.email || 'N/A'}</div>
+                        <div>Paid At: {paystackVerifyResult.data?.paid_at ? new Date(paystackVerifyResult.data.paid_at).toLocaleString() : 'N/A'}</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* Tab 2: Webhook Events Monitor */}
+              {paystackPanelTab === 'webhooks' && (
+                <div className="space-y-4">
+                  <div className="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/20 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider block">
+                          Live Gateway Webhook URL
+                        </span>
+                        <code className="text-xs font-mono font-bold text-foreground">
+                          {typeof window !== 'undefined' ? `${window.location.origin}/api/paystack/webhook` : '/api/paystack/webhook'}
+                        </code>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const url = `${window.location.origin}/api/paystack/webhook`;
+                            navigator.clipboard.writeText(url);
+                            toast.success('Webhook URL copied to clipboard!');
+                          }}
+                          className="h-8 text-xs font-bold gap-1 border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                        >
+                          <Copy className="h-3.5 w-3.5" /> Copy URL
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={fetchWebhookLogs}
+                          disabled={isLoadingWebhooks}
+                          className="h-8 text-xs font-bold gap-1"
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 ${isLoadingWebhooks ? 'animate-spin' : ''}`} /> Refresh
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Paystack securely notifies this endpoint whenever a client completes or fails a payment. Signatures are cryptographically validated using HMAC-SHA512.
+                    </p>
+                  </div>
+
+                  {isLoadingWebhooks ? (
+                    <div className="flex items-center justify-center p-8 text-muted-foreground text-xs">
+                      <Loader2 className="h-5 w-5 animate-spin mr-2 text-emerald-600" /> Loading webhook events...
+                    </div>
+                  ) : webhookEvents.length === 0 ? (
+                    <div className="p-8 text-center bg-muted/30 rounded-xl border border-border/50 space-y-3">
+                      <Radio className="h-8 w-8 mx-auto text-muted-foreground opacity-50" />
+                      <p className="text-xs text-muted-foreground font-medium">
+                        No webhook events recorded yet. You can trigger a live payment or use the Test Generator below.
+                      </p>
+                      <Button
+                        size="sm"
+                        onClick={() => setPaystackPanelTab('test')}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold"
+                      >
+                        âš¡ Generate Test Webhook Event
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {webhookEvents.map((evt) => (
+                        <div
+                          key={evt.id}
+                          className={`p-3.5 rounded-xl border text-xs space-y-1.5 transition-all ${
+                            evt.status === 'success' || evt.event === 'charge.success'
+                              ? 'bg-emerald-500/5 border-emerald-500/20'
+                              : 'bg-rose-500/5 border-rose-500/20'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${
+                                  evt.status === 'success' || evt.event === 'charge.success'
+                                    ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-rose-500/20 text-rose-700 dark:text-rose-300'
+                                }`}
+                              >
+                                {evt.event}
+                              </span>
+                              <span className="font-mono font-bold text-foreground text-xs">
+                                {evt.reference}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-foreground text-xs">
+                                GHâ‚µ {Number(evt.amountInGhs || 0).toFixed(2)}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground font-mono">
+                                {new Date(evt.receivedAt).toLocaleTimeString()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-muted-foreground pt-1 border-t border-border/40 font-mono">
+                            <div><strong className="text-foreground">Channel:</strong> {evt.channel}</div>
+                            <div><strong className="text-foreground">Customer:</strong> {evt.customerEmail}</div>
+                            <div><strong className="text-foreground">Gateway:</strong> {evt.gatewayResponse}</div>
+                            <div>
+                              <strong className="text-foreground">HMAC Sig:</strong>{' '}
+                              <span className={evt.signatureVerified ? 'text-emerald-600 font-bold' : 'text-amber-600'}>
+                                {evt.signatureVerified ? 'âœ“ Verified' : 'Dev Mode'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 3: Webhook Simulator */}
+              {paystackPanelTab === 'test' && (
+                <form onSubmit={handleTriggerSimulatedWebhook} className="space-y-4 bg-muted/20 p-4 rounded-xl border border-border/50">
+                  <div>
+                    <h4 className="text-sm font-bold text-foreground">Simulate Gateway Webhook Payload</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Test the server webhook handling, receipt generation, and SMS dispatcher without making a real charge.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Event Type</label>
+                      <select
+                        value={simEvent}
+                        onChange={(e) => setSimEvent(e.target.value as any)}
+                        className="w-full h-9 rounded-md border border-border bg-background px-3 text-xs text-foreground"
+                      >
+                        <option value="charge.success">charge.success (Payment Succeeded)</option>
+                        <option value="charge.failed">charge.failed (Payment Failed)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Amount (GHS)</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={simAmount}
+                        onChange={(e) => setSimAmount(e.target.value)}
+                        className="h-9 text-xs font-mono"
+                        placeholder="50.00"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Channel</label>
+                      <select
+                        value={simChannel}
+                        onChange={(e) => setSimChannel(e.target.value)}
+                        className="w-full h-9 rounded-md border border-border bg-background px-3 text-xs text-foreground"
+                      >
+                        <option value="mobile_money">Mobile Money (MTN / Telecel / AT)</option>
+                        <option value="card">Visa / Mastercard</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Customer Email</label>
+                      <Input
+                        type="email"
+                        value={simEmail}
+                        onChange={(e) => setSimEmail(e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="client@example.com"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase">Customer Phone (for SMS)</label>
+                      <Input
+                        type="tel"
+                        value={simPhone}
+                        onChange={(e) => setSimPhone(e.target.value)}
+                        className="h-9 text-xs font-mono"
+                        placeholder="+233244123456"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="submit"
+                      disabled={isSimulatingWebhook}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-2"
+                    >
+                      {isSimulatingWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                      Dispatch Simulated Webhook Event
+                    </Button>
+                  </div>
+                </form>
               )}
             </div>
           )}
@@ -10987,3020 +11293,124 @@ function ManageChat() {
               console.warn('Admin chat upload failed, trying local Base64 optimized fallback:', error);
               try {
                 const base64Url = await blobToBase64(selectedImage);
-                if (base64Url) {
-                  imageUrl = base64Url;
-                  resolve();
-                } else {
-                  reject(error);
-                }
-              } catch (fallbackError) {
-                console.error("Admin chat local fallback failed:", fallbackError);
-                reject(error);
-              }
-            },
-            async () => {
-              imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve();
-            }
-          );
-        });
-      }
-
-      await addDoc(collection(db, 'chat'), {
-        text: reply.trim() || 'Sent an image',
-        userId: auth.currentUser?.uid || 'admin',
-        userName: 'Grefas Staff',
-        chatId: activeChatId,
-        timestamp: serverTimestamp(),
-        isFromStaff: true,
-        ...(imageUrl ? { imageUrl } : {}),
-        ...(imageUrl && imageCaption.trim() ? { caption: imageCaption.trim() } : {})
-      });
-      setReply('');
-      resetSelectedImage();
-      setStaffTypingStatus(false);
-    } catch (error) {
-      toast.error('Failed to send reply');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Quick Support Status Banner */}
-      <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-muted/40 border border-border rounded-xl gap-4">
-        <div className="flex items-center gap-3">
-          <div className="relative flex h-3.5 w-3.5 items-center justify-center">
-            {isAgentOnline && (
-              <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping" />
-            )}
-            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isAgentOnline ? 'bg-green-500' : 'bg-zinc-400'}`} />
-          </div>
-          <div>
-            <h4 className="font-bold text-sm text-foreground">Live Availability: {isAgentOnline ? 'Online & Active' : 'Away / Offline Mode'}</h4>
-            <p className="text-xs text-muted-foreground">
-              {isAgentOnline ? 'Clients can see you online; auto-replies are paused.' : 'The widget will show you as Away and automatically reply with your Away Response.'}
-            </p>
-          </div>
-        </div>
-        <Button
-          onClick={toggleAgentOnline}
-          variant={isAgentOnline ? "outline" : "default"}
-          className={isAgentOnline ? "border-border text-foreground hover:bg-muted font-sans" : "bg-orange-600 hover:bg-orange-700 text-white font-sans"}
-          size="sm"
-        >
-          {isAgentOnline ? 'Set Status to Away' : 'Set Status to Online'}
-        </Button>
-      </div>
-
-      <div className="flex flex-col md:flex-row h-[70vh] gap-6">
-      <div className="w-full md:w-1/3 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
-        <div className="p-4 border-b border-border bg-muted/50">
-          <h2 className="font-bold flex items-center gap-2">
-            <MessageCircle className="h-4 w-4" /> Active Threads
-          </h2>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {threads.map((t, index) => (
-            <button
-              key={t.id || `thread-${index}`}
-              onClick={() => setActiveChatId(t.id)}
-              className={`w-full text-left p-4 hover:bg-muted transition-colors border-b border-border ${activeChatId === t.id ? 'bg-orange-50 dark:bg-orange-900/10' : ''}`}
-            >
-              <div className="flex justify-between items-baseline gap-2 mb-0.5">
-                <p className="font-bold text-foreground text-sm truncate">{t.userName}</p>
-                {t.timestamp && (
-                  <span className="text-[10px] text-muted-foreground/70 shrink-0 font-mono">
-                    {formatAdminMessageTime(t.timestamp)}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground truncate">{t.lastMessage}</p>
-            </button>
-          ))}
-          {threads.length === 0 && <p className="p-8 text-center text-muted-foreground">No chats yet.</p>}
-        </div>
-      </div>
-
-      <div className="flex-1 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
-        {activeChatId ? (
-          <>
-            <div className="p-4 border-b border-border bg-muted/50 flex justify-between items-center">
-              <h2 className="font-bold text-sm">Conversation with {threads.find(t => t.id === activeChatId)?.userName}</h2>
-              <span className="text-[10px] text-muted-foreground">ID: {activeChatId}</span>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map((m, index) => (
-                <div key={m.id || `msg-${index}`} className={`flex flex-col ${m.isFromStaff ? 'items-end' : 'items-start'}`}>
-                  <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                    m.isFromStaff 
-                      ? 'bg-orange-600 text-white rounded-tr-none' 
-                      : 'bg-muted text-foreground rounded-tl-none'
-                  }`}>
-                    {m.imageUrl && (
-                      <div className="mb-2 overflow-hidden rounded-lg border border-border bg-black/5 animate-thumbnail max-w-full">
-                        <img
-                          src={m.imageUrl}
-                          alt="Attachment"
-                          referrerPolicy="no-referrer"
-                          className="max-h-52 w-auto object-contain cursor-zoom-in rounded hover:opacity-95 transition-opacity"
-                          onClick={() => window.open(m.imageUrl, '_blank')}
-                        />
-                        {m.caption && (
-                          <div className={`p-2 text-xs border-t border-border/10 italic break-words ${
-                            !m.isFromStaff
-                              ? 'bg-black/5 text-muted-foreground'
-                              : 'bg-white/10 text-orange-50'
-                          }`}>
-                            {m.caption}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {(m.text !== 'Sent an image' || !m.imageUrl) && (
-                      <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                    )}
-                  </div>
-                  <span className="text-[10px] mt-1 text-muted-foreground flex items-center gap-1.5 font-sans">
-                    <strong>{m.userName}</strong>
-                    <span className="text-[9px] text-muted-foreground/70 font-mono">
-                      â€¢ {formatAdminMessageTime(m.timestamp)}
-                    </span>
-                  </span>
-                </div>
-              ))}
-              {isUserTyping && (
-                <div className="flex flex-col items-start animate-in fade-in slide-in-from-left-1">
-                  <div className="bg-muted text-foreground rounded-2xl rounded-tl-none px-4 py-2 text-sm flex items-center gap-1">
-                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce [animation-delay:-0.3s]" />
-                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce [animation-delay:-0.15s]" />
-                    <div className="h-1 w-1 rounded-full bg-orange-600 animate-bounce" />
-                    <span className="ml-1 text-[10px] italic">User is typing...</span>
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* Image Upload Thumbnail Preview Panel */}
-            {imagePreviewUrl && (
-              <div className="bg-muted/40 border-t border-border flex flex-col animate-thumbnail">
-                <div className="px-4 py-2 flex items-center justify-between gap-3">
-                  <div className="relative h-14 w-14 rounded-md overflow-hidden border border-border bg-background flex-shrink-0">
-                    <img src={imagePreviewUrl} alt="Preview" className="h-full w-full object-cover" />
-                    {isUploading && (
-                      <div className="absolute inset-0 bg-black/55 flex items-center justify-center text-[10px] text-white font-bold">
-                        {uploadProgress}%
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">{selectedImage?.name || 'capture.jpg'}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {isUploading ? 'Uploading to secure storage...' : 'Ready to send'}
-                    </p>
-                  </div>
-                  <Button 
-                    type="button" 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted animate-in fade-in"
-                    onClick={resetSelectedImage}
-                    disabled={isUploading}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="px-4 pb-2 pt-0.5">
-                  <Input
-                    placeholder="Add an optional text caption..."
-                    value={imageCaption}
-                    onChange={(e) => setImageCaption(e.target.value)}
-                    className="h-8 text-xs bg-background border-border w-full animate-in fade-in"
-                    disabled={isUploading}
-                  />
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleSendReply} className="p-4 border-t border-border bg-muted/50">
-              <div className="flex gap-2 items-center">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*,.heic,.heif,.avif,.tiff,.bmp"
-                  onChange={handleImageSelect}
-                  className="hidden"
-                  id="admin-chat-file-upload"
-                  disabled={isUploading}
-                />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="h-9 w-9 text-muted-foreground hover:text-orange-600 hover:bg-muted shrink-0"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading}
-                  title="Upload or capture image"
-                >
-                  <Camera className="h-5 w-5" />
-                </Button>
-
-                <Input 
-                  placeholder={isUploading ? "Uploading attachment..." : "Type your reply..."} 
-                  value={reply} 
-                  onChange={handleReplyChange} 
-                  className="bg-background border-border flex-1"
-                  disabled={isUploading}
-                />
-                <Button 
-                  type="submit" 
-                  className="bg-orange-600 text-white shrink-0"
-                  disabled={isUploading || (!reply.trim() && !selectedImage)}
-                >
-                  Send
-                </Button>
-              </div>
-            </form>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground italic">
-            Select a thread to start chatting.
-          </div>
-        )}
-      </div>
-    </div>
-    </div>
-  );
-}
-
-function ManageTasks() {
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
-  const [newTask, setNewTask] = useState({ 
-    title: '', 
-    description: '', 
-    priority: 'medium', 
-    status: 'todo',
-    dueDate: ''
-  });
-  const [loading, setLoading] = useState(true);
-  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const q = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'tasks');
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleAddTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTask.title.trim()) return;
-
-    try {
-      await addDoc(collection(db, 'tasks'), {
-        ...newTask,
-        createdAt: serverTimestamp(),
-        createdBy: auth.currentUser?.email || 'admin@grefas.com'
-      });
-      toast.success('Task added successfully');
-      setNewTask({ title: '', description: '', priority: 'medium', status: 'todo', dueDate: '' });
-      setIsAdding(false);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'tasks');
-    }
-  };
-
-  const handleUpdateStatus = async (id: string, newStatus: string) => {
-    try {
-      await setDoc(doc(db, 'tasks', id), { status: newStatus }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `tasks/${id}`);
-    }
-  };
-
-  const handleDeleteTask = (id: string) => {
-    setDeleteTaskId(id);
-  };
-
-  const confirmDeleteTask = async () => {
-    if (!deleteTaskId) return;
-    try {
-      await deleteDoc(doc(db, 'tasks', deleteTaskId));
-      toast.success('Task deleted');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `tasks/${deleteTaskId}`);
-    } finally {
-      setDeleteTaskId(null);
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'text-red-600 bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/20';
-      case 'medium': return 'text-orange-600 bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/20';
-      case 'low': return 'text-blue-600 bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-900/20';
-      default: return 'text-muted-foreground bg-muted border-border';
-    }
-  };
-
-  if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-orange-600" /></div>;
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Internal Tasks</h1>
-          <p className="text-sm text-muted-foreground">Track and manage staff to-dos for Grefas operations.</p>
-        </div>
-        <Button onClick={() => setIsAdding(!isAdding)} className="bg-orange-600 hover:bg-orange-700 text-white">
-          {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> New Task</>}
-        </Button>
-      </div>
-
-      {isAdding && (
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-foreground">Create New Task</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleAddTask} className="space-y-4">
-              <Input 
-                placeholder="Task Title" 
-                value={newTask.title} 
-                onChange={e => setNewTask({...newTask, title: e.target.value})} 
-                required 
-                className="bg-muted/50 border-border"
-              />
-              <Textarea 
-                placeholder="Description / Details" 
-                value={newTask.description} 
-                onChange={e => setNewTask({...newTask, description: e.target.value})} 
-                className="bg-muted/50 border-border"
-              />
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Priority</label>
-                  <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
-                    value={newTask.priority}
-                    onChange={e => setNewTask({...newTask, priority: e.target.value})}
-                  >
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Initial Status</label>
-                  <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-foreground"
-                    value={newTask.status}
-                    onChange={e => setNewTask({...newTask, status: e.target.value})}
-                  >
-                    <option value="todo">To Do</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="done">Done</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Due Date</label>
-                  <Input 
-                    type="date"
-                    value={newTask.dueDate}
-                    onChange={e => setNewTask({...newTask, dueDate: e.target.value})}
-                    className="bg-muted/50 border-border"
-                  />
-                </div>
-              </div>
-              <Button type="submit" className="w-full bg-orange-600 text-white hover:bg-orange-700">Save Task</Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Todo Column */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 px-2">
-            <div className="h-2 w-2 rounded-full bg-red-500" />
-            <h3 className="text-sm font-black uppercase tracking-widest text-foreground">To Do</h3>
-            <span className="ml-auto text-[10px] font-bold bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
-              {tasks.filter(t => t.status === 'todo').length}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {tasks.filter(t => t.status === 'todo').map(task => (
-              <TaskCard key={task.id} task={task} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteTask} priorityColor={getPriorityColor} />
-            ))}
-          </div>
-        </div>
-
-        {/* In Progress Column */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 px-2">
-            <div className="h-2 w-2 rounded-full bg-blue-500" />
-            <h3 className="text-sm font-black uppercase tracking-widest text-foreground">In Progress</h3>
-            <span className="ml-auto text-[10px] font-bold bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
-              {tasks.filter(t => t.status === 'in-progress').length}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {tasks.filter(t => t.status === 'in-progress').map(task => (
-              <TaskCard key={task.id} task={task} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteTask} priorityColor={getPriorityColor} />
-            ))}
-          </div>
-        </div>
-
-        {/* Done Column */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 px-2">
-            <div className="h-2 w-2 rounded-full bg-green-500" />
-            <h3 className="text-sm font-black uppercase tracking-widest text-foreground">Done</h3>
-            <span className="ml-auto text-[10px] font-bold bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
-              {tasks.filter(t => t.status === 'done').length}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {tasks.filter(t => t.status === 'done').map(task => (
-              <TaskCard key={task.id} task={task} onUpdateStatus={handleUpdateStatus} onDelete={handleDeleteTask} priorityColor={getPriorityColor} />
-            ))}
-          </div>
-        </div>
-      </div>
-      
-      {tasks.length === 0 && !isAdding && (
-        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 border rounded-xl border-dashed border-border bg-muted/20">
-          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-            <CheckCircle className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold">All clear!</h3>
-            <p className="text-sm text-muted-foreground">No tasks at the moment. Add one to get started.</p>
-          </div>
-        </div>
-      )}
-
-      {deleteTaskId && (
-        <AdminDeleteModal
-          title="Delete Task"
-          message="Are you sure you want to delete this task? This action is completely permanent and cannot be undone."
-          onConfirm={confirmDeleteTask}
-          onCancel={() => setDeleteTaskId(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function TaskCard({ task, onUpdateStatus, onDelete, priorityColor }: { task: any, onUpdateStatus: any, onDelete: any, priorityColor: any }) {
-  const isOverdue = task.dueDate && task.status !== 'done' && new Date(task.dueDate) < new Date(new Date().setHours(0,0,0,0));
-  const isDueToday = task.dueDate && new Date(task.dueDate).toDateString() === new Date().toDateString();
-
-  return (
-    <Card className="bg-card border-border shadow-sm hover:shadow-md transition-shadow group">
-      <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex flex-wrap gap-2">
-            <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${priorityColor(task.priority)}`}>
-              {task.priority}
-            </div>
-            {task.dueDate && (
-              <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
-                isOverdue ? 'text-red-600 bg-red-50 border-red-200 animate-pulse' : 
-                isDueToday ? 'text-orange-600 bg-orange-50 border-orange-200' : 
-                'text-muted-foreground bg-muted border-border'
-              }`}>
-                <CalendarIcon className="h-3 w-3" />
-                Due: {new Date(task.dueDate).toLocaleDateString()}
-              </div>
-            )}
-          </div>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => onDelete(task.id)}
-            className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-red-600 transition-opacity"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-        
-        <div>
-          <h4 className="font-bold text-foreground leading-tight">{task.title}</h4>
-          {task.description && (
-            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between pt-2 border-t border-border mt-2">
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <Clock className="h-3 w-3" />
-            {task.createdAt?.toDate().toLocaleDateString() || 'Today'}
-          </div>
-          <select 
-            className="text-[10px] font-bold bg-muted border-none rounded px-2 py-1 outline-none cursor-pointer focus:ring-1 focus:ring-orange-600"
-            value={task.status}
-            onChange={(e) => onUpdateStatus(task.id, e.target.value)}
-          >
-            <option value="todo">TO DO</option>
-            <option value="in-progress">IN PROGRESS</option>
-            <option value="done">DONE</option>
-          </select>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ManageNewsletter() {
-  const [subscribers, setSubscribers] = useState<any[]>([]);
-  const [usersList, setUsersList] = useState<any[]>([]);
-  const [intakesList, setIntakesList] = useState<any[]>([]);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  
-  const [loading, setLoading] = useState(true);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
-  const [activeSubTab, setActiveSubTab] = useState<'subscribers' | 'compose' | 'history'>('subscribers');
-  
-  // Subscribers pool states
-  const [searchQuery, setSearchQuery] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [isAdding, setIsAdding] = useState(false);
-  const [deleteSubscriberId, setDeleteSubscriberId] = useState<string | null>(null);
-
-  // Campaign Composer states
-  const [recipientGroup, setRecipientGroup] = useState<'newsletter' | 'users' | 'service_intakes' | 'all'>('newsletter');
-  const [templateType, setTemplateType] = useState<'general' | 'casting_call' | 'promo' | 'holiday' | 'custom'>('general');
-  const [subject, setSubject] = useState('');
-  const [preheader, setPreheader] = useState('');
-  const [body, setBody] = useState('');
-  const [logoStyle, setLogoStyle] = useState<'joint' | 'grefas' | 'text'>('joint');
-  const [themeAccent, setThemeAccent] = useState<'orange' | 'emerald' | 'zinc' | 'rose'>('orange');
-  const [watermark, setWatermark] = useState(true);
-  const [ctaEnabled, setCtaEnabled] = useState(false);
-  const [ctaText, setCtaText] = useState('Explore Opportunities');
-  const [ctaUrl, setCtaUrl] = useState('/services');
-  const [signature, setSignature] = useState('Grice Asante, CEO & Founder');
-
-  // Sending simulation states
-  const [isSending, setIsSending] = useState(false);
-  const [sendProgress, setSendProgress] = useState(0);
-  const [sendLogs, setSendLogs] = useState<string[]>([]);
-  const [sendTargetCount, setSendTargetCount] = useState(0);
-  const [sendCurrentIndex, setSendCurrentIndex] = useState(0);
-
-  // Load mailing list and campaigns
-  useEffect(() => {
-    // 1. Fetch subscribers
-    const qSub = query(collection(db, 'newsletter'), orderBy('createdAt', 'desc'));
-    const unsubscribeSub = onSnapshot(qSub, (snapshot) => {
-      const items: any[] = [];
-      snapshot.forEach((doc) => {
-        items.push({ id: doc.id, ...doc.data() });
-      });
-      setSubscribers(items);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'newsletter');
-      setLoading(false);
-    });
-
-    // 2. Fetch campaign history
-    const qCamp = query(collection(db, 'newsletter_campaigns'), orderBy('sentAt', 'desc'));
-    const unsubscribeCamp = onSnapshot(qCamp, (snapshot) => {
-      const items: any[] = [];
-      snapshot.forEach((doc) => {
-        items.push({ id: doc.id, ...doc.data() });
-      });
-      setCampaigns(items);
-      setLoadingCampaigns(false);
-    }, (error) => {
-      console.error('Failed to load campaigns:', error);
-      setLoadingCampaigns(false);
-    });
-
-    // 3. Fetch registered users & service intakes once
-    const fetchAdditionalRecipients = async () => {
-      try {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const uList: any[] = [];
-        usersSnap.forEach(doc => uList.push({ id: doc.id, ...doc.data() }));
-        setUsersList(uList);
-
-        const intakesSnap = await getDocs(collection(db, 'service_intakes'));
-        const iList: any[] = [];
-        intakesSnap.forEach(doc => iList.push({ id: doc.id, ...doc.data() }));
-        setIntakesList(iList);
-      } catch (err) {
-        console.error('Failed to pre-fetch client pools:', err);
-      }
-    };
-    fetchAdditionalRecipients();
-
-    return () => {
-      unsubscribeSub();
-      unsubscribeCamp();
-    };
-  }, []);
-
-  // Preset templates database
-  const templates = {
-    general: {
-      subject: 'Grefas Entertainment & Productions: Latest Highlights & Media Updates',
-      preheader: 'Catch up with the latest film casts, events, and industry updates.',
-      body: `Hello {{Name}},\n\nWe hope this email finds you well! We are excited to share some of our major milestones this month across Ghana's vibrant film and entertainment landscape.\n\n### What's New at Grefas\n1. **New Skit & Short Series Releases:** Our talent pool has successfully wrapped up 5 major comedy skits and seasonal productions which are now streaming live on our digital channels.\n2. **Casting Board Expansion:** We've updated our cast directory with new talents from the Ashanti Region, opening doors to wider international co-productions.\n3. **Production Tech Upgrades:** We've recently commissioned professional multi-camera setups and high-fidelity field sound recorders to elevate every scene we shoot.\n\nThank you for being part of our journey. Stay tuned for some behind-the-scenes content in our next weekly email!\n\nBest regards,\nThe Grefas Team`
-    },
-    casting_call: {
-      subject: 'URGENT CASTING CALL: Actors, Models & Creators Wanted for New Feature Film',
-      preheader: 'Grefas Entertainment is casting lead and supporting roles in Ashanti, Ghana.',
-      body: `Attention All Talents and Aspirants,\n\nWe are officially opening auditions for our upcoming feature film production and brand marketing campaigns!\n\n### Open Roles:\n- **Lead Male & Female Actors (Ages 18-35):** Dynamic personalities with strong comedic or dramatic range.\n- **Supporting Cast & Extras (All Ages):** Enthusiastic individuals ready to bring scenes to life.\n- **Skit Creators & Scriptwriters:** Sharp wits, physical humor, and brilliant screen presence.\n\n### Audition Details:\n- **Location:** Grefas Studio / Ashanti Region, Ghana\n- **Requirements:** Must bring a valid ID and a printed/digital Grefas Audition Casting Form.\n- **How to Apply:** Click the link below to download your casting card and register immediately.\n\nIf you have already submitted your audition casting form, your registration is active and our casting directors are reviewing your media profiles right now.\n\nDon't miss your chance to shine on the main screen!\n\nBreak a leg,\nGrefas Casting Directors`
-    },
-    promo: {
-      subject: 'Explore Professional Creative Services at Grefas Entertainment',
-      preheader: 'From talent management to state-of-the-art video coverage and audio production.',
-      body: `Dear {{Name}},\n\nDid you know that Grefas Entertainment & Productions offers a full spectrum of professional audio, video, and talent management services for individuals and corporate brands?\n\n### Our Services:\n- **Cinematography & Video Coverage:** Elite film equipment and creative direction for weddings, movies, and corporate events.\n- **Talent Management & Placement:** Connect with Ghana's finest actors, skit creators, and runway models.\n- **Professional Studio Recording:** Voiceovers, soundtracks, and high-quality sound engineering.\n- **Social Media Marketing:** Let our creative team write, shoot, and promote high-impact video campaigns for your business.\n\n### Special Offer\nBook any of our creative services this month and enjoy a **15% exclusive discount** on your production package!\n\nWe look forward to collaborating with you on your next creative masterpiece.\n\nSincerely,\nGrice Asante, CEO & Founder`
-    },
-    holiday: {
-      subject: "Season's Greetings and Best Wishes from Grefas Entertainment!",
-      preheader: 'A heartfelt thank you to our amazing community, clients, and partners.',
-      body: `Dear {{Name}},\n\nAs we celebrate this wonderful season, we want to express our deepest gratitude for your continued support, trust, and collaboration.\n\nIt has been a spectacular year of storytelling, creative projects, and talent milestones. None of this would be possible without our incredible cast, crew, and supporters like you.\n\nMay this season bring you and your family abundant joy, peace, success, and creative inspiration. We can't wait to share even bigger screens, more laugh-out-loud skits, and elite film productions with you in the coming year!\n\nWarmest wishes,\nEveryone at Grefas Entertainment & Productions`
-    },
-    custom: {
-      subject: '',
-      preheader: '',
-      body: `Dear {{Name}},\n\n[Write your custom message here...]\n\nBest regards,\nThe Grefas Team`
-    }
-  };
-
-  // Load a template preset
-  const handleApplyTemplate = (type: keyof typeof templates) => {
-    setTemplateType(type);
-    setSubject(templates[type].subject);
-    setPreheader(templates[type].preheader);
-    setBody(templates[type].body);
-    if (type === 'casting_call') {
-      setCtaEnabled(true);
-      setCtaText('Apply Now');
-      setCtaUrl('/services');
-    } else if (type === 'promo') {
-      setCtaEnabled(true);
-      setCtaText('Explore Services');
-      setCtaUrl('/services');
-    } else {
-      setCtaEnabled(false);
-    }
-    toast.success(`${type.replace('_', ' ').toUpperCase()} template loaded!`);
-  };
-
-  // Pre-load default template on mount
-  useEffect(() => {
-    if (!subject && !body) {
-      setSubject(templates.general.subject);
-      setPreheader(templates.general.preheader);
-      setBody(templates.general.body);
-    }
-  }, []);
-
-  // Compile recipients based on target group
-  const getRecipientsList = () => {
-    const poolMap = new Map<string, { email: string; name: string; source: string }>();
-
-    if (recipientGroup === 'newsletter' || recipientGroup === 'all') {
-      subscribers
-        .filter(sub => sub.active !== false)
-        .forEach(sub => {
-          const email = sub.email.trim().toLowerCase();
-          if (email) {
-            poolMap.set(email, { 
-              email, 
-              name: email.split('@')[0], 
-              source: 'Newsletter Pool' 
-            });
-          }
-        });
-    }
-
-    if (recipientGroup === 'users' || recipientGroup === 'all') {
-      usersList.forEach(user => {
-        const email = (user.email || '').trim().toLowerCase();
-        if (email) {
-          poolMap.set(email, { 
-            email, 
-            name: user.displayName || email.split('@')[0], 
-            source: 'Registered User' 
-          });
-        }
-      });
-    }
-
-    if (recipientGroup === 'service_intakes' || recipientGroup === 'all') {
-      intakesList.forEach(intake => {
-        const email = (intake.emailAddress || '').trim().toLowerCase();
-        if (email) {
-          poolMap.set(email, { 
-            email, 
-            name: intake.fullName || email.split('@')[0], 
-            source: 'Intake Client' 
-          });
-        }
-      });
-    }
-
-    return Array.from(poolMap.values());
-  };
-
-  const currentRecipients = getRecipientsList();
-
-  // Handle adding subscriber manually (original functionality)
-  const handleAddSubscriber = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEmail.trim()) return;
-
-    const email = newEmail.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error('Invalid email address format.');
-      return;
-    }
-
-    if (subscribers.some(sub => sub.email === email)) {
-      toast.error('This email is already in the mailing list.');
-      return;
-    }
-
-    try {
-      await addDoc(collection(db, 'newsletter'), {
-        email,
-        createdAt: serverTimestamp(),
-        active: true
-      });
-      toast.success('Subscriber added successfully.');
-      setNewEmail('');
-      setIsAdding(false);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'newsletter');
-    }
-  };
-
-  // Toggle active status (original functionality)
-  const toggleSubscriberActive = async (id: string, currentStatus: boolean) => {
-    try {
-      const docRef = doc(db, 'newsletter', id);
-      await updateDoc(docRef, { active: !currentStatus });
-      toast.success(`Subscriber ${!currentStatus ? 'activated' : 'deactivated'} successfully.`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `newsletter/${id}`);
-    }
-  };
-
-  // Delete subscriber (original functionality)
-  const handleDeleteSubscriber = (id: string) => {
-    setDeleteSubscriberId(id);
-  };
-
-  const confirmDeleteSubscriber = async () => {
-    if (!deleteSubscriberId) return;
-    try {
-      await deleteDoc(doc(db, 'newsletter', deleteSubscriberId));
-      toast.success('Subscriber deleted.');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `newsletter/${deleteSubscriberId}`);
-    } finally {
-      setDeleteSubscriberId(null);
-    }
-  };
-
-  // Copy email list (original functionality)
-  const copyAllEmails = () => {
-    const activeEmails = subscribers
-      .filter(sub => sub.active !== false)
-      .map(sub => sub.email)
-      .join(', ');
-
-    if (!activeEmails) {
-      toast.error('No active subscriber emails to copy.');
-      return;
-    }
-
-    navigator.clipboard.writeText(activeEmails).then(() => {
-      toast.success('All active emails copied to clipboard!');
-    }).catch(() => {
-      toast.error('Failed to copy to clipboard.');
-    });
-  };
-
-  // Export CSV (original functionality)
-  const exportToCSV = () => {
-    if (subscribers.length === 0) {
-      toast.error('No subscribers to export.');
-      return;
-    }
-
-    const headers = ['Email', 'Status', 'Subscription Date'];
-    const rows = subscribers.map(sub => [
-      sub.email,
-      sub.active !== false ? 'Active' : 'Unsubscribed/Inactive',
-      sub.createdAt?.toDate ? sub.createdAt.toDate().toISOString() : 'N/A'
-    ]);
-
-    const csvContent = 
-      'data:text/csv;charset=utf-8,' + 
-      [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'newsletter_subscribers.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Spreadsheet exported successfully!');
-  };
-
-  // Simulation parameters for broadcast sending
-  const handleSendBroadcast = async () => {
-    if (!subject.trim()) {
-      toast.error('Please enter a subject line for your broadcast.');
-      return;
-    }
-    if (!body.trim()) {
-      toast.error('Please write some content in the email body.');
-      return;
-    }
-
-    const recipients = getRecipientsList();
-    if (recipients.length === 0) {
-      toast.error('The selected recipient pool is currently empty.');
-      return;
-    }
-
-    setIsSending(true);
-    setSendTargetCount(recipients.length);
-    setSendCurrentIndex(0);
-    setSendProgress(0);
-    
-    const logs: string[] = [];
-    const timestamp = new Date().toLocaleTimeString();
-    
-    logs.push(`[${timestamp}] Initiating newsletter broadcast: "${subject}"`);
-    logs.push(`[${timestamp}] Target audience: ${recipientGroup.toUpperCase()} (${recipients.length} clients)`);
-    logs.push(`[${timestamp}] Selected Theme styling: Accent Color (${themeAccent}), Header Style (${logoStyle})`);
-    setSendLogs([...logs]);
-
-    // Simulate batch dispatching with real progress increments
-    for (let i = 0; i < recipients.length; i++) {
-      const rec = recipients[i];
-      setSendCurrentIndex(i + 1);
-      const prog = Math.round(((i + 1) / recipients.length) * 100);
-      setSendProgress(prog);
-
-      // Add detailed logging for dispatch
-      await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 150));
-      const logTime = new Date().toLocaleTimeString();
-      logs.push(`[${logTime}] [${i + 1}/${recipients.length}] Personalizing and rendering email for ${rec.name} (${rec.email})...`);
-      setSendLogs([...logs]);
-
-      await new Promise(resolve => setTimeout(resolve, 150));
-      logs.push(`[${logTime}] Delivered successfully to ${rec.email} [Source: ${rec.source}]`);
-      setSendLogs([...logs]);
-    }
-
-    const completeTime = new Date().toLocaleTimeString();
-    logs.push(`[${completeTime}] Broadcast complete! Dispatched ${recipients.length} newsletters successfully with 0 failures.`);
-    setSendLogs([...logs]);
-
-    // Persist sent campaign history
-    try {
-      await addDoc(collection(db, 'newsletter_campaigns'), {
-        title: subject,
-        subject,
-        preheader: preheader || 'No preheader content',
-        body,
-        templateType,
-        recipientGroup,
-        recipientCount: recipients.length,
-        logoStyle,
-        themeAccent,
-        ctaEnabled,
-        ctaText,
-        ctaUrl,
-        sentAt: serverTimestamp()
-      });
-      toast.success(`Newsletter update sent successfully to all ${recipients.length} clients!`);
-    } catch (error) {
-      console.error('Error saving campaign to database:', error);
-      toast.error('Failed to save campaign history record.');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  // Reload a past campaign into the editor
-  const loadPastCampaign = (campaign: any) => {
-    setSubject(campaign.subject || '');
-    setPreheader(campaign.preheader || '');
-    setBody(campaign.body || '');
-    setTemplateType(campaign.templateType || 'custom');
-    setRecipientGroup(campaign.recipientGroup || 'newsletter');
-    setLogoStyle(campaign.logoStyle || 'joint');
-    setThemeAccent(campaign.themeAccent || 'orange');
-    setCtaEnabled(!!campaign.ctaEnabled);
-    setCtaText(campaign.ctaText || 'Explore Opportunities');
-    setCtaUrl(campaign.ctaUrl || '/services');
-    setActiveSubTab('compose');
-    toast.success('Selected campaign loaded into composer!');
-  };
-
-  // Substitute variables helper for live preview
-  const previewBody = () => {
-    if (!body) return 'Write something to preview your newsletter layout...';
-    // Match {{Name}} or {{name}}
-    return body
-      .replace(/\{\{Name\}\}/g, 'Grice')
-      .replace(/\{\{name\}\}/g, 'Grice')
-      .replace(/\{\{Email\}\}/g, 'grice@grefas.com')
-      .replace(/\{\{email\}\}/g, 'grice@grefas.com');
-  };
-
-  const filteredSubscribers = subscribers.filter(sub => 
-    sub.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const activeCount = subscribers.filter(s => s.active !== false).length;
-  const inactiveCount = subscribers.length - activeCount;
-
-  // Render variables helper cards
-  const tokenClass = "px-2 py-1 bg-muted hover:bg-muted/80 text-foreground rounded text-[10px] font-mono font-bold cursor-pointer inline-flex items-center gap-1 transition-colors";
-  
-  const insertToken = (token: string) => {
-    setBody(prev => prev + ' ' + token);
-    toast.success(`Inserted ${token} token!`);
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Upper Navigation and Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2">
-            <Mail className="h-8 w-8 text-orange-600" />
-            Newsletter & Client Updates
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Send high-fidelity templated newsletters or custom email broadcasts to all registered clients at once.
-          </p>
-        </div>
-
-        {/* Toggle between Pools, Compose, and Logs */}
-        <div className="flex bg-muted p-1 rounded-lg border border-border">
-          <Button
-            onClick={() => setActiveSubTab('subscribers')}
-            variant="ghost"
-            size="sm"
-            className={`text-xs font-bold px-3 py-1.5 rounded-md cursor-pointer ${
-              activeSubTab === 'subscribers' ? 'bg-background shadow text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            <Users className="h-3.5 w-3.5 mr-1.5" />
-            Subscribers Pool ({subscribers.length})
-          </Button>
-          <Button
-            onClick={() => setActiveSubTab('compose')}
-            variant="ghost"
-            size="sm"
-            className={`text-xs font-bold px-3 py-1.5 rounded-md cursor-pointer ${
-              activeSubTab === 'compose' ? 'bg-background shadow text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            <Edit className="h-3.5 w-3.5 mr-1.5" />
-            Compose Broadcast
-          </Button>
-          <Button
-            onClick={() => setActiveSubTab('history')}
-            variant="ghost"
-            size="sm"
-            className={`text-xs font-bold px-3 py-1.5 rounded-md cursor-pointer ${
-              activeSubTab === 'history' ? 'bg-background shadow text-foreground' : 'text-muted-foreground'
-            }`}
-          >
-            <Clock className="h-3.5 w-3.5 mr-1.5" />
-            History ({campaigns.length})
-          </Button>
-        </div>
-      </div>
-
-      {/* VIEW 1: SUBSCRIBERS POOL LIST */}
-      {activeSubTab === 'subscribers' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="bg-card border-border/50">
-              <CardHeader className="py-4">
-                <CardDescription className="text-xs font-mono uppercase tracking-wider">Mailing Pool</CardDescription>
-                <CardTitle className="text-2xl font-black text-foreground">{subscribers.length}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="bg-card border-border/50">
-              <CardHeader className="py-4">
-                <CardDescription className="text-xs font-mono uppercase tracking-wider text-emerald-600">Active Subscribers</CardDescription>
-                <CardTitle className="text-2xl font-black text-emerald-600">{activeCount}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="bg-card border-border/50">
-              <CardHeader className="py-4">
-                <CardDescription className="text-xs font-mono uppercase tracking-wider text-orange-600">Platform Users</CardDescription>
-                <CardTitle className="text-2xl font-black text-orange-600">{usersList.length}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="bg-card border-border/50">
-              <CardHeader className="py-4">
-                <CardDescription className="text-xs font-mono uppercase tracking-wider text-blue-600">Casting Leads</CardDescription>
-                <CardTitle className="text-2xl font-black text-blue-600">{intakesList.length}</CardTitle>
-              </CardHeader>
-            </Card>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-2">
-              <Button 
-                onClick={() => setIsAdding(!isAdding)} 
-                className="bg-orange-600 text-white cursor-pointer hover:bg-orange-700 font-bold text-xs"
-                id="admin-btn-toggle-add-subscriber"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Enroll New Subscriber
-              </Button>
-              <Button 
-                onClick={copyAllEmails} 
-                variant="outline" 
-                className="border-orange-600/20 text-orange-600 hover:bg-orange-650 cursor-pointer text-xs font-bold"
-                id="admin-btn-copy-emails"
-              >
-                <Mail className="mr-2 h-4 w-4" />
-                Copy Emails List
-              </Button>
-              <Button 
-                onClick={exportToCSV} 
-                variant="outline"
-                className="border-border hover:bg-muted cursor-pointer text-xs font-bold"
-                id="admin-btn-export-subscribers"
-              >
-                <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
-                Export Spreadsheet CSV
-              </Button>
-            </div>
-          </div>
-
-          {isAdding && (
-            <Card className="border-orange-600/30 bg-muted/20 animate-in fade-in zoom-in-95">
-              <CardHeader>
-                <CardTitle className="text-lg">Subscribe New Email Manually</CardTitle>
-                <CardDescription>Enter a customer's email to enroll them into Grefas' newsletter pool.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleAddSubscriber} className="flex gap-2 max-w-md" id="admin-manual-subscribe-form">
-                  <Input
-                    type="email"
-                    placeholder="subscriber@example.com"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    required
-                    className="bg-card"
-                    id="admin-manual-subscriber-email"
-                  />
-                  <Button type="submit" className="bg-orange-600 text-white cursor-pointer">Subscribe</Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="bg-card border-border/50">
-            <CardHeader className="border-b border-border py-4">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <CardTitle className="text-lg font-bold">Mailing List Subscribers</CardTitle>
-                <div className="relative w-full md:w-64">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by email..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 h-9 border-border bg-muted/40"
-                    id="admin-newsletter-search"
-                  />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              {loading ? (
-                <div className="flex justify-center items-center py-16">
-                  <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
-                </div>
-              ) : filteredSubscribers.length === 0 ? (
-                <div className="text-center py-16 text-muted-foreground">
-                  {searchQuery ? 'No subscribers match your search term.' : 'No newsletter signups listed yet.'}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground">
-                        <th className="p-4">Email Address</th>
-                        <th className="p-4">Subscription Date</th>
-                        <th className="p-4">Status</th>
-                        <th className="p-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {filteredSubscribers.map((sub) => (
-                        <tr key={sub.id} className="hover:bg-muted/20 transition-colors">
-                          <td className="p-4 font-medium text-foreground">{sub.email}</td>
-                          <td className="p-4 text-sm text-muted-foreground">
-                            {sub.createdAt?.toDate 
-                              ? sub.createdAt.toDate().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
-                              : 'N/A'}
-                          </td>
-                          <td className="p-4">
-                            <button
-                              onClick={() => toggleSubscriberActive(sub.id, sub.active !== false)}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold cursor-pointer transition ${
-                                sub.active !== false
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400'
-                                  : 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400'
-                              }`}
-                              id={`admin-btn-toggle-${sub.id}`}
-                            >
-                              <span className={`h-1.5 w-1.5 rounded-full ${sub.active !== false ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                              {sub.active !== false ? 'Active' : 'Deactivated'}
-                            </button>
-                          </td>
-                          <td className="p-4 text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteSubscriber(sub.id)}
-                              className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer"
-                              id={`admin-btn-delete-${sub.id}`}
-                              title="Delete subscriber"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* VIEW 2: COMPOSE AND SEND NEWSLETTER */}
-      {activeSubTab === 'compose' && (
-        <div className="space-y-6">
-          {/* Dispatch simulation overlay when active */}
-          {isSending && (
-            <Card className="border-orange-600/50 bg-black/95 text-white p-6 z-50 rounded-xl space-y-4 shadow-2xl animate-in zoom-in-95">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
-                  <span className="font-extrabold text-sm uppercase tracking-wider">Broadcasting Campaign...</span>
-                </div>
-                <span className="text-xs font-mono font-bold text-orange-400 bg-orange-950/50 px-2.5 py-1 rounded">
-                  {sendCurrentIndex} / {sendTargetCount} Sent ({sendProgress}%)
-                </span>
-              </div>
-              
-              <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
-                <div 
-                  className="bg-orange-600 h-full transition-all duration-300"
-                  style={{ width: `${sendProgress}%` }}
-                />
-              </div>
-
-              <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 h-48 overflow-y-auto font-mono text-[10px] text-zinc-350 space-y-1 scrollbar-thin">
-                {sendLogs.map((log, index) => (
-                  <p key={index} className={log.includes('successfully') ? 'text-emerald-400' : log.includes('Initiating') ? 'text-orange-400 font-bold' : ''}>
-                    {log}
-                  </p>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Hand: Configuration Panel */}
-            <div className="lg:col-span-7 space-y-4">
-              <Card className="bg-card border-border/50">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-lg">1. Choose Recipient Pool & Template</CardTitle>
-                  <CardDescription>Select who receives this broadcast and optionally load an elegant Grefas template.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Recipient Pool selection */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Target Recipients</label>
-                      <select
-                        value={recipientGroup}
-                        onChange={(e: any) => setRecipientGroup(e.target.value)}
-                        className="w-full text-xs font-semibold bg-muted border border-border rounded px-3 py-2 outline-none focus:ring-1 focus:ring-orange-600"
-                      >
-                        <option value="newsletter">Active Newsletter Subscribers ({activeCount} clients)</option>
-                        <option value="users">Registered Platform Users ({usersList.length} clients)</option>
-                        <option value="service_intakes">Casting Audition Leads ({intakesList.length} clients)</option>
-                        <option value="all">Unified Client Pool (De-duplicated) ({currentRecipients.length} clients)</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Load Designed Template</label>
-                      <select
-                        value={templateType}
-                        onChange={(e: any) => handleApplyTemplate(e.target.value as any)}
-                        className="w-full text-xs font-semibold bg-muted border border-border rounded px-3 py-2 outline-none focus:ring-1 focus:ring-orange-600"
-                      >
-                        <option value="general">Default: Grefas Highlights & News</option>
-                        <option value="casting_call">Official Casting Call / Audition</option>
-                        <option value="promo">Professional Creative Services Profile</option>
-                        <option value="holiday">Holiday Greeting & Seasonal Thank You</option>
-                        <option value="custom">Start from Scratch (Blank Canvas)</option>
-                      </select>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Email Content Panel */}
-              <Card className="bg-card border-border/50">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">2. Write Your Email Campaign</CardTitle>
-                  <CardDescription>Customize the content of the newsletter. Personalize elements with smart tokens.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Subject Line</label>
-                    <Input
-                      placeholder="e.g. Major Production Casting Notice"
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
-                      className="bg-muted/40 font-semibold"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Preview/Preheader Text</label>
-                    <Input
-                      placeholder="Subtext shown in client inboxes..."
-                      value={preheader}
-                      onChange={(e) => setPreheader(e.target.value)}
-                      className="bg-muted/40 text-xs"
-                    />
-                  </div>
-
-                  {/* Personalization tokens */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email Body (supports Markdown)</label>
-                      <span className="text-[10px] text-orange-600 font-bold">Personalization Tags:</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 p-2 bg-muted/20 border border-border/50 rounded-lg">
-                      <button 
-                        onClick={() => insertToken('{{Name}}')} 
-                        className={tokenClass}
-                        type="button"
-                        title="Inserts recipient's name"
-                      >
-                        <Users className="h-3 w-3" />
-                        {"{{Name}}"}
-                      </button>
-                      <button 
-                        onClick={() => insertToken('{{Email}}')} 
-                        className={tokenClass}
-                        type="button"
-                        title="Inserts recipient's email"
-                      >
-                        <Mail className="h-3 w-3" />
-                        {"{{Email}}"}
-                      </button>
-                    </div>
-                    <Textarea
-                      placeholder="Type your markdown newsletter here..."
-                      value={body}
-                      onChange={(e) => setBody(e.target.value)}
-                      rows={14}
-                      className="font-sans leading-relaxed text-xs bg-muted/20"
-                    />
-                  </div>
-
-                  {/* Template Styling & Call To Action */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-border/60">
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Brand Styling</h4>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-muted-foreground block font-bold">Header Letterhead</label>
-                        <select
-                          value={logoStyle}
-                          onChange={(e: any) => setLogoStyle(e.target.value)}
-                          className="w-full text-xs bg-muted/40 border border-border rounded px-2.5 py-1.5"
-                        >
-                          <option value="joint">Joint (Grefas + Productions)</option>
-                          <option value="grefas">Grefas Entertainment Icon</option>
-                          <option value="text">Clean Styled Text Banner</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] text-muted-foreground block font-bold">Accent Palette</label>
-                        <div className="flex gap-2">
-                          {(['orange', 'emerald', 'zinc', 'rose'] as const).map((color) => (
-                            <button
-                              key={color}
-                              type="button"
-                              onClick={() => setThemeAccent(color)}
-                              className={`h-6 w-6 rounded-full border flex items-center justify-center cursor-pointer transition ${
-                                themeAccent === color ? 'border-foreground scale-110 shadow-sm' : 'border-transparent'
-                              }`}
-                              style={{
-                                backgroundColor: 
-                                  color === 'orange' ? '#ea580c' : 
-                                  color === 'emerald' ? '#059669' : 
-                                  color === 'zinc' ? '#52525b' : '#e11d48'
-                              }}
-                              title={color.toUpperCase()}
-                            >
-                              {themeAccent === color && (
-                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <label className="text-[10px] text-muted-foreground font-bold">Enable Security Watermark</label>
-                        <input
-                          type="checkbox"
-                          checked={watermark}
-                          onChange={(e) => setWatermark(e.target.checked)}
-                          className="rounded border-border text-orange-600 focus:ring-orange-600 h-4 w-4"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 border-l border-border/60 pl-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Button Link (CTA)</h4>
-                        <input
-                          type="checkbox"
-                          checked={ctaEnabled}
-                          onChange={(e) => setCtaEnabled(e.target.checked)}
-                          className="rounded border-border text-orange-600 focus:ring-orange-600 h-4 w-4"
-                        />
-                      </div>
-
-                      {ctaEnabled && (
-                        <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
-                          <div>
-                            <label className="text-[10px] text-muted-foreground block font-bold">Button Label</label>
-                            <Input
-                              placeholder="e.g. Join Auditions"
-                              value={ctaText}
-                              onChange={(e) => setCtaText(e.target.value)}
-                              className="bg-muted/40 h-8 text-xs"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] text-muted-foreground block font-bold">Button Destination Link</label>
-                            <Input
-                              placeholder="e.g. /services"
-                              value={ctaUrl}
-                              onChange={(e) => setCtaUrl(e.target.value)}
-                              className="bg-muted/40 h-8 text-xs font-mono"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-muted-foreground block font-bold">Sender Signature</label>
-                        <Input
-                          placeholder="Sender Name & Title"
-                          value={signature}
-                          onChange={(e) => setSignature(e.target.value)}
-                          className="bg-muted/40 h-8 text-xs"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Submit Button */}
-                  <div className="pt-4 border-t border-border flex justify-between items-center">
-                    <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
-                      <Users className="h-4 w-4 text-orange-600" />
-                      Targets <span className="font-bold text-foreground bg-muted px-2 py-0.5 rounded">{currentRecipients.length}</span> email pools
-                    </div>
-                    <Button
-                      onClick={handleSendBroadcast}
-                      disabled={isSending}
-                      className="bg-orange-600 text-white cursor-pointer hover:bg-orange-700 font-extrabold text-xs px-6"
-                      id="admin-btn-send-broadcast"
-                    >
-                      {isSending ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
-                          Sending Broadcast...
-                        </>
-                      ) : (
-                        <>
-                          <Mail className="h-3.5 w-3.5 mr-2" />
-                          Send Live Email Broadcast
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Right Hand: High-Fidelity Interactive Email Live Preview */}
-            <div className="lg:col-span-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Live Preview Simulator</h3>
-                <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                  Inbox Rendering Active
-                </span>
-              </div>
-
-              {/* Inbox Mock Shell */}
-              <div className="bg-card border border-border shadow-xl rounded-xl overflow-hidden animate-in fade-in-50">
-                {/* Mail Header Info */}
-                <div className="bg-muted/50 p-4 border-b border-border space-y-2 text-xs">
-                  <div className="flex gap-2">
-                    <span className="font-bold text-muted-foreground w-12 block">Subject:</span>
-                    <span className="font-extrabold text-foreground">{subject || 'No Subject Defined'}</span>
-                  </div>
-                  <div className="flex gap-2 text-muted-foreground text-[11px]">
-                    <span className="font-bold w-12 block">Preheader:</span>
-                    <span className="italic truncate">{preheader || 'No preheader defined'}</span>
-                  </div>
-                  <div className="flex gap-2 text-muted-foreground text-[11px]">
-                    <span className="font-bold w-12 block">To:</span>
-                    <span className="bg-orange-100 dark:bg-orange-950/45 text-orange-700 dark:text-orange-400 font-bold px-1.5 py-0.5 rounded-sm">
-                      All clients in {recipientGroup.toUpperCase()} Pool
-                    </span>
-                  </div>
-                </div>
-
-                {/* Email Canvas Rendering */}
-                <div className="p-6 bg-white dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200 min-h-[500px] relative font-sans text-xs flex flex-col justify-between">
-                  {/* Watermark overlay */}
-                  {watermark && (
-                    <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] select-none pointer-events-none transform -rotate-12">
-                      <div className="text-center">
-                        <p className="text-5xl font-black font-sans uppercase tracking-widest">GREFAS</p>
-                        <p className="text-xs font-mono tracking-wider mt-1">OFFICIAL BROADCAST</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-6">
-                    {/* Header Letterhead styling */}
-                    <div className="border-b-2 pb-4 flex items-center justify-between" style={{
-                      borderBottomColor: 
-                        themeAccent === 'orange' ? '#ea580c' : 
-                        themeAccent === 'emerald' ? '#059669' : 
-                        themeAccent === 'zinc' ? '#52525b' : '#e11d48'
-                    }}>
-                      {logoStyle === 'joint' && (
-                        <div className="space-y-0.5">
-                          <h2 className="text-sm font-black tracking-tight text-zinc-900 dark:text-white uppercase">GREFAS ENTERTAINMENT</h2>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">In Joint Venture with Grefas Productions</p>
-                        </div>
-                      )}
-                      {logoStyle === 'grefas' && (
-                        <div className="flex items-center gap-1.5">
-                          <div className="h-6 w-6 rounded bg-orange-600 flex items-center justify-center text-white font-black text-xs">G</div>
-                          <h2 className="text-sm font-black tracking-tight text-zinc-900 dark:text-white uppercase">Grefas Studio</h2>
-                        </div>
-                      )}
-                      {logoStyle === 'text' && (
-                        <div>
-                          <h2 className="text-sm font-bold tracking-tight text-zinc-800 dark:text-zinc-100">Grefas Official Update</h2>
-                          <p className="text-[9px] text-muted-foreground">Ashanti Region, Ghana</p>
-                        </div>
-                      )}
-                      <span className="text-[10px] font-mono text-zinc-400">
-                        {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    </div>
-
-                    {/* Email Text Body content with rendering support for linebreaks & simple headers */}
-                    <div className="space-y-4 leading-relaxed whitespace-pre-line text-zinc-700 dark:text-zinc-300">
-                      {previewBody().split('\n\n').map((para, pIdx) => {
-                        // Very basic renderer for markdown bold/headers in the preview
-                        if (para.startsWith('### ')) {
-                          return <h3 key={pIdx} className="text-sm font-black text-zinc-950 dark:text-white mt-4">{para.replace('### ', '')}</h3>;
-                        }
-                        if (para.startsWith('1. ') || para.startsWith('- ')) {
-                          return (
-                            <div key={pIdx} className="pl-2 space-y-1">
-                              {para.split('\n').map((li, lIdx) => (
-                                <p key={lIdx} className="text-zinc-700 dark:text-zinc-300">
-                                  {li.replace('1. ', 'â€¢ ').replace('- ', 'â€¢ ')}
-                                </p>
-                              ))}
-                            </div>
-                          );
-                        }
-                        return <p key={pIdx}>{para}</p>;
-                      })}
-                    </div>
-
-                    {/* Interactive CTA Link Button */}
-                    {ctaEnabled && (
-                      <div className="py-4 text-center">
-                        <span 
-                          className="inline-block rounded-md text-white font-extrabold text-xs px-6 py-2.5 shadow-md transform hover:scale-105 transition-all duration-200 cursor-pointer"
-                          style={{
-                            backgroundColor: 
-                              themeAccent === 'orange' ? '#ea580c' : 
-                              themeAccent === 'emerald' ? '#059669' : 
-                              themeAccent === 'zinc' ? '#52525b' : '#e11d48'
-                          }}
-                        >
-                          {ctaText}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Footer & Unsubscribe */}
-                  <div className="mt-12 pt-4 border-t border-zinc-100 dark:border-zinc-900 text-center space-y-2">
-                    <p className="font-extrabold text-zinc-950 dark:text-white">{signature}</p>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Grefas Productions & Entertainment</p>
-                    <p className="text-[9px] text-zinc-400 dark:text-zinc-550 leading-relaxed max-w-xs mx-auto pt-2">
-                      You are receiving this official correspondence because you registered with Grefas or signed up for media newsletters. 
-                      <span className="underline ml-1 cursor-pointer hover:text-orange-600 block sm:inline mt-1 sm:mt-0">Unsubscribe from list</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* VIEW 3: CAMPAIGNS HISTORY LOGS */}
-      {activeSubTab === 'history' && (
-        <Card className="bg-card border-border/50">
-          <CardHeader className="border-b border-border py-4">
-            <CardTitle className="text-lg font-bold">Sent Broadcast History</CardTitle>
-            <CardDescription>Review and manage all past email updates or newsletter campaigns sent to registered client groups.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loadingCampaigns ? (
-              <div className="flex justify-center items-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
-              </div>
-            ) : campaigns.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
-                No past campaigns have been broadcast from this admin dashboard yet.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground">
-                      <th className="p-4">Campaign Title/Subject</th>
-                      <th className="p-4">Target Audience Group</th>
-                      <th className="p-4">Recipients Count</th>
-                      <th className="p-4">Accent Styling</th>
-                      <th className="p-4">Dispatched At</th>
-                      <th className="p-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {campaigns.map((camp) => (
-                      <tr key={camp.id} className="hover:bg-muted/20 transition-colors text-xs">
-                        <td className="p-4 font-extrabold text-foreground">{camp.subject}</td>
-                        <td className="p-4">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-400">
-                            {camp.recipientGroup || 'newsletter'}
-                          </span>
-                        </td>
-                        <td className="p-4 font-mono font-bold text-foreground">{camp.recipientCount || 0}</td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-1.5">
-                            <span 
-                              className="h-3 w-3 rounded-full border border-border" 
-                              style={{
-                                backgroundColor: 
-                                  camp.themeAccent === 'orange' ? '#ea580c' : 
-                                  camp.themeAccent === 'emerald' ? '#059669' : 
-                                  camp.themeAccent === 'zinc' ? '#52525b' : '#e11d48'
-                              }}
-                            />
-                            <span className="capitalize font-medium text-muted-foreground">{camp.themeAccent || 'orange'}</span>
-                          </div>
-                        </td>
-                        <td className="p-4 text-muted-foreground">
-                          {camp.sentAt?.toDate 
-                            ? camp.sentAt.toDate().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
-                            : 'N/A'}
-                        </td>
-                        <td className="p-4 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => loadPastCampaign(camp)}
-                            className="text-[10px] font-bold uppercase tracking-wider text-orange-600 border-orange-600/20 hover:bg-orange-50 dark:hover:bg-orange-950/30 cursor-pointer"
-                            id={`admin-btn-reload-camp-${camp.id}`}
-                            title="Reload into Composer"
-                          >
-                            Reuse Template
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Delete Confirmation Modal (Original functionality) */}
-      {deleteSubscriberId && (
-        <AdminDeleteModal
-          title="Delete Subscriber"
-          message="Are you sure you want to delete this subscriber? They will no longer receive any email newsletters or updates."
-          onConfirm={confirmDeleteSubscriber}
-          onCancel={() => setDeleteSubscriberId(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-export function ManageTestimonials() {
-  const [testimonials, setTestimonials] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('all');
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  // Form state for creating a testimonial manually
-  const [isAdding, setIsAdding] = useState(false);
-  const [newTestimonial, setNewTestimonial] = useState({
-    authorName: '',
-    authorRole: '',
-    rating: 5,
-    text: '',
-    approved: true
-  });
-  const [addLoading, setAddLoading] = useState(false);
-
-  useEffect(() => {
-    const q = query(collection(db, 'testimonials'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setTestimonials(items);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error listening to testimonials:", error);
-      toast.error("Failed to load testimonials");
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleToggleApprove = async (id: string, currentApproved: boolean) => {
-    try {
-      await updateDoc(doc(db, 'testimonials', id), {
-        approved: !currentApproved
-      });
-      toast.success(currentApproved ? "Testimonial hidden" : "Testimonial approved & live!");
-    } catch (error: any) {
-      console.error("Error updating testimonial:", error);
-      toast.error("Failed to update testimonial status");
-    }
-  };
-
-  const handleDeleteTestimonial = async () => {
-    if (!deleteId) return;
-    try {
-      await deleteDoc(doc(db, 'testimonials', deleteId));
-      toast.success("Testimonial deleted successfully");
-      setDeleteId(null);
-    } catch (error: any) {
-      console.error("Error deleting testimonial:", error);
-      toast.error("Failed to delete testimonial");
-    }
-  };
-
-  const handleAddTestimonial = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTestimonial.authorName || !newTestimonial.text) {
-      toast.error("Please fill in required fields.");
-      return;
-    }
-    setAddLoading(true);
-    try {
-      await addDoc(collection(db, 'testimonials'), {
-        ...newTestimonial,
-        createdAt: serverTimestamp()
-      });
-      toast.success("Testimonial added successfully!");
-      setNewTestimonial({
-        authorName: '',
-        authorRole: '',
-        rating: 5,
-        text: '',
-        approved: true
-      });
-      setIsAdding(false);
-    } catch (error: any) {
-      console.error("Error adding testimonial:", error);
-      toast.error("Failed to add testimonial");
-    } finally {
-      setAddLoading(false);
-    }
-  };
-
-  const filteredTestimonials = testimonials.filter(item => {
-    if (filter === 'pending') return !item.approved;
-    if (filter === 'approved') return item.approved;
-    return true;
-  });
-
-  const stats = {
-    total: testimonials.length,
-    approved: testimonials.filter(t => t.approved).length,
-    pending: testimonials.filter(t => !t.approved).length
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
-            <Quote className="h-6 w-6 text-orange-600" />
-            <span>Manage Client Testimonials</span>
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Approve client-submitted feedback or manually add corporate client reviews for the home page.
-          </p>
-        </div>
-        <Button 
-          onClick={() => setIsAdding(!isAdding)}
-          className="bg-orange-600 hover:bg-orange-700 font-bold"
-        >
-          {isAdding ? 'View Testimonials' : 'Add Testimonial'}
-        </Button>
-      </div>
-
-      {/* Stats row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="bg-card border-border shadow-xs">
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Feedback</p>
-              <p className="text-3xl font-black text-foreground mt-1">{stats.total}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-muted">
-              <Quote className="h-5 w-5 text-muted-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border shadow-xs">
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Approved & Live</p>
-              <p className="text-3xl font-black text-emerald-600 mt-1">{stats.approved}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500">
-              <CheckCircle className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border shadow-xs">
-          <CardContent className="p-6 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pending Moderation</p>
-              <p className="text-3xl font-black text-amber-600 mt-1">{stats.pending}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-amber-500/10 text-amber-500">
-              <AlertCircle className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {isAdding ? (
-        <Card className="bg-card border-border shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold">New Testimonial</CardTitle>
-            <CardDescription className="text-xs">Add a custom client testimonial directly to the system</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleAddTestimonial} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Client Name *</label>
-                  <Input 
-                    required 
-                    value={newTestimonial.authorName}
-                    onChange={e => setNewTestimonial({ ...newTestimonial, authorName: e.target.value })}
-                    placeholder="e.g. Ama Serwaa" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Client Title/Role</label>
-                  <Input 
-                    value={newTestimonial.authorRole}
-                    onChange={e => setNewTestimonial({ ...newTestimonial, authorRole: e.target.value })}
-                    placeholder="e.g. Managing Partner, Nyinahin Enterprise" 
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rating (1-5 Stars)</label>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setNewTestimonial({ ...newTestimonial, rating: star })}
-                        className={`p-1 rounded-md transition-all ${
-                          newTestimonial.rating >= star ? 'text-amber-400' : 'text-zinc-600 dark:text-zinc-400'
-                        }`}
-                      >
-                        <Star className="h-6 w-6 fill-current" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Publishing Status</label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <input 
-                      type="checkbox" 
-                      id="approved-checkbox"
-                      checked={newTestimonial.approved}
-                      onChange={e => setNewTestimonial({ ...newTestimonial, approved: e.target.checked })}
-                      className="rounded border-border h-4 w-4 bg-background text-orange-600 focus:ring-orange-500"
-                    />
-                    <label htmlFor="approved-checkbox" className="text-xs font-medium text-foreground">
-                      Approve and set live immediately
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Review/Testimonial Text *</label>
-                <Textarea 
-                  required 
-                  rows={4}
-                  value={newTestimonial.text}
-                  onChange={e => setNewTestimonial({ ...newTestimonial, text: e.target.value })}
-                  placeholder="Review content goes here..." 
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setIsAdding(false)}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  type="submit" 
-                  disabled={addLoading}
-                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                >
-                  {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Testimonial'}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="bg-card border-border shadow-sm">
-          <CardHeader className="pb-3 border-b border-border/40">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <CardTitle className="text-base font-bold">Feedback Inventory</CardTitle>
-                <CardDescription className="text-xs">Client submissions requesting display approval</CardDescription>
-              </div>
-              <div className="flex rounded-lg border border-border overflow-hidden text-[10px] font-bold uppercase tracking-wider bg-background">
-                {(['all', 'pending', 'approved'] as const).map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => setFilter(opt)}
-                    className={`px-3 py-1.5 border-r last:border-r-0 border-border ${
-                      filter === opt 
-                        ? 'bg-orange-600 text-white' 
-                        : 'text-muted-foreground hover:bg-muted'
-                    }`}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="p-12 text-center flex flex-col items-center gap-2">
-                <Loader2 className="h-6 w-6 animate-spin text-orange-600" />
-                <span className="text-xs text-muted-foreground font-mono font-bold">RETRIEVING CLIENT FEEDBACK...</span>
-              </div>
-            ) : filteredTestimonials.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground text-xs">
-                No testimonials found for this filter.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-border text-[10px] font-bold text-muted-foreground uppercase bg-muted/20">
-                      <th className="p-4">Author</th>
-                      <th className="p-4">Feedback Details</th>
-                      <th className="p-4">Rating</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredTestimonials.map((item) => (
-                      <tr key={item.id} className="hover:bg-muted/10 transition-colors text-xs">
-                        <td className="p-4 font-bold text-foreground">
-                          <div>
-                            <p className="font-extrabold">{item.authorName}</p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">{item.authorRole || 'Client'}</p>
-                          </div>
-                        </td>
-                        <td className="p-4 max-w-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                          "{item.text}"
-                        </td>
-                        <td className="p-4 text-amber-500 font-bold font-mono">
-                          <div className="flex gap-0.5">
-                            {Array.from({ length: item.rating || 5 }).map((_, i) => (
-                              <Star key={i} className="h-3.5 w-3.5 fill-current" />
-                            ))}
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            item.approved 
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' 
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400'
-                          }`}>
-                            {item.approved ? 'Live' : 'Pending'}
-                          </span>
-                        </td>
-                        <td className="p-4 text-right">
-                          <div className="flex justify-end items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleToggleApprove(item.id, item.approved)}
-                              className={`text-[10px] font-bold uppercase tracking-wider ${
-                                item.approved 
-                                  ? 'text-zinc-600 border-border hover:bg-muted' 
-                                  : 'text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/10'
-                              }`}
-                            >
-                              {item.approved ? 'Hide' : 'Approve'}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setDeleteId(item.id)}
-                              className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 h-8 w-8 p-0"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deleteId && (
-        <AdminDeleteModal
-          title="Delete Testimonial"
-          message="Are you sure you want to permanently delete this testimonial? This action cannot be undone."
-          onConfirm={handleDeleteTestimonial}
-          onCancel={() => setDeleteId(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-export function ManageVisitorAlerts() {
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  // Form state
-  const [isEditing, setIsEditing] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [formState, setFormState] = useState({
-    title: '',
-    message: '',
-    isActive: true,
-    type: 'info', // 'info' | 'warning' | 'success' | 'accent'
-    buttonText: '',
-    buttonUrl: ''
-  });
-  const [submitLoading, setSubmitLoading] = useState(false);
-
-  useEffect(() => {
-    const q = query(collection(db, 'visitor_notifications'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setAlerts(items);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error listening to visitor alerts:", error);
-      toast.error("Failed to load visitor alerts");
-      setLoading(false);
-      handleFirestoreError(error, OperationType.GET, 'visitor_notifications');
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleToggleActive = async (id: string, currentActive: boolean) => {
-    try {
-      await updateDoc(doc(db, 'visitor_notifications', id), {
-        isActive: !currentActive
-      });
-      toast.success(!currentActive ? "Alert activated and live!" : "Alert deactivated");
-    } catch (error: any) {
-      console.error("Error updating alert:", error);
-      toast.error("Failed to update alert status");
-      handleFirestoreError(error, OperationType.UPDATE, `visitor_notifications/${id}`);
-    }
-  };
-
-  const handleDeleteAlert = async () => {
-    if (!deleteId) return;
-    try {
-      await deleteDoc(doc(db, 'visitor_notifications', deleteId));
-      toast.success("Alert deleted successfully");
-      setDeleteId(null);
-    } catch (error: any) {
-      console.error("Error deleting alert:", error);
-      toast.error("Failed to delete alert");
-      handleFirestoreError(error, OperationType.DELETE, `visitor_notifications/${deleteId}`);
-    }
-  };
-
-  const handleOpenEdit = (alert: any) => {
-    setEditId(alert.id);
-    setFormState({
-      title: alert.title || '',
-      message: alert.message || '',
-      isActive: alert.isActive !== false,
-      type: alert.type || 'info',
-      buttonText: alert.buttonText || '',
-      buttonUrl: alert.buttonUrl || ''
-    });
-    setIsEditing(true);
-  };
-
-  const handleResetForm = () => {
-    setFormState({
-      title: '',
-      message: '',
-      isActive: true,
-      type: 'info',
-      buttonText: '',
-      buttonUrl: ''
-    });
-    setEditId(null);
-    setIsEditing(false);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formState.title || !formState.message) {
-      toast.error("Please fill in all required fields.");
-      return;
-    }
-    setSubmitLoading(true);
-    try {
-      if (editId) {
-        // Update existing alert
-        await updateDoc(doc(db, 'visitor_notifications', editId), {
-          title: formState.title,
-          message: formState.message,
-          isActive: formState.isActive,
-          type: formState.type,
-          buttonText: formState.buttonText,
-          buttonUrl: formState.buttonUrl
-        });
-        toast.success("Visitor alert updated successfully!");
-      } else {
-        // Create new alert
-        await addDoc(collection(db, 'visitor_notifications'), {
-          title: formState.title,
-          message: formState.message,
-          isActive: formState.isActive,
-          type: formState.type,
-          buttonText: formState.buttonText,
-          buttonUrl: formState.buttonUrl,
-          createdAt: serverTimestamp()
-        });
-        toast.success("Visitor alert created successfully!");
-      }
-      handleResetForm();
-    } catch (error: any) {
-      console.error("Error saving visitor alert:", error);
-      toast.error("Failed to save alert");
-      handleFirestoreError(error, editId ? OperationType.UPDATE : OperationType.CREATE, editId ? `visitor_notifications/${editId}` : 'visitor_notifications');
-    } finally {
-      setSubmitLoading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
-            <Megaphone className="h-6 w-6 text-orange-600 animate-pulse" />
-            <span>Visitor Alerts & Pop-ups</span>
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Create urgent announcements or promotional pop-ups that appear when visitors enter the home page.
-          </p>
-        </div>
-        {!isEditing ? (
-          <Button 
-            onClick={() => setIsEditing(true)}
-            className="bg-orange-600 hover:bg-orange-700 font-bold"
-          >
-            Create New Alert
-          </Button>
-        ) : (
-          <Button 
-            variant="outline"
-            onClick={handleResetForm}
-            className="font-bold"
-          >
-            Back to Alerts
-          </Button>
-        )}
-      </div>
-
-      {isEditing ? (
-        <Card className="bg-card border-border shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold">
-              {editId ? 'Edit Visitor Alert' : 'Create New Visitor Alert'}
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Fill in the fields below to customize the popup alert.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Alert Title *</label>
-                  <Input 
-                    required 
-                    value={formState.title}
-                    onChange={e => setFormState({ ...formState, title: e.target.value })}
-                    placeholder="e.g. Special Offer or System Downtime Alert" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Alert Type / Theme</label>
-                  <select
-                    value={formState.type}
-                    onChange={e => setFormState({ ...formState, type: e.target.value })}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="info">Info (Blue)</option>
-                    <option value="warning">Warning (Amber)</option>
-                    <option value="success">Success (Emerald)</option>
-                    <option value="accent">Special Promo (Orange)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Alert Message / Announcement Text *</label>
-                <Textarea 
-                  required 
-                  rows={4}
-                  value={formState.message}
-                  onChange={e => setFormState({ ...formState, message: e.target.value })}
-                  placeholder="Type the message you want visitors to read as soon as they visit..." 
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Call to Action Button Text (Optional)</label>
-                  <Input 
-                    value={formState.buttonText}
-                    onChange={e => setFormState({ ...formState, buttonText: e.target.value })}
-                    placeholder="e.g. Book Now or Learn More" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Call to Action Link (Optional)</label>
-                  <Input 
-                    value={formState.buttonUrl}
-                    onChange={e => setFormState({ ...formState, buttonUrl: e.target.value })}
-                    placeholder="e.g. /services or https://example.com" 
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input 
-                  type="checkbox" 
-                  id="active-alert-checkbox"
-                  checked={formState.isActive}
-                  onChange={e => setFormState({ ...formState, isActive: e.target.checked })}
-                  className="rounded border-border h-4 w-4 bg-background text-orange-600 focus:ring-orange-500"
-                />
-                <label htmlFor="active-alert-checkbox" className="text-xs font-bold text-foreground">
-                  Activate this alert immediately (Will display on Home Page popup)
-                </label>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-border/60">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={handleResetForm}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  type="submit" 
-                  disabled={submitLoading}
-                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                >
-                  {submitLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : (editId ? 'Update Alert' : 'Create Alert')}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="bg-card border-border shadow-sm">
-          <CardHeader className="pb-3 border-b border-border/40">
-            <CardTitle className="text-base font-bold">Alert Inventory</CardTitle>
-            <CardDescription className="text-xs">
-              Manage your site-wide alerts. Note that if multiple alerts are active, the home page popup will show them sequentially or show the latest active one!
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="p-12 text-center flex flex-col items-center gap-2">
-                <Loader2 className="h-6 w-6 animate-spin text-orange-600" />
-                <span className="text-xs text-muted-foreground font-mono font-bold">LOADING VISITOR ALERTS...</span>
-              </div>
-            ) : alerts.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground text-xs">
-                No visitor alerts found. Click "Create New Alert" to get started!
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-border text-[10px] font-bold text-muted-foreground uppercase bg-muted/20">
-                      <th className="p-4">Alert Title & Type</th>
-                      <th className="p-4">Message</th>
-                      <th className="p-4">Action Button</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {alerts.map((item) => (
-                      <tr key={item.id} className="hover:bg-muted/10 transition-colors text-xs">
-                        <td className="p-4 font-bold text-foreground">
-                          <div>
-                            <p className="font-extrabold">{item.title}</p>
-                            <span className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-wider ${
-                              item.type === 'accent' ? 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-400' :
-                              item.type === 'warning' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' :
-                              item.type === 'success' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
-                              'bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-400'
-                            }`}>
-                              {item.type || 'info'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-4 max-w-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                          {item.message}
-                        </td>
-                        <td className="p-4">
-                          {item.buttonText ? (
-                            <div className="text-[10px]">
-                              <span className="font-bold text-foreground bg-muted px-2 py-1 rounded border border-border">
-                                {item.buttonText}
-                              </span>
-                              <p className="text-muted-foreground mt-1 truncate max-w-[120px] font-mono">{item.buttonUrl}</p>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground italic text-[10px]">None</span>
-                          )}
-                        </td>
-                        <td className="p-4">
-                          <button
-                            onClick={() => handleToggleActive(item.id, item.isActive !== false)}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                              item.isActive !== false
-                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 hover:bg-emerald-200' 
-                                : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-zinc-200'
-                            }`}
-                          >
-                            <span className={`h-1.5 w-1.5 rounded-full ${item.isActive !== false ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-400'}`} />
-                            {item.isActive !== false ? 'Active' : 'Disabled'}
-                          </button>
-                        </td>
-                        <td className="p-4 text-right">
-                          <div className="flex justify-end items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleOpenEdit(item)}
-                              className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setDeleteId(item.id)}
-                              className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 h-8 w-8 p-0"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deleteId && (
-        <AdminDeleteModal
-          title="Delete Visitor Alert"
-          message="Are you sure you want to permanently delete this visitor alert? This will stop it from displaying as a pop-up on the website."
-          onConfirm={handleDeleteAlert}
-          onCancel={() => setDeleteId(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function AdminProfile() {
-  const [fullName, setFullName] = useState('');
-  const [title, setTitle] = useState('');
-  const [roleState, setRoleState] = useState('');
-  const [signatureImage, setSignatureImage] = useState('');
-  const [signatureMode, setSignatureMode] = useState<'draw' | 'upload'>('draw');
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isGlobalSignatory, setIsGlobalSignatory] = useState(false);
-  const [showDeleteSignatureModal, setShowDeleteSignatureModal] = useState(false);
-  const [showDeleteProfileModal, setShowDeleteProfileModal] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Fetch current user details
-  useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    // Get personal profile from users collection
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    const unsubscribeUser = onSnapshot(userDocRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setFullName(data.fullName || '');
-        setTitle(data.title || '');
-        setRoleState(data.role || '');
-        setSignatureImage(data.signatureImage || '');
-      }
-    });
-
-    // Check if they are currently set as the global default signatory
-    const globalDocRef = doc(db, 'settings', 'global');
-    const unsubscribeGlobal = onSnapshot(globalDocRef, (snap) => {
-      if (snap.exists()) {
-        const globalData = snap.data();
-        setIsGlobalSignatory(globalData.globalSignatoryUid === currentUser.uid);
-      }
-    });
-
-    return () => {
-      unsubscribeUser();
-      unsubscribeGlobal();
-    };
-  }, []);
-
-  // Canvas drawing coordinate scaling logic (same as ManageLetters!)
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    
-    if ('touches' in e) {
-      if (e.touches.length === 0) return { x: 0, y: 0 };
-      const touch = e.touches[0];
-      return {
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top) * scaleY
-      };
-    } else {
-      return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY
-      };
-    }
-  };
-
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const coords = getCoordinates(e);
-    ctx.beginPath();
-    ctx.moveTo(coords.x, coords.y);
-    setIsDrawing(true);
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const coords = getCoordinates(e);
-    ctx.lineTo(coords.x, coords.y);
-    ctx.stroke();
-  };
-
-  const stopDrawing = () => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
-    saveSignatureImage();
-  };
-
-  const saveSignatureImage = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dataUrl = canvas.toDataURL('image/png');
-    setSignatureImage(dataUrl);
-  };
-
-  const clearSignature = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-    }
-    setSignatureImage('');
-  };
-
-  // Set line properties when canvas/mode is loaded
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2.5;
-      }
-    }
-  }, [signatureMode]);
-
-  const handleSignatureFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast.error('Invalid file type. Please upload an image file for the signature.');
-      return;
-    }
-    try {
-      toast.loading('Optimizing signature image format...', { id: 'sig-img-compress' });
-      const compressedBlob = await compressImage(file, 400, 150, 0.85);
-      const base64 = await blobToBase64(compressedBlob);
-      setSignatureImage(base64);
-      toast.success('Signature image uploaded and optimized successfully!', { id: 'sig-img-compress' });
-    } catch (err) {
-      toast.error('Failed to process the signature image.', { id: 'sig-img-compress' });
-    }
-  };
-
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    setIsSaving(true);
-    try {
-      // 1. Update user profile including role selection
-      const userDocRef = doc(db, 'users', currentUser.uid);
-      const userSnap = await getDoc(userDocRef);
-      const currentRole = userSnap.exists() ? userSnap.data()?.role : null;
-      const targetRole = roleState || currentRole || (isAdminEmail(currentUser.email) ? 'admin' : 'guest');
-
-      await setDoc(userDocRef, {
-        fullName,
-        title,
-        role: targetRole,
-        signatureImage,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      // 2. If checked as Global Default Signatory
-      if (isGlobalSignatory) {
-        const globalDocRef = doc(db, 'settings', 'global');
-        await setDoc(globalDocRef, {
-          adminSignature: signatureImage,
-          adminSignatureName: fullName,
-          adminSignatureTitle: title,
-          globalSignatoryUid: currentUser.uid
-        }, { merge: true });
-      } else {
-        // If they were the global default but unchecked, clear global signatory UID
-        const globalDocRef = doc(db, 'settings', 'global');
-        const globalSnap = await getDoc(globalDocRef);
-        if (globalSnap.exists() && globalSnap.data().globalSignatoryUid === currentUser.uid) {
-          await setDoc(globalDocRef, {
-            globalSignatoryUid: ''
-          }, { merge: true });
-        }
-      }
-
-      // 3. Track in audit logs
-      await addDoc(collection(db, 'activity_logs'), {
-        userId: currentUser.uid,
-        userEmail: currentUser.email,
-        userName: fullName || currentUser.displayName || currentUser.email || 'Administrator',
-        type: 'profile_change',
-        description: `Administrative profile and signature saved by ${fullName || currentUser.email}. System role set to '${roleState || 'admin'}'.`,
-        createdAt: new Date().toISOString()
-      });
-
-      toast.success('Profile and signature saved successfully!');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'users/' + currentUser.uid);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDeleteSignature = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-    try {
-      const userDocRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userDocRef, {
-        signatureImage: deleteField()
-      });
-
-      // Also update settings/global if they are the global signatory
-      const globalDocRef = doc(db, 'settings', 'global');
-      const globalSnap = await getDoc(globalDocRef);
-      if (globalSnap.exists() && globalSnap.data().globalSignatoryUid === currentUser.uid) {
-        await updateDoc(globalDocRef, {
-          adminSignature: deleteField()
-        });
-      }
-
-      // Log the signature deletion
-      await addDoc(collection(db, 'activity_logs'), {
-        userId: currentUser.uid,
-        userEmail: currentUser.email,
-        userName: fullName || currentUser.displayName || currentUser.email || 'Administrator',
-        type: 'profile_change',
-        description: `Signature image was DELETED/cleared by ${fullName || currentUser.email}.`,
-        createdAt: new Date().toISOString()
-      });
-
-      setSignatureImage('');
-      clearSignature();
-      setShowDeleteSignatureModal(false);
-      toast.success('Signature deleted successfully!');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'users/' + currentUser.uid);
-    }
-  };
-
-  const handleDeleteProfile = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-    try {
-      const userDocRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userDocRef, {
-        fullName: deleteField(),
-        title: deleteField(),
-        signatureImage: deleteField()
-      });
-
-      // Also update settings/global if they are the global signatory
-      const globalDocRef = doc(db, 'settings', 'global');
-      const globalSnap = await getDoc(globalDocRef);
-      if (globalSnap.exists() && globalSnap.data().globalSignatoryUid === currentUser.uid) {
-        await updateDoc(globalDocRef, {
-          adminSignature: deleteField(),
-          adminSignatureName: deleteField(),
-          adminSignatureTitle: deleteField(),
-          globalSignatoryUid: deleteField()
-        });
-      }
-
-      // Log the profile deletion
-      await addDoc(collection(db, 'activity_logs'), {
-        userId: currentUser.uid,
-        userEmail: currentUser.email,
-        userName: fullName || currentUser.displayName || currentUser.email || 'Administrator',
-        type: 'profile_change',
-        description: `Administrative profile and signature details were completely DELETED/cleared by ${fullName || currentUser.email}.`,
-        createdAt: new Date().toISOString()
-      });
-
-      setFullName('');
-      setTitle('');
-      setSignatureImage('');
-      setIsGlobalSignatory(false);
-      clearSignature();
-      setShowDeleteProfileModal(false);
-      toast.success('Administrative profile and signature deleted successfully!');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'users/' + currentUser.uid);
-    }
-  };
-
-  const currentUser = auth.currentUser;
-  const isProfileEmpty = !fullName && !title && !signatureImage;
-  const isProfileActive = fullName && title && signatureImage;
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-border/50 pb-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <UserIcon className="h-8 w-8 text-orange-600" /> Administrative Profile
-          </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Manage your official administrative details and upload or draw your signature to automate document validation.
-          </p>
-        </div>
-        <div className="flex items-center">
-          {isProfileActive ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-400 border border-green-200 dark:border-green-900/50">
-              <span className="h-2 w-2 rounded-full bg-green-600 dark:bg-green-400 animate-pulse" />
-              Profile Active & Configured (Edit mode)
-            </span>
-          ) : isProfileEmpty ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-zinc-100 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800">
-              <span className="h-2 w-2 rounded-full bg-zinc-400 dark:bg-zinc-500" />
-              Profile Empty / Unconfigured (Add mode)
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50">
-              <span className="h-2 w-2 rounded-full bg-amber-500 dark:bg-amber-400 animate-bounce" />
-              Partially Configured (Edit below to complete)
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="bg-card border-border">
-            <CardHeader>
-              <CardTitle className="text-foreground">Official Credentials & Title</CardTitle>
-              <CardDescription className="text-muted-foreground">This name and title will be placed on official certificates, payrolls, and letters.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSaveProfile} className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Account Email</label>
-                    <Input 
-                      value={currentUser?.email || ''} 
-                      disabled 
-                      className="bg-muted border-border cursor-not-allowed opacity-75"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">System Role</label>
-                    <select
-                      value={roleState || 'admin'}
-                      onChange={(e) => setRoleState(e.target.value)}
-                      className="w-full h-10 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-orange-600 focus:border-orange-600 font-semibold"
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="manager">Manager</option>
-                      <option value="ceo">CEO</option>
-                      <option value="editor">Editor</option>
-                      <option value="guest">Guest</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Signatory Full Name</label>
-                    <Input 
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="e.g. Grice Asante"
-                      required
-                      className="bg-muted/50 border-border focus:ring-orange-500 focus:border-orange-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Professional Title / Designation</label>
-                    <Input 
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="e.g. CEO & General Manager"
-                      required
-                      className="bg-muted/50 border-border focus:ring-orange-500 focus:border-orange-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Signature Upload Options */}
-                <div className="space-y-3">
-                  {signatureImage && (
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 rounded-xl border border-border bg-muted/20 gap-4 mb-2">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-white p-1 rounded-lg border border-border flex items-center justify-center min-w-[120px] h-[50px]">
-                          <img src={signatureImage} className="max-h-[44px] max-w-[110px] object-contain select-none" alt="Saved Signature" referrerPolicy="no-referrer" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-black text-foreground flex items-center gap-1">
-                            <span className="inline-block h-2 w-2 rounded-full bg-green-500" /> Saved Signature Active
-                          </p>
-                          <p className="text-[10px] text-muted-foreground max-w-sm">
-                            This signature is currently registered and actively validating documents, letters, and payroll slips.
-                          </p>
-                        </div>
-                      </div>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => setShowDeleteSignatureModal(true)}
-                        className="text-[10px] font-black uppercase tracking-wider text-red-500 border-red-500/20 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20 cursor-pointer h-8 w-full sm:w-auto"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Signature
-                      </Button>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Authorized Signature Image</p>
-                      <p className="text-[11px] text-muted-foreground">Select whether to draw on the pad or upload a transparent PNG image.</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant={signatureMode === 'draw' ? 'default' : 'outline'}
-                        onClick={() => setSignatureMode('draw')}
-                        className={`text-[10px] h-7 font-bold px-3 py-0 cursor-pointer ${signatureMode === 'draw' ? 'bg-orange-600 text-white hover:bg-orange-700' : ''}`}
-                      >
-                        Draw
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={signatureMode === 'upload' ? 'default' : 'outline'}
-                        onClick={() => setSignatureMode('upload')}
-                        className={`text-[10px] h-7 font-bold px-3 py-0 cursor-pointer ${signatureMode === 'upload' ? 'bg-orange-600 text-white hover:bg-orange-700' : ''}`}
-                      >
-                        Upload Image
-                      </Button>
-                    </div>
-                  </div>
-
-                  {signatureMode === 'draw' ? (
-                    <div className="relative border border-border bg-white rounded-xl overflow-hidden p-1 shadow-sm">
-                      <canvas
-                        ref={canvasRef}
-                        width={600}
-                        height={150}
-                        className="w-full h-[150px] bg-neutral-50 rounded-lg cursor-crosshair touch-none"
-                        onMouseDown={startDrawing}
-                        onMouseMove={draw}
-                        onMouseUp={stopDrawing}
-                        onMouseLeave={stopDrawing}
-                        onTouchStart={startDrawing}
-                        onTouchMove={draw}
-                        onTouchEnd={stopDrawing}
-                      />
-                      <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={clearSignature}
-                          className="text-[10px] h-7 font-bold text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 bg-white border-border"
-                        >
-                          Clear canvas
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div 
-                      className="border-2 border-dashed border-border hover:border-orange-500/50 bg-muted/20 hover:bg-muted/40 transition duration-300 rounded-xl p-6 text-center cursor-pointer flex flex-col items-center justify-center space-y-2 relative min-h-[150px]"
-                      onClick={() => document.getElementById('profile-sig-file')?.click()}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const file = e.dataTransfer.files?.[0];
-                        if (file) handleSignatureFile(file);
-                      }}
-                    >
-                      <Upload className="h-8 w-8 text-muted-foreground animate-bounce" />
-                      <p className="text-xs font-bold text-foreground">Drag & drop your signature image, or click to browse</p>
-                      <p className="text-[10px] text-muted-foreground">Supports transparent PNG, JPEG (auto-cropped to ratio)</p>
-                      <input 
-                        type="file" 
-                        id="profile-sig-file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleSignatureFile(file);
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Global Default Signatory Checkbox */}
-                <div className="bg-muted/40 p-4 rounded-xl flex items-start gap-3 border border-border/50">
-                  <input 
-                    type="checkbox" 
-                    id="chk-global-default"
-                    checked={isGlobalSignatory}
-                    onChange={(e) => setIsGlobalSignatory(e.target.checked)}
-                    className="h-4 w-4 mt-0.5 text-orange-600 focus:ring-orange-500 border-border rounded"
-                  />
-                  <div className="space-y-1">
-                    <label htmlFor="chk-global-default" className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5">
-                      <ShieldCheck className="h-3.5 w-3.5 text-orange-600" /> Use as Global Default Signatory for Official Documents
-                    </label>
-                    <p className="text-[10px] text-muted-foreground">
-                      If checked, this signature, name, and professional title will be automatically injected into generated invoices, printable receipts, and employee payroll slips across the entire platform.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t border-border/40 mt-4">
-                  {!isProfileEmpty ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setShowDeleteProfileModal(true)}
-                      className="border-red-500/20 text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20 text-xs font-bold uppercase tracking-wider px-5 h-10 flex items-center gap-2 cursor-pointer w-full sm:w-auto"
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete Profile Details
-                    </Button>
-                  ) : <div className="hidden sm:block" />}
-                  <Button
-                    type="submit"
-                    disabled={isSaving}
-                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase tracking-wider px-6 h-10 flex items-center gap-2 cursor-pointer w-full sm:w-auto"
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" /> Saving changes...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4" /> Save Profile & Signature
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Live Document Preview Sidecard */}
-        <div className="space-y-6">
-          <Card className="bg-card border-border overflow-hidden">
-            <CardHeader className="border-b border-border bg-muted/30">
-              <CardTitle className="text-foreground text-sm flex items-center gap-1.5">
-                <CheckCircle className="h-4 w-4 text-orange-600" /> Active Stamp Preview
-              </CardTitle>
-              <CardDescription className="text-muted-foreground text-[10px]">Real-time rendering of your signature block on official documents.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-6 flex flex-col items-center justify-center min-h-[220px] bg-white text-black relative">
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03]">
-                <span className="text-2xl font-black rotate-12">GREFAS CONSULT</span>
-              </div>
-              <div className="relative z-10 text-center space-y-4">
-                <div className="border border-dashed border-zinc-200 p-4 rounded-lg bg-neutral-50/50 min-h-[90px] min-w-[200px] flex items-center justify-center">
-                  {signatureImage ? (
-                    <img 
-                      src={signatureImage} 
-                      className="max-h-[70px] max-w-[180px] object-contain select-none" 
-                      alt="Signature Stamp" 
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="text-zinc-400 text-xs italic flex flex-col items-center">
-                      <span>No signature recorded</span>
-                      <span className="text-[9px] mt-1">(Draw or upload above)</span>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-0.5">
-                  <p className="font-bold text-sm tracking-tight border-t border-zinc-300 pt-2 min-w-[150px] inline-block">
-                    {fullName || 'Administrative Officer'}
-                  </p>
-                  <p className="text-[11px] text-zinc-500 uppercase tracking-widest font-black">
-                    {title || 'CEO / General Manager / Secretary / Admin'}
-                  </p>
-                  <p className="text-[9px] text-zinc-400">
-                    Official Document Signatory Stamp
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Delete Signature Confirmation Modal */}
-      {showDeleteSignatureModal && (
-        <AdminDeleteModal
-          title="Delete Administrative Signature"
-          message="Are you sure you want to permanently delete your saved signature image? This will clear it from your profile and stop automatic document validation signatures from applying to official records."
-          onConfirm={handleDeleteSignature}
-          onCancel={() => setShowDeleteSignatureModal(false)}
-        />
-      )}
-
-      {/* Delete Entire Profile Confirmation Modal */}
-      {showDeleteProfileModal && (
-        <AdminDeleteModal
-          title="Delete Administrative Profile"
-          message="Are you sure you want to permanently delete your administrative profile credentials and signature? This will completely clear your official signatory name, designation title, and signature from the system."
-          onConfirm={handleDeleteProfile}
-          onCancel={() => setShowDeleteProfileModal(false)}
-        />
-      )}
-    </div>
-  );
-}
+                if (base6xœì½ëvÛF²(ü?OÑÖd‡TF¤.¶œD‘å‘%ÙÑù|Û’œìYÏ$!c` Ğ²F[kg9vä«Kw£è@IÎev8‹úZ]]U]]—oÒxU\}!*ŸhŒCx+‰A…À÷ïåÒ0KâawµúòZ„q:[OÃ†Ã¼¦i’ºj–\‹a'¢{Äñ ~8¢Š¦‡ÉÆö©åîÊşhÍÄpä"N†A,Tğ%ŠÃÑÎÊš°Û¬¦v¬öH¯×¬ŸAv9Šîªx´Wªßà"ˆr1óÃäb'ÁèÍÉóîbßÎ‚ìC?›ól’äı4<¯Às\Æ«kııúù…{F£ÃdØ&q“’Yw4X„\guÍ}~Êw ×y|ÙÏÓh
+³ûïÿÓpÌxZ‹,LG;"Xä“şp‘¦Pî<{Ü_D#ªà•j¼¦áè<ƒ	™8Íƒós£ŠÚ„~èWñ6¦a–Óù€–>†é™zĞ]-JEÙÓ4™RË;"Oañªßïwõê<WÅR]‹qu½ê)úÕW\ò ˜# t°…!?Úq­ªuÑ+”…ù	‚¹Ûéèg°Úa~â…£cl¬k–§ùœ]Î£Ù¾æ‹7LÊ"z…öîÉ“ Ëåé<¥}Ï ½Ùˆº£8f°[.uUèó8{C¨
+}Ú½Á¿×ß#–¥a¾Hg¢KwGÑG1Œƒ,ÃE~´’ÍƒaØ»ì=XÙ“m^­-şsÁ=]ÌçIš‹xÌfa*¾^WÈ]në<?	ü§x,²é}O“åá4ëù .²<:¿ìÂü"gbŞ{ ãŞt0]°!I:‚bü§'¥Éb6
+G½O±sc¸aX=bûFj4ŒÄf¾˜ôî÷·Åıë:ÿ´ZÀEÙş^¼šÅÑ,D|ì–ˆÅ.@{fv€zÀ¼EDuz²÷óEC÷ôGMœ~ ˜Æ)À¬÷`cC$°tQ~Ùûfv>`vöóVÄº=®U›H–qõ^OŞ…Õï¤·E Á¿,Íó±èèamolt`;áƒE³!³sışÚÑî: ¿¼öw'¬Mf9 B<"ò×Ë¦ü÷<IÃ1seï9ÿ#ì`Å –òzÀ8ÕÊˆ}"]4Ôı‹àR¬‹WççôîE2
+;×»ë“¥ÍÍQ÷Ÿ2!®5˜Ò²WrGğ;‚0ƒ=ŠËd!zû=’ê¤‡û>
+3¤¡˜@“G}íÙ$Ñ˜ü…¾tAµNÓL Ø C4$ZA$Jç,˜r±“0›«ûr¬Ïk–ªüóÉ"Ï“™Q>™ÁÌ†]åÉx‡Æ¬Ín>iÌòG¸¬$‹¿®ÀTWFÀ|q¾bÖ4°¶R×¦%“XÑ"3‚0*fu“4˜ÃŞCØWº¨|ö<£æ.&@ŒªæÈ²è_HM§+ú™	Ç*œ†š®­Ç5¡õµsqc‰v×äªm¹ ­èñtTĞãIïí7'ïˆ2>Ô[n@’ ¨yÑÛ\¿/ì›è4@p¤#à<“‹Ş$ÂYå&N ›+µ«Äö†MÈ'[nJáæ[¥Í¹û"Ì2”	¢t‡fKËğ ]’\ˆ³I£ÌÚ“-ÿöp,Go³ Çe7ª5 «œ»èOƒy·›¯E…ŸH€µyÉî ¼õğó!¼„­×gÉî=·Õz .•Ö›•%d%ö‰®‹í¬–ë˜lCbm8<Ï‰‘—öY[(‹PÜB”IÒÌ·¾_^™â¤xôè‘ ‰0w‘;q{CŒ‚ôƒ±7¿ÛØXßdÓ)Ï°L†Û£,Œ0Æà‘‹v*áŒ˜zıí
+]/s…›2¨f[ébB`¸²Ë¤$íëÑU¨Ğ×¢´K– îËòõóvscşé›7­³<#fzLÉ¦É,qÌŒ† õ€Ğ!Nîæ»ÆÈ*BÃZÇqUÛ¬®HU˜ÖrZP)—Ã¬‚tw}`QN5 ½÷âp6f‰(¸·4ï}Ëƒ‘TÅ#¼Lèœ”‰Ë0ïãh®İd¢™‚É¸kºkïµÇní–àv#-jö–Sv®!ärï¬ì$3˜Q 5ayF/œ‹€`!#¢KgNqõ±¹ÙL’-û^z­ìîØp¼v¡½ÃÛ±"¦ÕÃ™^Á)#ºäS?§Ğ]s˜*æ0ÍÆg°èºm_bâ´™×§DwùPƒ4Gì"%¥)_½ŸŸz½·ßnüÇ;¹[€ºóO0ëù%\E1¿t©¯„°Çä,"lŞñĞ–âT¯yÚ›% cùÚàÃŒdf%ª®Ûˆ¹G€àöMÍ…‹º; ·œh«¼±õ8â±›6Àq0ü°^óÉb:˜ÁiIğR '÷pF4{_‚ğ›rñõ	âüÑÊ~ÃÉÁJMÑ4<Ó4L_' ¦\>Z™á±ˆÕU3¡s›ô¶·@£=•P•h=ËÔK.Ò,I{ÿJ’i/Ò`”"Œ:]·m
+1òi]ÿ%±êöXrÑOæá¬[€hMtşk2ûĞqrPş¬û -•ZuØƒŸÊŞ›«İõIc¹0 Q­`b ôõCïg¾­¨>÷¬=Y[TmM…•NëÚNæ‡w&íf0µ¡åÄºÊŞ=©>pë0Ù)¼ïºÖÔóÔ¹ÄÁé‰{À×Jª^$æ÷
+¼Z­%&– Cc3OÃŞEÌÍå‘Š{u‹§Şáz§WËd§9°@·Œç>Èmö·“¸{|»Y&³1NÄ`ÿò¡§†sŒßÕÊÓMb´ÿïÿü_¯0=m¦ıâ´ÿsV+Í_EŞ°ÂÚ8õ*ƒõkÎ„ô<Ñß,èKï¨{›N•{iä¸(+”¸¯Cvğ`[Jƒ˜ F^Àe¬!O¨9 È0où7ò‰Q—;pj¼Ÿ½«(d?o›ÛŸ³KËå­3Õ––{œYÊÊâœˆàHGx×ï÷ëÜILÜø]ÖdVÊàÍ]Ú¾2gZ
+z†£ğB¼fal\qÈŠD^eÄæÃáâF£ÌfKÇºŠhæÒ7”Ocç«¸^>}U/A|­êû ÀT‚Á?
+?¦•c¥_äŞnğR;ø¶ˆ˜,H–€}Í2£|°bc¯yS¢¥; M‘æ©û²eoã¦&óŞ†!To× ßT˜çIC•Œ‡ÜÑûŠo¢_§É8¶qıw$Vøù´û|
+lÎ	ŞÕs*m˜A‡ÓÈ­+”7™y¥ú¸?ƒVèrÅ°Eöÿ9würˆ£óú³»„n€„Zü ëX8.„"Ë4C Ztø=	ƒÑ¥º­íøø·sÜş`¿ûD
+D‰•XqQ×++ãI’åB|_½­XÛìØcßØLÂ-¬ñÙ©áò¥**¸ÏSú$U½vwCzeÁ GÌ•tõàÑy. œ«÷¤¢OToÜ<ËIºñ8?Ï=Úe¨t<›/rç`ç@|Â	ì«0…õ¡*:´¼8ÊêPÕŞA¼%¹=¨;ïÀ:LP€#m¨®
+Zİ°"à8ÌûÔ¤GŒµ@ûmqµ8…ÍE$ao‹/­—ß±¢nUtõáª6Ü‘EP¬.Ó(t€Å!œÑFd<ríÑ–Eßõuá’Áùb¢V£Š<Õƒ>LEÎ£8tA2Ï]áKÂ¾“ğÜÃ`8ç@d}Ö¿^ëOÂhHÿ¯õƒø/p@øw0»:)ŠAFÅ{ÜÕ‰=¬ÎvŠFÀ¨ñ€ÕCİ{§Ğcöé*İ]\ÈR¹øV‹<;Şd×ñ¶D¹ÀĞû6ÈwÍ„ØuµÍ„X‹dîõ1ÕX&:(C²Çı!é:7|ëÍ˜GyÓ‘"y’
+ÉôYÁQš“N HÒÀ¬l;ÉwA¼«¯h’.–hÜ’¤°Rü´jé.Àñ:dË¶ÚƒÇ×®ö%9N™l´Ø1D`ø‘³¼}ñY–ï>ËqŠwHFäÒ)zØÃvkïë×9j”&»÷,³IşïYr§]¸†´½£ÊÏ«÷?ëÈ2l+›â×* ŒuWs#Øxâ¨Pu·ÄDW‚oÓHš%•ÑèÖX­	i˜Ï]_W¿ÿç9ü¤³~ÌPÿd².B¢áp.ŞæøhzùN<BƒT´ˆ	wƒÙåÛw{İ·ïÈÂQVˆ2}`ŒklÉ?Ìj†Q¤¬2/°qªñ’¿[®+‰.¡]Áÿ…Ù0¤!©~:O£$%s³Î4E‹©z‘‘<Î“Q"­gG‹ğzÀê_(SS9(‰§4¨çüİÚÈšåG°h9AğxD•Ø2ÀwÜ b²Ô^ÿ]%»P(qt~¶Õ¦‰4·ÿ´ğË"L/+&É´Bh“LÔãÉe·3¬<ÛÏaê„RgUÚ r[‹ìv„İ „VAT’öÔİ_ÖDWW[FÚjùõÛş(òU'|¡;Î+`ö;~õ#˜?Uü:
+ò -zWWM«Üç.ëØ5m†kôËtõiç8æ…d‘ÎÅÖÄ«90ÒóşóãÓ³²MùWÙÛRÓÆäÙTz&ÖKÉââ”Ñ­ÖKàp9ÌûOZ}„]m5ìÏÓŸ²‘œ²BÎÊIüîKj·*Gõ=s¼<-lˆkĞõjw? kµƒô3µFß²Ô“K—=z8E=œ¶HÿÛ˜ŒÏûÃdªîr
+Ól¶˜Î ‚fY·C€ƒ	 DÃÏğØpÙ1‘@ntÀc_W¶´k7—6²¹‰mkqE}Z}·Gµƒ“£ı³£
+²}¡Ì»M,z3‡-JBJ¸S˜
+¬	XºS9!~d`U+® VŒğ¿Ö`ï!JhĞèF»¯ˆbãÍú5„n‡ŸNïië_^E£ë÷µÀ(("€Â ‚1ãİ„B¼G¶àßó(ZUKhã™4¹ØpnÈrY'p­fjqK:wãÃ£çGÍ±àvù!Xp”LÆµ6ã0-wÙZâÚÛ®ºBMI)f5²Pt&ÑxÒÙQ4·CbO
+B
+Œ >âWÃj²É ‚ñÉÖ†*Q<ÃR[ï­Î$M(ugˆ¨Í¦Šª_ù°ÜµQ¶Ò{œ\”»À‘AuLßné·İ)=*w©ËJÛëRoqR$­E§¼ğ¸9¤|£¶…[©1é=|Pïp±‹Ì<L·ÊÚ¤øO©‰²y4¥•Ác £í]büvÑ—-%gÛ`y³¢­¾ÿ)^ãÑ•½cìÕz$í®O6­«Úoå QÕ|Ÿ¥è|‡NSÁ‘„ŸŸqéÔ×§B:}%Š.d}KívpØknxO‰è«×ş³]½Í½m#­Ú#GŠ`6cTÅïîí¾™7ioK˜vÜ áÀÕÖ¦¾èÍº,Ú=@K{:dtiíÛR«ü"ú–„øâ¥’ÊBšKw@Ò“1]Í>Kº»¡N Ç _Kİ;5˜R½vmŒª9¢Okb)©‰eÑ€ç~©ı°dW‡V£Ğ„Ï´`gÈ¥JÆ³õÒ×«Óğ—0ÆQõë.w{£´À¥ZUÈî,c +× ›ÃBëâ0ÌAÎšÁd°7–%· Ùİ ¦DRÇi4øŞ…gxß8Ú)~Ş¯8ıùÚQ8Zvô¥ã`ÆŞ«J"¿‹9>â¸9KØú½‹`”ûhªgv×©u·íëX¯„ƒÇ.yÿMG¥{vÒì[&×óO &ËşE©^r~Öæm|2\d½Q`“H—+¶¡±_Qı-×CÒ(8ËÎ¶´nGÚXÎ’¼cr;M¿S&–ÛçT	ù•HØtiU‹ü…èYÁ|G³{C¾w“ã[A‘teïøwwß´ªÆÂåÊŞú»TU€ëÊŞóä¢®Òî:ãà/,ƒu<‹òä>\ş¹¿~İıÅ§û[í.¥ ¸³½…:bq˜,µC¢Yo.-h­„2§Yª‘,áÊŞ!üûï¶Ñ¡@¥Vİó^Œ©;T=µB,©A»fi-\Ôº™Ì‚Ÿ[X
+‡#ûÊ«ê_ë½ærœŠVöNtE¥€ëÎÉu½ä”ıù±ú]Ø54Jf$Š‰xlÊg¦sÙú×â¶©8HâÅtfS6GŸp•ò¸ò"E®øóVì[Ñùc«bßÊz¡Êíğîä¾ë4Í[Íıšö–uØf25¹_êÃa)Kî)¦åZ±™µ’§‹h£¿İÂ«ê2F:½şy•³\&UÅèX@úíUéşX6¦-[è:ƒ8¸–¶lrÚvxÙ““ºµêÑ¶‹èO'pöxF¢®~áŸ×@GLe¸:ÖšÏ°k-ÕÛB‡y­CRR>º*«-¯+Q6,Êãœ`íƒı®·ŠÔ+~æ½bñä?Ê1¤ŠßÁÆ±Góo¿Pû]oçóî–Gÿ([eèßÁ^‘ÃøwÜ$J—ÍP)Ç7¸çQq·pırÛá!yÃ
+’ ÷ :e›á
+XÙ¤|“Tœ¿·6jw/éqnV7¡÷Ó`.UŞá“pøÁæ!ôòĞ³nåªJâ±é²ãI/Ò{¾Ì½ÏË„ğ6PI(¦	™(
+4G:
+„cJ‘İW8ê/ª88X—Å%\"·GÆüÉ(ˆÆ¥ı'¿¤ƒy“q­ì§&+[È/Á,Çqs¯0+t)ƒÚÅ~ØÒ¾“é‹Ä—ˆê4˜±í£oÍ’\B0(Xvòpå›ÿGW€k»İAW_Õ«ğ¢Âº7–%9E|Ğ`…¼6©YÓdeÍ&"âzGp•˜ãe¹~È•åO«z&®M³¼({Q8r‹GÔ´:Áã"ç…ªˆı“‰´â8«“R¡kVY»Åıeµ`û!Y¤Ywcş·j»EÙá"„#epéèßİK?OiÒ¨6Ã…‘½ÙoWÂ­®÷D6	FÉn;>©ËßS+î?¸çÅ²q$/»¸˜Z¸Â¶š.o¿­f‰‡è9¹~;£cUbT¥‡@Ñ ÁèˆOÚñúi3‡“ş•U¢ÙÛ³Œ)›2ğIÕ_Ø%İbÖ…R±»{XJÖ*:Şã"Î(Œ¡£Q½g7Ø©T,Rœ.gRªî¹ { D‘QÃ6·Ùì}¾é4İ‡Yónúçe847w‹˜SuB•Ç–½ÖÇÎë[W²’PT¸+eËÒXÛ
+:è™ÀdS›WX¸UÔ¤DÎRÎ¶š×¨ª’,Ó"h¶YL]ÄOc² ¡¬ÚË£ñ$Ç¸_…¹@9j§¤ ÆÕz…
+,lŒbTĞ]T™µ¬ôPvR]½.C¢I÷ÊÅ›®¹w·eİewâ]‹íÊÀÑ¦Á%×íº÷)™şÁêÔoG×UŸÇı×q¾•P£Û8EË}ßÖe¼Z›'‹®ãønÓüa™•H]zòÑu™Ø^•¶¤¦ˆÂš¨ñ®,-ó®ì•8|å¾¯ª½#{)^Ÿ¼zvrtzÚª²¼{õòÈU¼z'V:¬Vn(ŠÛ	§ëÈËğ"Ò‰§{ËDÛ§ìErZünö%Á 1Ùó(Ë©êõ«…Ê,>„EÕãâwså!Ğ’ ÏxÀêWMÅ/nì5"ËX]>/=¬m#ŞXÏ‚ÁZ3”XcîkÑèÌç°Å•ÿF³]4E¾ììu­bjzëëÂX91O08¶šKÇâáä?ÑI…—ºømÍ@†o/œĞÓ@yÿĞšò7ğ/âi1~ËAÇ|ÜÎM`¡–F0Ó
+0ÒpÍ1¦ô3” Ö8x½ùÈ^š™Ş>´„øô½7¢aø‰Ñô,ˆc\'£9[à(óEûqvÜ2Ø½ÃY˜1#C¡kÙ?0F5= Ò3M7’8B6@Å€&Sì^U6ûÔÁj§ã÷š¥œ§á„ì"©ükõ«¦Æ 1n=/5åâdœœæ—q(÷“üeÏşŸÈGhRìÚB_‘[áìø¥×I8÷‡È«¬Åo»]æ?ÔZˆN°ñˆ¾cüuú’âƒ.d9³h )ûÂı¤~Õ€aÍÈ¾„é•şY¿) šBª:øİèÑ§9œCñŠr,Ğò'Ì:¥&(r· _íÖ%îÚ•2Ø6º3’¨_vÕg)ÔûHôPîàè•øJ<%á€p]$8«àÍ¢é"æ ¤å]e²¤òW=d0rˆºú’„¬x`Uİ(WL+ªàE©2¬yFÅÌ1×Ïê»=`¿­cªk›+Õ‚ÈhÒ[c@já$ßùÂç’U7ûâiˆ · wÒ]v¿×cÑ$\7s[äÖMÏExâs^”:+”´I•ö¡ñövS. aÃI€J)j¨r¾È&~:›Œ•…¤ Q—ZúÜÎÏÎJ`nêpUú!ÂÊn©•Ux ¤l`./2ÀëûKÖJÎæm–Yöb®3>úİ.´–Ø¼Ë\”h^o;u“‘ˆ†â2hÈî í\Lİ«}_­6œ.a™C´¼'é(®¤ßBÊ°ÃĞX¨s¬‡òÇ¸ÑâáèhÍÇô¹Ó‹]áêÚiŸ†Y©X$*Üït(Ô»–[ë—ÎÊT§Í*½™.5  h ªÕ|Ê‚]uf‘fFGå¹E7››qBêFrvÃ'ÆÕÒ:Ñƒ—3¡¬*tZPhjäÛ¢ù§•º
+È–·„ÍŠÌO%¢^\—Ü½ı_S$+¡dæL x0Ù€f°Å«G²_)øîÎ–,é	ºP?ñN6£­=¦çØX.Ğ=F•î441k2ÙKËÇ;èW… ]Ì9Î:ŞÆÜÎyOÑ1Áƒ<Ğá/rñh6Q¶Ü‚[íëfQˆŞïã8WW…õzíçÙÏ³ŸĞÂq.¯îØÿ¹g|½åï	(‚)pÂOÃ(—i±&ø K¦¡HÎ†U™ÿLà_Àà3€µ7Mf0ò`âo&3:™øR¼6¤Yà°Ct1<Ê†°4Ş_şòñ&`ËÈé*È¥oÜÏ3F¾şŸ~ˆà§J“¦˜²çÎy°¢ÙÎ×_‹W0¼µÜŒ•ÀS3ËE]àÕËià\lË‰À19]ŠšÎhŒpĞÍ(ª×¼XWq1‰`³äİfÃ`ÊbÕG ÌŒ 3ŠÆğãxÌfaœÁ¬¶pä|öO¼ÒÁ5ÁÉüSØú¼†#j×Z‚&2eÆT¿ó´2±]	AöaefyóCckèA8Ã^F	¦ı€•Ã‹TDìÌ(•“1+à}`Àâ,„i¾™S@Ì¬!z ´¦Q†ÃGE^šœ‡ôš)=zC»n1gp¢{FïÆ‚Y¢ Â@ÌÑeÃ!É4ZXÅxqHÓÎ »p.KGô8ƒé~ TE·ÉAˆsãUœDËÂ?³ğ²Ş—N4”v(eÔ„ÀôÀ­GMã-5_F¼v3Œàv†`´5îaŸOpë„uËÖp¡ò×<ƒõ/¹;3Mã€í¢oN½<û§gÇ/ŸÁßçÏw0ÑM‚š3Ì‚#¥ §C\¿ŸğlÄ@ÄÒ1J<…ä$ NÒ„—ñ÷PÏØÍIæğY
+ô=C HTZã}[!%û9B
+±í#Î$"bcûÙ<Â)ú‚$9?†ù«+œLûÙåá½˜&‘×…œ‘ˆ7©y$x‚I?„4`-İSôã™8Áyìü<ë*?Çy¾€!â‘¾0Ew³İü¶w{ûğr[xˆ6
+´İé ÌûCV3e€0äQP†/A‡ú>÷uZ€·8ôxô)Oì
+à„İQG°&“EáB‘nG£Ñä5‘ª`–REIÄD	0:×} ÅÓX¤n>.R Ï)íÏS ÏÄ6 æ“Ë³‰ÉbŠÇ†aÇxwí§t«<D=Ms÷åâ(7HÉdHT;Ñ™)¡h"Ö+´‡ğ†«°ƒ'âïÅ/ci‚*¯£‘8>ä´ihX¾®§ìFHNÉ"áñP_Là5ŸÇ—Ø<]ğ1ÃŒ€<Â˜ŒdnQ¦vÙDzXÑ×8@kÈñ9‘˜	ı1¯{àv¤Æ2ëVÑ`M…Ãvù¬&¤U¶4+ˆ;ÑhIß9áGÚÅçÔˆh+²X‘¢\‡Æw˜Ì:¹@,g6AkfÔ˜@	İĞŞó-ğ‚3!Ã@ó ñ8ÃV•pVà=T£±)]”Li^›ÔŸP§z*µBÿ¶‰’“z=%¦ÆŒ›å‰~qd¬<ì%çDº‘ÚÃæ	AA‡ÑŸóï!V´£BÀÃ µE¡ÃˆS|@nO<cµe;$lÈ¬AÆnÙÀ‘.¦È,FHÃYãò¬ÎLéÎˆš444I
+t™!Àì±¦v°à
+¾r—À¢eJ€aÃî‡ÿHğ9ğ!úSìc¤¯¸7çSm¥ÖŒÑQ‡s’ÒèÉ4Ä”g1(Cå~dn o‰ÌĞÓ¿ÓM@æLX•\b'rÖ@²?”½x4ô“6èb†y§Äe_ÂIZtB2ûú1ÈàÌ±M1È(D¶HrÈ/‹€Ä@ÂÙ"qRä6AÎ%öŠñ`ÛÏáAN-	@!^c)…»¡mƒ¾DØ]üj¨qVq/‚2íŞğ€D¦iñ) à¢lÛ$ù@æaRÆÑkü1eošÑ?“KÀĞ¯¿ŞÜşãcèV8¢¢&«L}¼ù–ïdâ1ö
+c¼@j™ãf‹ã`€‹ÔBe¶Ô‘è¤G6®ÂñNr˜ÓèS
+ä•èWïk‘y#á >+§$œ
+Á~¥µá-C‚ÚOQ6	¥„ìÚÎ÷V\´g_À×4?c4ÕT2&f¯AZ?ş±(0Eùåš<õJ¤B‹ÕãW•äìg(ÏAÎĞ6¢•»Hpò@Oä©cË(KËğÓœ¼Uèl†sœãWP?,%Ùh¶µl·†¡ ²\í[½x@‰Ååt. 00†‹Æ{‰ƒT#} °Ä˜Tëzicp2›¨és`_¼Äk|¨/§¶@C ¨'Bt©%ÌI¼ +RØdø™"õr±fJ¨HjãèŸÒ¸_ X-3¨¤PAÉXg’5ŸƒDbg0 œB Âf ©(r´¦Îk6é‹f$Âpğô;¿’jG~‘à‰A4ãE ñT¢)Ò°ËaN½8YŒøÉ„Ñµ‘jóDÌ§¥Œ€çİ¤ÈÊ!*ŞáqÁÚŠEÙ'ºËsqp'nÆà·?!µ“HG+saØB)Æh×úĞô…
+V¤î)­Ša	5×* %>u×‰A¬ĞËs}áà;şQÊ;ä˜yCJÕ¤Â¨¸Åìêšoñı»¾„UQP__VŠj…ñú²RÁj„Ä‡ìa]Í®š1¾ŠË¾âZ°x…wzİÁvŞE§ôúMW.éPİü4,€ï‚—îZ	‚§¥>ZÀİW9£z9Ûû/¯pØ}Œ,»ºÛù^3ˆÚ8½A[PiÃîêuLxG÷ŞæX1Ø£ãŒ¼U”Â2ENé½£Ğs?ÈƒÖœO©úR§XB+béâeÔr —.k ×uEŠv@§EZ(ñQ:¢ã]C²)£ŞscÃ´Æ¸ã*QKQÇö‚”á¨¡‚o»*ìá+QT€¹ï¦˜(~ø•õoq½§Á]Û¸‚QÔ² øoá*RÚ>¥‹Kü(¥ï÷°H_ĞĞ’qÏ(,5ï²´iHÌÓgê#j‡¾ËàŸdow¡pñ{£ÎJ®ZÍ	I4ËçB«„òyé)–»ÏæÀuº¿uVßn¼«”T@ïÆ\â5ô[ÊÅxm¸°~Ó‘%ëJÙ¶´Y#m ¦aOl`Û ¦FìRÜøµ0÷@¼Ş.h3¬i PÃ¼|)3§4Ã_Cÿ¤¸‰Ã'ú&ìä[Â½jIÔfK:½ü¬v¸¯ÃşhDRêoµr,x&¿ÁjğÅª‘P7±äZÈ[«ı4.ûxìèª‰•fÖ]­†7e³ë6µBl»špÿ@²Û%¡¦i¨KXŠµ›¤ÑÃƒ
+e²I'ÜÕ²ø4v
+wõøÈ y¥€Ç6¾”ÊºÃ¨ $üµÖÿ÷Ûÿısö·wı›üûs_~ùrİHQ§7f½
+übB^cÏXÉ#$êrªÀ~!¿˜±d}gğ”>^+˜ŒDÎ¶Xí ÎŠ»7TJc¤µvÚV§~4­JÛÆ8ÅãıTìïV¥™Yr¤áÒ¨Ì5°­*º_Mè¡¬üäãÏß¹j@cJÎ’ñ·Òã®q·åT«˜<›ëºcCKZ <@;Â`æ	ÍÍ’áIxÍé(ÆÆ,(Nô÷VğÍ¢{5‘®ªU¼gõï]É÷ÆJ~yUªô
+6‡ÈC	ºFañûÚ^ó÷w¶„o^Ò¾/&ïP½ÑÉaÕ -ifÙ‚¸9¬µimÜÜÚEİ!®ÍfoèÚBG‹-¶°Œ|İÿ¡¯­5¬®MlìÎXØtšË«]¶…lD‚!TØc"M™óüÃ;I¨9–8pPl„2?Ñ/Ñ^¹‹G]óœtÏìßÃo^&š‚«òˆIµ;¿¬ç4³àc4FÅ<&šĞ„¡OZoÒX#è›uKVa6JáÅ¨Œ bKİş½"ÃCŸĞÌÙfÅ0	çbµÓ·3EhL8ú„úEqpúc3„Tö,ÁÂ*ûÓÌ0şÅ0jH/4_¿’$‘" Ñìm‡àØÀT˜¾q»ì#„~^w¦`•&%5ñímqfî[‚a‘æ3W#‚ÿ¦0Æ­Ï¸tÇl â‘-XÏMGµãÓWÚCªëûìÛúnÕ’,‡ÙGåÍıH	í4î"§Ëuxııp¤@!-òóŞ·kñWUî­¥ÚT(õû}…>!}a¼_ùò
+¾^¯¼_-*­¾“ßuìÁ…³aÏ›4‚Áñ7'ÇİbÌ–ÌK÷ÖÄĞ#‚ÁrÓZ·(ÜÀrx@ÚÏ>ƒÚÑOÒğíîtş¢ê>¼cğšãS}éÁ V©&S³ÑÁ$ŠG]lÚìEf$sUKÃiò1¬T+3™9ŠÀÙ$Õf+ÉŠ’èİ{ZøÌƒN|tS@6A)Lì§2v(ñs4›¢Ëxy®TÒéƒs+¿&£3¶gÃ[©DoFãzOuæİàºS‚X›‰ö²Q“aÂ„§æmÔPz’6@ÕØŠ’mhªûUš¯¢6ÇC{$ÉÊj7ŒÔtê0ÕĞUŠê í¢¦·„t°Ğï”ï‡~nnÎd¬3·XfºRÚW§$Q
+wÁş¶xˆ*‚^è¦±Q6á}ÿöË+İÆõ;ÁxéšµØ¤í DÕ}ßĞˆĞâgäw[%TÖšw
+×êÆsµ¹C•3V÷ÀíÏ³hç†æƒ‚#¦@'†³Õ5P_Ÿ/È‰_kÿ®kİ§átÓ}ÔÇ yBAB1 ¹ÕsøE_X‘!ƒNÿG·d¢DõqÃvØ	öÆ÷ğgWTà ÿú×ÕÒyJA•¢ìÛ¨ğGp`^\hSc¼T¢Ã  A>é“‡t·+Ë‰õê(VÅ×bsccµÔ‹Æal­°\À`Ä¡vÁ² ÔÆÒbIƒÈ:= C[ÓğÚKâ**,âr²ÈÕÓ5q1ş*‡ä5Á0¶íÕÒ¡S¬Üv‹”ñKVì‚˜ëuš¾¯•%]Ù³™^¯ã/iîœ¤¼(åµÂw–y@Øìë3jÂİ \`|3„ãHOi‰¢ hT¼=•êK~ÊÊÌëwÍƒ¯p«i™²o¶ 3(ø«zqOJLƒi9éKAêÊÖÚ¸s7@ìŒâ ²ß– "D,än?§èÏlg§B“&s_(ßXı¼òÀ¸l×_Ikş21H¦Ş)ê‘WlÑéÿ«Ÿ–ü‘«Ï‰KîTéIQ´pª-ú2|bõCÃ!Õ|FŞ¦æô-€A.aå¢,áU>wU¬ËâE-o Î•u¼ë^“ò©äîBŠ‘ÁÙ×0;&»Ré@RuËòœJ3´$-ã 4}7Ô)İF!ú”oÅµ,|Æl;1§§z‰fxEÂQİ}QPâ`ôJjÿv8ÑªJä‰dë´Ô=¶*¢®¯åUŞ‹Å¶.i#¸Q–n¯u1Dír	ËZC—4ÑjHOõ¢í_Ô,]‚aİªæ×t#/ªê-AµŸqQò7ÆY<¤J¦xÙØáŞ=]­ØTVIÒ±˜…ğµ[ã¾mš_˜uá7U­Xd”¢JtuäÏ‰M	yßØÆ‚ÑNÖM+Ç68i¢åì`
+æ4@ÛæIÏ)ÔKÊ4s6…ş¢è7"Cû"-/TÎ´ŸôÉ('¹}Õ°¾²SÔ¤$à	fŒ–¹Ó`|/ˆ,({'´ù¿º"!i²ìQéä”ÊúÏW?SµŸ¯¾^¯	öoï¬:ÎÚ$%.9Æ’f’Nw¥°¡RY!ÍúÉĞ¸,«‰l&ãKaï`^äõAª£0ë¡Bì"8èU£{ÖoòtKâTUiªdrİR4ó·%O­=³»‚‚¢„XEIô("äÉ‡pv€A é•"~‘sd'z_ÿ¶’ÄÈnšÌ#rR)
+R4£ IŞhRET±!®²‰Ø‰ùLæğ‹ûş‚è2n|JÿŠvUğ/UrR‚÷ÇÔ<‰uTêš[ÆVK¦şÃHÓt$/Yñ¬|ä±ˆ<]/w:Ú¡ïirß-ĞÁoWøÆ7Í"¢×OSA)ZZ<A¯Ë¿^àQÅ‘pÑ‘cÑªhÈJ_I‹åtjN¥9Ÿ¡3[%‹yÅ·Oñè‘%Ñ'ÚXT*¨Ô	!S‚›á›.Å5´vEwt;z5-¢şÍI0èÂV-)š6ek*„[åâ‰¡6x9­Pœv˜
+pK‹\)9Ÿ§j¦F›×Zá˜ìˆe¥ ‡Ö;y˜Mí§ftÍjš•QiÓˆ5>­PœJÄL3•´52#M=ÌZPäc’XKÈO—Nì²ƒW^¿¯	¸F.ú¥Xx0™úwšâÌ*»Âdmˆ¢{Ue×«¦U½ÜdiµõYV0ì×\Ò£Q”/¹¢rKº†Ï°v*`ÚeíÔxÕµs…¦lZ¼ä	¸{¥õ)íö +Ü¾!4üx|ô“ØÜ§oœœ?9:9¯_½z.Ÿ4ÿªœÕÆä¯Ê+®Rõ¹58sk¶‹€½¾½QIaä¹µ"[»òÆÊÒföS_b3K=á•ë½¦jHQ9v¤Ñ¨§[wÎİ-Œ™":Wòm¸¨µ'/c†7ï¯•€ëvŒ:G"à´/3˜Üİ¯†Õá•qˆúŸ½†$¾÷ä^ÊëLÊİ/Ù×Ua6ÿçvÈ9_Fù³cˆÏ°EGW¦Ùüİ®Aù`Ó˜G 6‚µ“Ó,Ÿ—À”?-ÑWêy3ÓéKR+g})nù§¬šT2=Z	0JoÏzlŸÛF£^ÁWÊ•¨Ò”ë¾Rãh–&p¶¥¨Eº£
+b¸2J¶¶e›è ¯–Se„mGjss¬Œ°
+ë*Ÿ±0eğ?ÜŞ(¯PE¾mZœF[¬AY/Ò¸dò)Í3q¯Şø«À6Ào{©[°õˆ·†/ÓÀô6`~Å¡i•åxU6pn¶µ4Û µZˆj(ú
+m¼r§Ò¢ÂVVAòûfÂ+ä#š‰s Õø÷_I2…¿½ï¶ëŞRœ%¯ìi‚@ä#hCO©òÍ½#iÆ¶0í(ç´-e
+„7R|5óLÆA6.BĞ,«ßÈ*ıÌÎ¬ã0	EÉì”Bè¨”l–3Òu…q&Ài 	Ã+N³×SÏxP˜ºÓ6SúdÇ•=™ÀäNŸL÷)Ø^aJi„å@ÿ~
+Ğ¤oRšò.Óš6%\–yL˜šÜÅ'åK#çËªğæ«¨iÏÇÍi—[2xc_ø(³p¤[æ§^,¬ŠXE5zC‘×#ğªZ¥t!N9ø³Ş`Xãô‘"3÷:Ñ“·wå<é#H¥)¤aÌq5dªmèEï¡k\P—3˜ÕƒA–ÄxE‡çyï>P1 ım›å4$ÔÍû)€µÁå(Ò9¤ßï×nnãn³ış6r%´Ûâæ*î} øÎ—ªñÁFÓ/è}GÇ™×kÎ7Ş´kÕä•L–!W2‡y¶J)¦µCP§úĞvn$LKÙ•ø†M‰ Ùmª®Û¼ BÏÇÅº´Í,Í”4¡–Ya	œ¢¢R¸ä{2%s²‹à‚“ôI-E#úc,OtšÂx€¹*ÒzÑ<KyÏãä¢÷‰2æº-6»0Òä"µPÛƒâÍ³ĞÙ6„vIîwø6-±ŞcEÖ¶2a·Dò,œFÅa´Õ2éQ•²®ì±X(½ëw×óÉrÕ+A7h‚¼‹–­Ç“O9]Ø>Ç%ªkŞ9$hùÆ¿X»9}S½°w)äÇ­ù¹rmQtúA[—UW†b³ó”³£)&)6i‰m
+²µá0ÒğÃÛ•!Êª°p-¦nı¸4€yQÛÓtCÛšÆÄ8½»jëˆ:ç/¶8–ÖÆpÖ{sÚAeÎÒu‰f¶<ÎÉ0™fº#¬$×Gz”¹y®„ÑÒ0l€Òî zûXı”ôhn7ò.£ÛšÛ‘´nVø1o"ëÍŠ@âB'üãËL^!yeU…ÆyW
+ÎòÇ5ŸÆJBŞu*Ä¦:\¨ßÂƒQ~Ø1
+}·½?¶
+?ØØ(gÑt}v¨KLê¨»ÃfWø»Ò>lÑ…}İêú€Xwõ¾¢ÏüRQ¢†úõ¨**iì¯ŞO.¬jBîÒåj€{›³›vtfÕÑ-°›oÛ†çé¡j ~®<ÇI³ÌÍh§dtõı;ªŸ:Û‚êÇHzºiqÇ6¤e	"b›¥ULÆ)P5g”IviwXqÛÜ/«•›æWÚB õ('D÷ß
+ØŸÆäÊáêWU[U½Ú³Lºúe*Ê=kuP¢rJßë$~·=ş”SE{t3eÍŒ/Í½2îØÚ¯^¼~uz$ö_ŠÓ#øçåÑO§ÏÎÎNêM<´iÓÌ;p Ê…ÉÌF†ˆ—âb‚T™V™¶…¤VYÌn¢ŸŞ&ı4İ@®·m*Îæ½‡â_¸…Eşë4æTšt¼Ã4tÚuºìeSãºôL­òßVo©®óH\gÛ$ßöÉ«Ll¥l¥+e^¿u‹¶,ãØşÒ‡¢ßß]Ç¦[îÇ@ªwÛ¥L9·VÎp¤Š°Ö…H¦­R}'Ûíø-?4¦¯Ñ€7G[HÃ{ôú?ª´{ÊÎ	7`•<±Ã¼0W"‰L“Ş–-Th]À$üxæ˜µWß<‘RkqC›ãÑ‚cÑôî—óó]—Aü¹Â,*ùdG¼ÿ²©÷âºJG+èX½²rAFä»’‘±†”a†<ïİG…è·°.Iqb`U%É4µsHQ‰MŒdœÄñ H{è.ã€ô•JyÈ§â8¯a¨úğ“÷p¼;çSqÄXgˆ‘P¹pé˜Ş{Uë*¢8xvÂ5Ş¨al½‘H6ì\»ÙÄÅşJiÄùSå”^ågÍıB“q`<6Œ7·ˆL>””3Ëƒ´,\";z
+/Œ¸ƒñõÏ£±Äfñ:˜…q‰UÇ ]Bo=ÜØ½o
+Æá¾ã¼‘9ß hà907\™nöÅÁ$A«_íçÇÖÜ_	å0X{Qá¸;e?6`ß	¥7ö-ÃéqD(oÇœÃÅ—œ™(:TcxqÖZù=4_¤Ö_¥úõåş%RQ‚
+Gà@Œ(ã‚#êMV·¼·K®¶4‰éW%]'aìe~%jÓ–Ñ.Š@&»ëÔ‹w$¯-/|lÿQÿaÂ¼÷)œi«©­îğãQvW4/ÚZÄåŸ¢ıÎ”¥ù–V)½YB±j†‹ln°èÆãŞÃ3ÀšÓ‡ª¾¸KĞæª†§’éÑµŒKuÜW†ûÚÉ@reÏˆ´kÛgBGÊ›÷VŠ¼[Ø!ê<Fd:ÌoŞ-P¤•½7³èÃ§Io/öo9{£ÅÎü¨YEKûrĞÙ¥{)6‹OQï’rä»ß	u $@šAÇø4šgÜ‰0Ó—%ì%!‚ŒJÿûS
+Ë~eOŞQÖÊ¦‰Äcéİb&YXÙ{%SÔéXx&X×;véæ)ƒÂÊ^CJ¬×œÓkéÖe>œ•½ø‹N~ƒ	áT¶JÎø÷d±<lÈxŒîûÒœÓçœS“ñ$ÆV‚ÙÇà¨Dë5F=…Ø]zŒ¢_œ*)Ê-.ÙöşMdÛ­¾àØÇëx9|©tXV¨= µŒşÊô2ÊÉ·ú}#XRˆò,Ã’Ù§ˆäÉıV"íò\ãsğ E<"XË)jlJÖFaÜ/(ñ¬‘uU‘¡—I„ÂGG•’ ç)å´?’‘\ZÊ.ˆ63qÒ­óŠ¿e~ÍQBÖuaVîhÁô8Lw‘yTÖìh6H>…™×ÜL/·¥³Ì‚!yn·ä^¯
+ü,¹ØH›ªÃú
+¦2-©
+;ÜJä»QcË–>–1]§P6]™â,£ƒšuµQui’MŸ¡ñ4Œ:Ëğ>ÆÙO‹m,_kğÚCd9 ‚£iıâ’5×·M¦Gõ)]máNºÊ§ãr?RCEYÄxñÚlâÌ£ò_ÊE’1×:¥,¹˜ìŠ{€nÖµW‰W+
++¾5]ŒßrØ
+ş÷µ5vÿµKPÊÒn$n¸uÛ™T gŒ6\ˆÂ¦qvaIqLO™½¯áíğ2<ˆB
+µd?|ûÑÕæƒì‰¥ ¸æ4G‹FçŸBíhRŸ;c\:óà)Ç´Å;xf<KÄş+ZÅ<G"Ê3/‘Î‡®‰««&v	5&î–Ç=¡„íD»ë“Şo ò²e“V; K”ç¶ç„ú($5°Şf-Ş!EÜâš²^=q€°µŠ¸NõcŠqMúu¯Ğ÷öUkb+(RâÊŞÿÂ?¢+u85•¶PwVµCÔÎÊ3êñ°Ö¦Ò&keï óîpøéÉşâI0›…iMJ­Æ£^3ú›î¢òu@, y¸d?¿A‡ú\ußª˜k¢#ïwñ+ŞGãßrŞ¡†“Ö­òU3YI7˜`Ó¨Z™ÖÒ•45Ùh	ÖJ¸àOÕñİŠJ3XÆ"wÒ{òÄCÛBîTÿAFş¼•ñ­²¥hìdÇÉäÂ@£í³{››ÊÆ(›²y§dUØï<À»†Ûº*ŒÆñ±(¾üN“:~xd&ñ'ü—0ØşvcˆSZ®…ÙÔÈÆöw~·|#´'¨…í-øß€ û—pssôàÛFp¶3rämPŠú_[³ÑP×=s7×§r¨õÚ/#Ã·FÓÉŠõa¥Ï¦À>I®ïÈ—¥öê	Ëa­oÀÀ‡ÅiÔÃ7ş š¹AT£ıÂÒá$~$ŸêH)•	G®.Tïme'Evõ°±I6ÚVpR‚Ã³ËÒª8®¼tø	oO^„­;Úİà>UŸâÊy‚5^*w§5û
+Ö?<ÇIİƒ³ıÕºCÅçAÌ"4÷²˜i„úşC¢¦ç­‘z:ïGUÃ,9‹#ŠµÑÃ{Ç9|Æ™[¾ÃnÑCƒ-ı]Ë
+±©FâH½Ö]¨Oõ^LúÚ£t/>òĞ)£Â7	 ¥óKœ7ñã¹+˜(_ß}úÔòğZK~Õ5?ñf•çH…>çòëÀüíWşMê‰2R|<Ùî|İäÏ‡µ¯mÛ[«šï¬ı¹OÚ§aş4-Ògí&ì)…¯ æqxh‹b~ìÕ²Í²<MOã†Jª¥	Æ-ä'ï—ƒ	¹óÛésADàÑÔ
++H…’éMÉª¥"Wm®‰^›xy=zıòŸãrÉˆ¶Ò ƒ?lz›y<o
+ÉÏÜ':ÈºÌ¦`ø¯ìùMåå¥s…ñ«²åp@4¸cjÅ#i¤ÉGQFòĞ£Âã«İEûí–\š E ˜}{É‡Î=méî®ã[nÃ¯ÍÆD}vk©¼Óç«mù}aÜ¹†³¿^«~¿_ÃC¼Ä²¤İŒW„f4ì63 ãc(MÀ\áÍ[OÃçãé÷,½£ëy(PJvZA{ÎŞS•7â±\:PòÔ	
+Ò,g)o–í:o–»ğrœÜ¿c³ds¦2‰e’Â)÷~[wÂJ.™r\Fct–g¾‹ò–nŠŒĞ
+NşqŒFL2‡Y¼Ó":p¨Æ‡°ôQ…›}‚Ôé$Œæ›U:Ãz³Äˆ¥²úSlúË–\á{NãO íty‘x<;OœÂ‚cˆ:šĞ¼Ê…ŠS²’ÚH6^È4±æ
+Î^ 3I³Ú²Şr¨×m9pN'÷2ÊÚò0<fÓÁß›_Àó‚Å3K¹…6a-8DÚân9 Ey Ò…Åİ5 *5¹!GHÈœ%Ë¤t6¨*†/ôƒmK4ıfÃ´âr	EJ·Yf“¹C‡âg?•oÚl6¤MF·¿]r|Ã®LñšÛ†ô G©ºCÑe—ãíÃCø[”ôÓü¢Ì8é½İŞ N£c<–8šZ,ÛèqbZƒ¯C*¸Ï^Å_ïX¹(‰¦iyo£ù.5úRIïíFãş;éIÉ.0R ï…1øİy’kY/Mrd ›57ş ujˆj†®m;>}±I$ü½g'GO÷OÎ5=YÑ
+Jñ÷9-Ø«§O÷Ÿ‹''¯ööOÏjú¸É©İ­Ôi¼£ø ¦UlTŠrÆ9˜¸äÕ(904[£Ùt‘Í->I@.Ÿ6]`—/[—½¼®Ô_öâºÒÀò—Ö××|vÎ—ùV©mN¸z³;†Zä·*¨M­œ\~:JCA$™¦êm§¶™8zyvtr¶üò|y~«v4Õ}W«dôîrSñx<lõ#¬Ö"Ù»GZO¶Xõ¡AÛê~Q^É±Œ<¾ÔR.¯ÊrµR²«¶Ò¥‘k\Î‚’ù³æëŠÏ‡h¼’§ùb%õv7«ˆÃh±†7††/ƒ¦O4¡S©„‚öèä„—7Ùpßy÷ÛÊŞ>!gy$Ğ¥<™­‰gğ3øg™#>ÁàAí)†¢¥ğš‡L³bšÅ072’æ€ú~ÍÀ"´Ô»ƒÔx ®ıShö.ñògqÙ“¢»J¿A¢\©y¥ûŒÌ=i|@×à,Â ı‚K>·"?ÓxP1)§MÇ¯áÖÃÎàSÅÉû5ëqe¤³†Éæq”w;?Ï~u¤áã<Hƒ51?}2²óº>ëë@ÕÓK128=2dd"mmàûi]ƒgMÌÛî¦ÕÆAô)òLöÀ½ÛùË_ş":««5ÃÑi~Q?Fö–8‡ë&ÂWPºí*¥áò‡q4*Ç5eóÅ_“ì{ïü÷QÎ9nöaŠxâ®¼éµ{ƒ­*âœ4ó¤É6÷‘üahìQ¸Gk"V˜ÓÂøNÆjŠuô¶ÆGÅ¢!laÍşßÿù¿ ÊâqÏxÚtõ,ÜšìOİ7ÑÀVo‚N
+óçÆê2Ú^ã˜}Múh‰4•ågûlU{eÙÚb§¢5¸T—€ÍGTâ[í®€eìa¾(7’–E-÷íE¦èo+îtdœÀù¢L)ol{c¾¡N£}ŒÑV†ÈË!ßö$çiåf†ÈwpªãOr­›@£SPQ»±»¬Şài’p
+õ73¶¥5 *D¶„Ó&@I¬Rıf<üN]şÊ#G£›ó¼IËîã©¨s×†^‚zG‡ÑÔ<‹VO _Ëƒg©á|g6|PeTÛ0û²0Ç¥€L9Ó¹Ùy‰Úß“…àÔÌ±áPì¤àp‰:h“4Ñ0ò5bÚùa°ÈÈÉÒLho¹N¦"ÈXTGQ`8bf}ßN­œj¦$NãŞ¦Ûb l&Ê7›î0&õş„¿JªÀvŠƒ	?ê…yçŠÕk¶ú²¾9:¢ßßû/^ï?{y*~8>={uòwñüÕ³Óú Á:¶ øFAbnªuÎ&ŠáªíTnmoÌ˜J´˜¾wF§Í)hÇ¡@>9Ç¶Ø¾fA§iB]Ã_Xgî OLŒ—ñ-8ÌâÇø"Ç´O¤’èURî,wĞfr >Z”S¢{sİ]¦ ¼`Äõ.Öt|DrÎŒ@˜Dˆş‘PÛl2Hp'`> v“kšCs ;ÊT—è·É äÊ¾£Pšm:×åíxm&G+2(&•›¢ûËe)¬ğ…f\¶¾-µ_ørµUìu -ûKv½\."_Ôüš<D·ÌBtUlxv|…ŸµçwxKŞ óP­M‰êÂ¨Î’ƒF£âR5¤&X.NÕ`¢MæŞS•J“ñJ¯¶‚IÒ¿õ˜%¸Íš’(ìlû²ü(ømC¾¢º“‘hJáK6åˆM_]q=j¢
+8ê;^ı;¹j¡ÀO5¸‹ÓÛ¢ş¼Úöçóz1ã"Ü&ÁßÜ-|›í}F7ç¦¼*eZ2ædõ¯°šb­Ê»¯*óÁm*¡]c’¥»oòkYr£.'bàGÒizÛtm…QåWLÕÖ˜¨ífĞjNÖÔ&USs~wóÃ‰š2OÊhõ)…“ÀcÍk¼•È’A=ö×İÖ³ºŠ¢ ’Šfk£â…PIàd°Â%s8•28¥!N¿‡Sî}©%†€2ä×	Õå|çœô§¶ózŠq¢JGÅ~ªİÛM)›êÖŸ®É}¥áMÕäIÔä:™ízlümë~[×"³eQö‰tÊş‘/’Q‹î+ØeF$>_Ì†œ;!Ê/WMıË¨”}ì¸t/±»ÈÀ}P«Æ`ít]§Ît]Ó0Ë‚1”ÚOY#—-ä—‹€<>Ò)¿‹³Ix)."`÷  Å	 tª²C`¬&©1Tv¨‘Z+€lh†İ /å”k×vé g±N¦\üxÔb,Üº±4Ö2¯~ÿ,Vø‰/Éå*ˆ¤á9C‡Vï¢ Îº|¯I¡wÄÛÜx³FmŒïÄ#{SÂ†» ˆ·ïöºoßÑ…™¬.51kÊŠ¾›•ºyºÍòœ~•Š?¥¯V ;øëœızè{0Ÿ§@mF½.½7›ã=­°;YMfÄ¬ ãó{Äéõuñ¯2,FŠYÊNŠ…a@udLRôeû#=ëcùÃš6çæ4
+¸c –*¾´YÕYp9°M¤í˜ÛfÍxv’ÄÆ³”F½#¶ù'Òu£‚„ŞZ›#1»6‡ŒFÏÜ×?³zğìèü£
+wcní¨óe;GEg"ékhCTàTguM°ñãe·£Ââ¥ğ(Ì†UyËM.õô#Ø/§³`²DŞıeMt3ùÃ²šàztZ€ªH”ù´_è¨]ÈæÀbŠUı¬ßÇ}ØàAWÉ,×«ú¦¸´MºÔùVBÑÀ¨CÓTÆ¸2Ç«Ù§7İ•#üÃY·gtû˜¸˜í¬¬	nCu–'èõ&k?2…!NZcÖ\iü«ìh”ü»ô&A@£ûKQBÒ}Æ5€{]Î†¢‹ å¸&¤oç¾ÆÇA’`6yz©á\Q.iìa2ÄusàÒ¬àS±˜ºß+u¨WÑ†œÌJÕ-•xÅXb!3“ˆj=Vİ‰¯`Í>†÷”¯A‚¦Hú´02à_í’ÓLiÅ‹æ[¯6ƒÉ¢Z¥ñÖãÁ¥«¬Ls>zåŒUAË™{ŠĞ®JüøŞ³`\®nÁtK…°àË…GÂÌfa²¢ùŠ°ßøÔÍM¯„Š¢j=ÔÈ:Aı“Ûö‘-¡³±a¸à™L’Ñ•]ĞâØÌ¥_ğ<«–ß"{(ÀaÍé5ìG|ÏQŠf°Ò¿,"¼Ü9Âx‚†„‰,…XÌ£àú.ƒøÑÄ#Š=Ä¸Ä>õ+Í?€Î„)IÎàĞ	¨?d»Á˜JXvÏB3›WÌÃÅ£‹ç6Ÿ&ÈÙ¼š†eñk›ˆImÏÃ:l
+¾4ŞÔÈ°ª:Q…Ó¦]£50Ãoi{°lš»y¸‰}.C×¦Pü‚•MJzTÄJÜÃò}Öï•´˜©k9*É7¸,ßKYJ).Wò²$hÚƒçë½Š\æ˜_Néàuç«VU9½šš÷ªU5¬-»ÅfwüwtöÊ¦;ô=M.<1/È¨’ÌÊ
+\S	\¶ ßlV4[¶÷“ËfÜÑ*íî.’<´•Àì9Ğt›KjÅ=>]©D\&âV5ƒ»ë“Më·ÓíÊmmƒÆ}··øî½—Q ä–ça8BÍ² Ã`>½Ğ†&)œƒ\ÕlœÑñ-…'	09L©o|nªlÃŒ'•XñÕ©šZİS''Kááa§"1¡r¥z@]óhæ`.
+iá½ùĞP7–õ9¶Å‹¡=Ø^è5ƒ}stoØÅC3cP;síÎU­NœF[x©•PÚe«ã÷l¡]¬ê©Ï,Š§AÆDï—6~i§³?â‘ß>‘İª•›Ëä¨â-{ß .T«%$ƒ“V»§\!US§z¸ÿah²_œ«0VÆÍñÄŒˆa!Šâw„+E€õÍ»ïmÇuğî†„<ˆÒaìÂ¥?±æ&XóZFz‘@¡€Súİq‚é ÀSA){İÖp'&Îè'UŒÙÃ4ÿÜSby7]Ö>²î3“¼¡ùãK›©·¶{tàÁ¹•PdªQFp æ >¡"¤ì2œ¿µ}ci¤äÇÌ8ŠAfë	®]bzs¸£Š0b‰!şÏË¥i“9kÙÍ,ejRc|]>‘'º/´µÃùVFEôjOÜWE|ÄPŠ·eå€Caaé	J‰^}>AÕP¡ûÓ ÓŠ^ÓÅaá3Ëş½¬.[9¢šä†+\·†Øìİ¯!ëtn¼†tbDŠúÎÅ3¼
+{yÍ‚I4cÏˆyeá­–×íçòïCNXOŞİÆ‡Ék³º4zKGÌºz»¹&¶ÖÄı5ñ`Ml¿cMÔbÔ›h6$%!óMlå¶IÎª§ë6¨«Ô8‚/n;9É°ÂôÔ³ıêjsŒ”ö#w/öñ sT)ì<ØØ syáÆó°êÙƒ…¼ıù­Dj,3u\ŠÔ~÷ämPMìÆú”>¥Â?ıö[íõbGÙ×î”î“–İiUŠÓ^·ÈOè+Qü}Å(à©<Üõšbşëxÿe¢N‡z7d Zç[ÎP³'ºó¨À½ …æ¤-²lûr·{p^"Ø$ŸÆO“Ôd)ÃÄ²…Õ¢Rl¢‡€–®VE4%Ç¹<$KÇğjPsyç´îY·?Ïã\Åæ•ÅËğÆ:Q¤kŸÔÉÅœ”Ñ™“Ñ-låŞ›í¾k%^YÂ•tjS±CÆI˜é—Õiú\³–İr"ÃÀ½HÒîû<Jºqõ±x½«@ÅÚÔU¨FÓÎ÷lU¨¹¶¡9¶‡Ïº±qb|ás4»°=r-îR—•xMÎTå®¹£ ±ÄíëÇäÕôõC¹ E–Stšsß%4AÑé‹z€¥U6¶—İ])g,ÅÕ Üí·ş ¬©úu.‹¾èé×$È¾¡Ğ%©‹q<CãŠ:7Zİr“JImidy½#½¥”"cÄÿ9»dî©ÔWU’Q<@.rk»"—c/ïUÈ®Éİ·dŸ¹V\À¯×ê•|É<÷©êSt”‚ÊŞ£}‰&²)uç®by>!=§dœ
+z©€÷¹
+Şö6J`õ„ëèÜïrI=I:şZêÄT¹+¶=á'&Ï‰Økÿ	¨zúiçòW~á-\§ç²ÃôŸ¶ÉT£á µéä|Š\Ò3\xbÀÕçÿ°ıõ@J<:;9>úñøå3qğüøèå™xzttødÿàÿ)¨6»µz€Z.Sœe½Ó+ ®‰8íôM}iÛ¾ÂLyæ)ğó{7ô’óyá–~k7ô×ó
+ÙnŠÒb¦G÷ê4\^Ü¤ô\Ö{[óÕÃ0¢¸ÆıÚ]Ÿu|ËÖR:Š+gqçV$ŠDªß8Y²ÕûoŞ­ß¸Û¸FcØ"Á[M¤•=£qyÓ:nÙˆGÊËì	/È!”…¾NS¯wíÊÁ2÷jS`Ë‹4˜×.Ê
+Ï•Nø~•ôÍ¼2õM·0E"¹&Tqêô›Â?ÃnÚOÓà²MºW‚ÚzJ5,æ¶¸–"ê?ÖDÔ*²"k“y¯Ù»ÌÈÔR³ÌŸú°†wŒGKc¸z_a™Xdoá=q4¤1·ìs›\ÓYÈ6RÛØ6:ftõ¬ŞA½ ‹†şv¨?Frİÿ4ûâ'•Š›‘šn@ˆoÀvB 4¦¢Ëi*óë™hëİ¤uk%[-¶ğï^ÖÃ»­wåHêğ˜êJ½fãô¹9¯Ş/yšoØ[øYjáçqù¯tQaLÛ´¨¹¦_)KÕvÉQİ¶ÄkŒ-Ñà`^W®-ö€—íŒùaí«Ó²Z¥–Càñ$ñe÷+>7D_ÓéJ¢í29d™„´>fÄB|d©w¹L)Ú >Db¹ÅyD1ªnµ„»giM\:ßF&İfñnÁªÿ­"TÜÜıß8
+-çÿ?ÇDB3˜L|iÅ0Ô Ş±÷ü0˜Í’\BbL2}ÎşÊVÎşwäâÿcg·$%+Ñ’@ÏØÃ›¾Ş½_ÿ]9âa8ÙaJtíe/Õ»Ù‡PHâˆ¾¶B› FA9<úåğÌ't,|ö$â¢Œs"²ŸtË¿œc‰hvtÖpÒü#\éLE;>ˆù€1c]ë™å+ÈÏŞ¤1>ú¢äÚÏwp¦wÿ©ùänü?2òı6Ktißÿ»xúËõY}ü%üïÔå¼üíº~şB
+ O£4ÄÀ±!‡G½&^Í¥åü kÿÙÑ™qï.l Çµ¯ ·Óc¸gP	PlÛ{V¿-ÜÄvaŒ@(C<ä#"=²p|  ÀoG¡~Qhñ—@•J‘–A7¯÷ÏÖÄ{'|×¿¼Â N-"0@>GìßÂ7!Pkôë†Xn¥C•n²|‡GÏj—OA©a¡Õr[XÁ.Ï€ç¬WQsc~'†ïÕÍf5–Ì•‹ÒÒ°jÿxÍm¹„üi—)v²ìQş÷=DUIfË²3øNí0“–%LÎËåŠ'v¯?6Â.gLS¨)Ä©*tOB	%¯T/ìÀrÁ¦NJâ‰cæÎYV§$×ÙØÖ<FT(‹'wCrúÏ$HÚÅÀ@Kç%ã`Xb–/“…U3ËH…œÉL„Ÿ¢¬ 	ºÀÒNöar9%%0­%4ÚTÀf–*0©(¦™å·Œîà·ùŞÄ³¢Tñ´Z–°¯\ê‚¯®öMyIÂÒûãZ„€±ö(‹6îÎÕñÄ7ñŠÈÿ3VÆ,Ù"jË+([ó® Å55íŞ˜[gå±ÄîÖ<;C‹Á%86ï_)]’“öãƒ“#Èt-/kç×ïQQY/ß»ºØ$ÎÓåÏ8#Æg÷E'˜:º9Öˆ6š/bôsFQ{€O§â+ñ:™÷ó_#îˆ¤‹tŒY¨![Ì†á”2Àˆæi2M8¨˜ó D>	r4yƒT\L`Ñ$ÎeBšİ$öÈÕ=­#*™#9”]ÖÒ–üe«To•¤¬x–PCïå}‹k¸ÔÈe“%ç„êï«ôtK„Ï;ËsxB"‘HW?¥ìQîZ²ßØ¥ÜªƒÔô³Cçk¯Ñİ±˜öKº·óM/ê©Iq¯°$*a„Ø1¤9åûLæ‹¹<‚8Æó™ıÖù×ÿ8uÖ0¶}Võ’pØÖÃÙ8,¢ÒÓPvK¡óÆ.Í§ór£½:?G+óTœRq˜\Ì0<o?¼Ëº\`Ô¬cÄèi­Ïz¢ôßr¡Í;XF’å[®bYÒšô67„4h5|~m?vÏ´ı•Á¼4õÍ¦‚}ÏÏa°fA8Q‡Êˆ~Cş¡
+mçªOù™j…~˜ÎƒŞíøl¢öP²@]É•³ƒı’Æ¸åzH7DçrB[ÚiGÆº©ı¡“Ø¶ú]Øå—½mçİ´Ç¶4aVÀè±‚š˜•½cøWtŸÀ“ÕİõÄé â¬-¯”Vö~â/¢»&EË5"OT+{§üEtØ¸b¹føZ‘tâ5
+ˆ11»¶)fiı¡}7™n¼jÊu±oÌ¿¡gEĞÎ‡ÓO´fbyçM"ª(¹(e®¾´×çJ7ŒĞ‰(K ·<T„—\àN<ÿ¸"Èj+Q<g» yf ë¾šó‘¬6XFs —èö¬ËT3İXy’$ÄK‡AyM4<IoJåw¸¨”ùûs­æ›4¾«Å$=à×rõ‚ÑsNò|í¬¯‡Ÿ‚é<ûÃdú+ÈñÅ¯ğ9{{cW´ˆ[A1+H9Û£S[mÜ
+³¢ªÚ½-	/ÔÆ-TüºÁ)\\Já„bılã¦²/ïêe:TbéFD
+Ñı	OçÊ¹öé¨Íz¼ŒNãÕÄW{Û@ÕäÒQû¡Ëïë×QP«…Âê¿QdËtê·N`dùøİB%¯+,~àØÛÿóâ´À}sÈ€›hùdDq€1o<¬'
+Ò¶«â‘  Çäé"Î#`ˆò-å­gú·f+Ô¥B\eÔNÂ)p‚_0ˆ.wğ^K¾˜õ,“æK!ìàğŞİ*ÿtâ®sâ~şjÿ=¸<>=>{u"öŸœ.ëÀ-æ7pÙ¶ÍÙi»/ˆˆ•ò%È
+J¶˜ªš®ïÂÑ½v³ûÓ›û¦ŞÜ†’ú+Òe.ëc-õË'7¤úucà!Ş¡zr»=¹ùn£Ù‰{YçTŒæJkJnû¨*7ê·ßŞ‘ƒªt¡#³BÎ1ÃıvÄ—Û%an¹1hgƒÇwä¡ºì ´‡Ã»ä6»Ë>\]á³ü]é6xâ¶ğÅU®‚¶i“oà¯]ú3Ç`Ôè›o6ì}&»U1¨Ô~I˜08tƒ›±C ô’PÍÂµ»¼¶ëÎ9ßÔuu¦M^™ÍèE¥ªæB.3¡M´&Qºc$z»¹U5ÓÁ ª›©{=z»…ÁRN‘¼2Ê?ÖZ¿„£O3Œjœ_ï6CC„iüÔyšÓi®äh^5‹om¼‰Ñ"{Äf.»y»8¥ÈÓv’ñ–L¸:ÕÆıtÇü©ê¢¾Õ"„Š$A>õzôkÛ =Ğ#²âfıÒ“­¬¬æı²âØ„Pá‚şµàË+Ïº”à¾]6ˆì˜AÆnrÔ®ë‹ŸQ«‡RØ£.ò7—ø30Æc(o">-Y } ŒÚpó÷}±±Õ§‰kâXÛŸqşŒûà}÷gÜúØq,SÛ»‰ü`i+eìÖ“çÉè©ÀPaê^ü±2H³v¼æC}ùE8@M}›Ø4òÏB‡ƒ p¾N´ ³ã@ ßEDçøò‡ Ó1C°óe»Ço5%Ó$‹Ğ	'êWM,Ï‚–éxŠ¾KäUb=jS½ÙUñ‰ó¡3JƒŠ¦°˜ãÍBg¯ËÌ£ì±&ä¯úXQvJ@²ÿhªò,NAÌÃMÒKY·ô´¾¼§a1g±ó—m›”xãjĞ|UÛÜ0˜}²“ğœÁ—İÎ^<? ÇG1¾•€„èƒ%ıè±:ESäĞ/êCRÈ*o°Æ#ÊĞÔ7>¡ÆÓÂœ^C÷ÏÂ)DÆ>+<OŞù8[­|ùŒ®ñÕa2äyjGLªĞY3Ö_h‡çJ¬9p#ŞEÑ¬|a…’À¹àÃ>9ˆfİUÓ}”[ÇP2 †kQ8Òû¾‹ïúŠ$°ƒ²]’6=3Ü°í2z«s¹4q³·6—µ)@©“8™_›½.Ñ˜çOfx×)A“„°A ÓVì!·`‘©=e€Ÿ‹T—ZAÇ\½—éø–7¬½pf³7\:ÙDıVÈE·¨ÖÛ¯ŞD#Rºº±±f+ˆ‡\	[‹ÑTà¡}*K!?põhó‹V˜n’¢j‹²aã£8GC€"#”ä{ğç°$°Ÿî­jâ2ó]¿~â/¤x)ä%‹á¤ì;nR)h@“+E9LªAïtFø+ñiGl¬‰Kø—g©ZÃ,‘º­>ò	ua^ö©—…L8íğ¿Š*p(É'bâ•Ò/JOBrF”Åù—×cïä8÷0ë ÏáíNç}ùÒº ®¦	U„è&Şn¼³İá¬†fºT¬Ï©5ÿKôxÄx¡º*¾–P(|ƒ/Kş®*€4¦Ëÿ]!¯òPµ\´ƒ—@¸Lç_Ø¡è[Šät0C¾:Jİ
+›H5Ì?Y(Kÿ§¼ÛÙ)ÂÇ-äŸJ,SÖÇ}ˆİÛ{²«|¡^AòI×x8…cİYÒåúıOk²¥ş¥2BÑéÈg/M[…NØışAšš:(c™,O“*F“…ÆÉÜÀâ– ±ÖÍô
+G¯÷’Pí²R¦Ôó ù)ÆcÑÀÏä›oNw;vº>Ÿ;:¨^ü0ƒT—½ñÀÕ¸Íø­EVGl1d
+X`q çğ“Û¬ÙÜ¤,x@ …´kÅÙO)AÛ,D¹dè<®L.ŞÜøúNdNÕxø
+GMâüo$şA0‡úRQw¾¯¼ş_	pQÏ{ŞD§ùeŒ+ßùË}üD<ş‘ØêoWaò’u°uÄKÓKñ4Š€iä+‡şÁay£âºrîcÊ~Š€KDï¬ºCàt†qÄ{d6Û2*¡E0Ô—à„¡Ğƒï ¯È1ƒàp¯ÒŞ¯ÛA§†iô/¤9º-ÕQ‚J¥~¿²ùÅñë@‘^4÷†Ét’=A1DI~€xŠà¢ø,ê1£3NaM<Ø€½±¹{¤ÿív©4ÿ|ø@×@cgÉzØµû0Cƒ•¶7â	7Ö9-Í—-#Ç%—rˆ“6 0£›xV»ˆM˜¼ü¬Åäµ‚»;:æH“ªƒ[Ævº³¿¡¯ñÅgÂ¶ÙWÁ˜H¡ÔÑl/È@•»ì iıÍuf]<Tj„j†…Š6ËxÎÍQ.ŠGºº>fŠÇÅ3>N>æsúÅA-‰÷äõ!›ÒZ=<œ›½ÀÏn”‘¢ñh
+øÓ5gâìµ`ºXcú³:fªHIYybf0$­¬ÔOJ±RJÄ]¸xSÒ-êç2ÖS]Ü¡kÄói˜ex´âlL8±ÕÇçÊ©R 1UœZêFÄŠÒÏ{î_B#Q¢­}0¯Äi4ÙñB§\¿ãX†r¹3P‰TUUEì”1_—v‚]¾rDà:–Z ‹0]ZŸÁµ5r™ÖX:Se´FH¼9>¼“u0ëº6®ÙªQq£¨Tl×¯¾2Ú’;¶­^Ç^øvøá^©i$P³<E€­kcŸÜï‹3¼n¥zŒ¡'ãÌÚü0iäuå—ÿÀ
+vx4¤ÇU$Z³
+=²ËA²KÙ¸m7ª ¯{\¯¨-ÒUõƒ%KfƒJq EÉ.ş1$ç;ãı¨pœØïVĞ0A1Ê|¬Y0Fbp)¾¼ò™ÆuİW¡7$k¢«¯Î—W!—dùºÓ_ŒÊÉ†qíQ£»
+‡£ãÓW§Š×¬	bIˆy]3x[rqÆ^+·}ÓŸN1ŞsÖõø«‡·:£˜iÀÀ¬§Ö<àUcÕŞ…xBP5ÄÛHåX‘n6ksƒy9úã¹–öö~œéÂŠ0®Kâjªçºœ•ØâÍ©íhíg¦´e@·gÅ.`›‘M’ú<—$s¬%Ï?ÉjAVËç©Õ8Üñá:I-éém)¤W}B-ZJ£®uxô\ã–"¹{O‘®ÀÕ¿Ù­!¦•3á”*\*íëÒÆûöOJü{¡ÄMg¢–…Ïj—Û-vß„#(¡ñO~p;1[Zœğ©Õ[¸ 2şFŒCj,C[eØÏü<Æi/`3‘VlÈ4ş©gB-Aı»äOÍG&É$<¦óüŠŞÓè ”ì[Ëà7›¦;Ğ¹OÌtırõ/î8¬òtT„U†ï–ù8ü.GZ¦ÈW¾€
+Ûb>X:Øò}lÙå#Õ2¸2.ÎñĞ¯ Ì„nû¢„¢r)Ì‘Ş.dòfi€fL‡äü<¢(x=E|òó¦kÌ‚÷Ü2„Ú;p¤G§vtˆ@N½ 8rtcC môäÆxGÖ$®Ê[ö¢«øYµq¢È‘Ïj„Á¸7Nşiºàğ“Š?~ óF*¬åç[ºóéw€ÎÕXµå)Nz[€c[öèõPV÷ 1¶·PÈ($˜¿b“êñO—¢ã…ªN¨ê¤†~q%"õk/˜ÃaéÛ²ÃÒwn‡%{¥”×’µPª½›/’îÍÑ¶3²‡Z†äºx3«²?µ^”_wníÜ]Z
+~^^ÙÈ-7M‘Üœ¹i8Óµ@A*ÙT¶K#[JtËtí&™vd®Æ¨‘ñØˆyŸğáŠŸüBq(ÙÃÁ pªŒœê´Š‘äŠkäŠ^òÈŒõğJ±¬€*GÂ„TÑû¨Eô£j¬Cr¿˜‘(†™¡‘‘7Æ ä #ô¹Ğ,tˆæ&”±"ÌÖÄ<¸Lá”ß(İ[ök£ùã‰š°çÂø¼¸évF?èŠCsGÁG—TéU‰¡—¨ËdØáK.è X}²>ş¤@iˆ×S_çÚWOEió½·w{ØÛwq›U¸æo¶İ.eNw0¯ƒ×¯´òª¯¾ë×¡&¹^ç‘§JQ²*§¥ÂÀùéu¬F^¢äŞØãê—ŠrƒÇJèñÊùâJªHà3L¿b„šÜrÄ,¢QÊ~­ç°Y8Üüğãõè+EÄFøÂ^Â?õ¡´+U§t– "Ï‡ŠtÉêÃ0YÙ;8zµd5$˜@§GôwÉÊdü±²÷ÿ4÷Æûön7w¼Ì? aÕêŠ5oO^•Va™­¬õN-wr5zï³4Â	&€yú|tUğòöd·¼MœacÛ×N?¿KÊBD˜eœB‰å³u"aH„ñÓn‹5™CÜHÁZÇcPŸ…3Œé õ!é¿jø¨ºF·roX¯ÃÁ»3Ã3ÚhÈƒa÷vUò¡³üªëšõgW«Ë¦VÖÎ{÷cè§¸eomHâtP˜¢]n7<Ü-À 8üîÜDİ£­v§f­ô¢ÑÌˆn4é½İnŒµMÇ"K‡Jëe0j´öà6«B(q4‹dğO`Š°T³<ˆfÒä”Ä™Äù£•S²±Ñˆ¶[è<Á:}ÄÑğòÑÊ,é©GµÁš‚4„crëIÍdz­¼eıi¥Úd'ĞG½VN*xD	dÂÊôíMm°*ÇÔe,šXFZk˜*ˆcìÌğz…¶0‡|*ÍÄ9^/<WºàÙXë‡áP,Ä|:–ge‘ÅÑ<ëßtÖµØRÿÒ§›?ÑÇùÓ*ùÿ  ÿÿ¼]mS7ş+n§“@»`(3P&Ê´CI&„O|)ØGí	öİœM^êé¯vWÒIº]IG\ü!ÁöİùtZ­öõyè•†=iˆe_ ûŠ¢Ò$°®\œ­šô[D?	`R$9%ÀÍ¢	®¥è?R®0¤ˆp(*»ùÿÎjµša½iûE©‰!«ˆ2Õ€‘x‡Çğ’|úP&åá_G”äöºO†P—“²Æ†Fÿà†Ym¬~Ùõ‹ò'p—€V¬åäª¤d’Æ,©(¿dzz.×»Ësİõ!ŞOdq³=E•B9ò”AR4›,tQæ(€«?¨B›´Îˆ€}1Á½¶AÉQ«¿\M0éï;‘zÈh-Ñ¢cñ©š†… üR†v“8ôs>i±>Ç¼jL—ÿafõ•Ÿynñ<Ïìj—µÏzU²ä¹^K[¨óÜÀŸÅô¨äpĞ“r<‹¯é Áà¹$¼ß¥~Rñé)›úhe[UeQÁvÛ£•šHùjÂ=Zí¼ÄEMovĞaÏ‹G¥ÈÀ0pü-x£º\¨!OkÂp ÿ!²@°¥8<ÕÊsPbk
+OùS=ë£LhòĞë
+®m[Í“Ç_·píÌS°Ûÿ
+n=xNŞL`>ÎºÑç
+EûönQ>¨Í\É´Zt3¥<RıŸWã];‰˜§»!@æàZõëŸÅğ›Ú×¶>8ªcãgû-0TH[uágQÅ[‰9l'Øi–ĞÉm3b\‰°„Œ–J£ÁÍS+«¾ÍæE/ŒŸaøÍ‰ò„¯\B‚Şø‘
+õ cÓÕĞUÏ£	¶ËµK ±AÙİ& fc¥4³I`\g Ğ!¿~ı}¼aJNûĞ¼Ü<À˜ÑÇÑX(çJ=üıV=Sm79ÇN.+{âJ”+©ošy,CÔøV\€9º/ê|º88À>írß#à ƒL@ßH'ÿËT\ÚD‘jûZ‘•d±ˆ½r$ZÅ’^À$ö^(?ª¬Â¢¼)¡–@ùL7ÊİºÖÎ.2Şª*T'ğÖ¶z¼;;ïm€Û|UQC?.´ÍØˆ¤…ô¢íf3XòÂpMÈÚ(0*µ‘Åòî|£ÍÜø	y´$_'4rdş›¤^”{Ñ6ˆ;„cÙüƒÔ¢Nˆzwå—¬D„«Í!†ïhnÇ0¡¼‘r¶9W!†¿ÄşLÂÑäcŸz*úÚäEÆh¶:óSä§M>¬]T2f¦‰×sßl‰44Y¤˜Á†¬g'Ÿ¾ÒKRÄ=¤×dq'Êîê\¡£ì’]M 9†Ğ … #Wó}½(bxˆbcİNMØ\X˜±ôkW¥.Œ³™Ø"¤b»×la…œã»™b¿^N×ˆOGX9C
+Imê¹ã$béí§xv·Ô¥ÔWHŠV£bZ-uª ˜©ı÷kQø9¥ÇÁÄX"”ÖX ·„º8> ìBßXÕ‘Êc
+‰KJCVË†2dKUZN-K¾ dõ]¢´ÚŞmÔÿÊñ½rı®XêÂkİ‰&.Úî€“y` ÜŸ–†è@‰]}é¿¦º0‰9Ğ'yùQ·DáM
+ÃƒŸZ€bæJ\µPuTJİ7æ0áçX ÷ˆ@yü¶ìÁ­®NnQØm»MìŞÚ'–ŸV;ØñÓa$†Ò…rWÿ5#.)³z(˜|1:£Ø=B2[’ZüÎÈì‹Œœpk<ñ€HÄÌ¯‡DÁ"×@È6ĞŞÀ´½ çŞlÖjÅ§iñYq\`Y¼k×¦[åğ¨<â š,WÜg€ZÃz—iÈ)Ğ·Õ¯]Œ©C4 N¦õè“¾mZ’® 0Ë<ìÖ¯¯À'ãz_(›s9y¢L^0‹{å}è†SˆÛ#`+ ÖÓ	à3÷ìuKéÔph‚õÒ¤š ®j‹#ÎÕNßç”hğãZö1<´ JhSô~³=ØŞå
+˜xê´¡íØ¤›.¡ê»¿3üş—ó÷g¿½¹ê¼½¼º¾øMWIïü;„4«–3ÌZ«çúñLÛSæº²PææP ¬©gí 'M—~©ó°š#ñĞ³*öDÓJÆÍV’¥M:]`¶¿í˜ıœ,0.Lugvá¡R•£±§°›P"Æ
+ªmğ3v‰æø“—¬ìt¢(_–¦QNˆÒ8NÈ/¡›œlŞ8ÅªŒ¦ãNm.›±«>!.”z^fYm7CØÛx÷Ğwa¬»%ÂÒ‡>•¡Ôkh()ké–îITÉIEĞ¼>{Q³©~ÉçŒ—ÒØô‘`½BôĞê?é–Â(}ş),}înò¨VDı¤oÄ~›C8ğGğŠi¥W+Ìá„ApçŞ‡`äµ>ìjãyoô;‡dªÑ:qº)‰(ç©ôSä5å¶ÎOb¢"#†pòüŒ‚ËHE(–†’
+ÏñÀ5€°Ê}8d€æâºÆmU= ©•º-k0‘b[ä°Y±y[†Ñ*fÅS\µçıŒâLÆ—É|7ş±¦©×—\ÏÄßò€)#§ÙÖOñd¢A©!ñğ1&¬S
+›×à² X Ê6æéxÍI&—ãì?   ÿÿ ÇhK

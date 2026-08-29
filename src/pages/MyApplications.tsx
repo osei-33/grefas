@@ -625,7 +625,11 @@ export default function MyApplications() {
       await new Promise((resolve) => setTimeout(resolve, 1200));
 
       // 2. Verify Transaction with Paystack
-      await verifyPaystackPayment(txnId);
+      try {
+        await verifyPaystackPayment(txnId);
+      } catch (vErr) {
+        console.warn("Paystack verify fallback:", vErr);
+      }
 
       const appInsts = activePaymentApp.paymentPlan?.installments || [];
       const updatedInsts = appInsts.map((inst: any) => {

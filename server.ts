@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import https from "https";
 import { Resend } from "resend";
 import { jsPDF } from "jspdf";
 import dotenv from "dotenv";
@@ -10,6 +11,14 @@ import { v2 as cloudinary } from "cloudinary";
 import multer from "multer";
 import { sendArkeselSms, checkArkeselBalance } from "./src/lib/arkeselSms";
 import { generateDynamicSitemap } from "./src/lib/sitemapGenerator";
+import crypto from "crypto";
+import {
+  verifyPaystackSignature,
+  recordWebhookEvent,
+  getWebhookEvents,
+  createCloudFunctionHandler,
+  type PaystackWebhookEvent
+} from "./src/lib/paystackWebhookHandler";
 
 // Node version check
 const nodeVersion = process.versions.node.split(".")[0];
@@ -338,7 +347,14 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(compression());
-  app.use(express.json());
+  app.use(
+    express.json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      }
+    })
+  );
+  app.use(express.urlencoded({ extended: true }));
 
   // Health check
   app.get("/api/health", (req, res) => {
@@ -582,6 +598,131 @@ Sitemap: ${domain}/sitemap.xml`);
   });
 
   // --- PAYSTACK PAYMENT GATEWAY INTEGRATION ---
+
+  /**
+   * Core Paystack Transaction Initializer using standard Node https.request
+   * Targets https://api.paystack.co/transaction/initialize
+   */
+  function initializePaystackTransaction(params: {
+    email: string;
+    amount: number | string; // in lowest unit (pesewas/cents) e.g. "500000" or in standard GHS e.g. 50
+    currency?: string;
+    reference?: string;
+    callback_url?: string;
+    metadata?: Record<string, any>;
+    channels?: string[];
+  }): Promise<{ status: boolean; message: string; data?: any; error?: string; isDemo?: boolean }> {
+    return new Promise((resolve) => {
+      const secretKey = process.env.PAYSTACK_SECRET_KEY || "";
+      const rawAmount = Number(params.amount);
+
+      if (!params.email || isNaN(rawAmount) || rawAmount <= 0) {
+        return resolve({
+          status: false,
+          message: "Valid email and positive numeric amount are required",
+          error: "Invalid email or amount"
+        });
+      }
+
+      // Calculate amount in lowest currency unit (pesewas)
+      // Standard GHS amounts (e.g. 50, 150, 500) are converted (* 100)
+      // Large integers (e.g. 500000 from Paystack params) are preserved
+      const amountInLowestUnit = rawAmount < 10000 ? Math.round(rawAmount * 100) : Math.round(rawAmount);
+      const txRef = params.reference || `GREFAS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+      // Graceful fallback for sandbox / development environment if SECRET_KEY is not configured
+      if (!secretKey) {
+        return resolve({
+          status: true,
+          message: "Paystack transaction initialized (Sandbox / Development Mode)",
+          isDemo: true,
+          data: {
+            authorization_url: params.callback_url ? `${params.callback_url}${params.callback_url.includes('?') ? '&' : '?'}reference=${encodeURIComponent(txRef)}&status=sandbox_success` : "",
+            access_code: `demo_acc_${Date.now()}`,
+            reference: txRef,
+            amount: amountInLowestUnit,
+            amountInGhs: amountInLowestUnit / 100
+          }
+        });
+      }
+
+      const postData = JSON.stringify({
+        email: params.email,
+        amount: String(amountInLowestUnit),
+        currency: params.currency || "GHS",
+        reference: txRef,
+        callback_url: params.callback_url,
+        metadata: params.metadata || {},
+        channels: params.channels || ["card", "mobile_money", "bank_transfer"]
+      });
+
+      const options = {
+        hostname: "api.paystack.co",
+        port: 443,
+        path: "/transaction/initialize",
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(postData)
+        }
+      };
+
+      const paystackReq = https.request(options, (paystackRes) => {
+        let responseBody = "";
+
+        paystackRes.on("data", (chunk) => {
+          responseBody += chunk;
+        });
+
+        paystackRes.on("end", () => {
+          try {
+            const parsed = JSON.parse(responseBody);
+            if (parsed && parsed.status) {
+              resolve({
+                status: true,
+                message: parsed.message || "Paystack authorization URL generated",
+                data: {
+                  ...parsed.data,
+                  reference: txRef,
+                  amount: amountInLowestUnit,
+                  amountInGhs: amountInLowestUnit / 100
+                }
+              });
+            } else {
+              console.warn("Paystack initialize rejected:", parsed);
+              resolve({
+                status: false,
+                message: parsed?.message || "Paystack transaction initialization failed",
+                error: parsed?.message,
+                data: parsed?.data
+              });
+            }
+          } catch (parseError: any) {
+            console.error("Paystack response parse exception:", responseBody, parseError);
+            resolve({
+              status: false,
+              message: "Malformed response received from Paystack",
+              error: parseError.message
+            });
+          }
+        });
+      });
+
+      paystackReq.on("error", (requestError) => {
+        console.error("Paystack HTTPS request error:", requestError);
+        resolve({
+          status: false,
+          message: "Failed to establish secure link to Paystack servers",
+          error: requestError.message
+        });
+      });
+
+      paystackReq.write(postData);
+      paystackReq.end();
+    });
+  }
+
   // Returns Paystack integration configuration and connection status
   app.get("/api/paystack/config", (req, res) => {
     const secretKey = process.env.PAYSTACK_SECRET_KEY || "";
@@ -599,83 +740,113 @@ Sitemap: ${domain}/sitemap.xml`);
     });
   });
 
-  // Initialize Paystack transaction
+  // Universal HTML Form / API Order & Payment Submission endpoint: /save-order-and-pay and /api/save-order-and-pay
+  const handleSaveOrderAndPay = async (req: express.Request, res: express.Response) => {
+    const user_email = (req.body?.user_email || req.body?.email || "").toString().trim();
+    const amount = req.body?.amount;
+    const cartid = (req.body?.cartid || req.body?.order_id || req.body?.reference || "").toString().trim();
+    const currency = (req.body?.currency || "GHS").toString().trim();
+    const protocol = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+    const host = req.get("host") || "localhost:3000";
+    const defaultCallback = `${protocol}://${host}/booking?payment_status=success`;
+    const callback_url = req.body?.callback_url || defaultCallback;
+
+    if (!user_email || !amount) {
+      const errorMsg = "Missing required parameters: 'user_email' (or 'email') and 'amount' are required.";
+      const isFormPost = req.is("application/x-www-form-urlencoded") || (!req.xhr && !req.headers.accept?.includes("application/json"));
+      if (isFormPost) {
+        return res.status(400).send(`
+          <div style="font-family: sans-serif; padding: 2rem; max-width: 500px; margin: auto; text-align: center;">
+            <h2 style="color: #dc2626;">Payment Error</h2>
+            <p style="color: #4b5563;">${errorMsg}</p>
+            <a href="/booking" style="display: inline-block; margin-top: 1rem; padding: 0.5rem 1.25rem; background: #16a34a; color: white; border-radius: 0.375rem; text-decoration: none;">Return to Booking</a>
+          </div>
+        `);
+      }
+      return res.status(400).json({ status: false, error: errorMsg });
+    }
+
+    const txRef = cartid || `GREFAS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+    const paystackResult = await initializePaystackTransaction({
+      email: user_email,
+      amount: amount,
+      currency,
+      reference: txRef,
+      callback_url,
+      metadata: {
+        cartid: cartid || txRef,
+        source: "save-order-and-pay-form",
+        user_email,
+        ...(typeof req.body?.metadata === "object" ? req.body.metadata : {})
+      }
+    });
+
+    const isFormPost = req.is("application/x-www-form-urlencoded") || (!req.xhr && !req.headers.accept?.includes("application/json"));
+
+    if (paystackResult.status && paystackResult.data?.authorization_url) {
+      if (isFormPost) {
+        // Direct redirect to Paystack hosted checkout page for HTML forms
+        return res.redirect(paystackResult.data.authorization_url);
+      }
+      return res.json(paystackResult);
+    } else if (paystackResult.status) {
+      // Sandbox fallback redirect or response
+      if (isFormPost) {
+        return res.redirect(`/booking?reference=${encodeURIComponent(txRef)}&payment_status=sandbox_success`);
+      }
+      return res.json(paystackResult);
+    } else {
+      if (isFormPost) {
+        return res.status(400).send(`
+          <div style="font-family: sans-serif; padding: 2rem; max-width: 500px; margin: auto; text-align: center;">
+            <h2 style="color: #dc2626;">Payment Gateway Notice</h2>
+            <p style="color: #4b5563;">${paystackResult.message || paystackResult.error || "Unable to initialize Paystack transaction."}</p>
+            <a href="/booking" style="display: inline-block; margin-top: 1rem; padding: 0.5rem 1.25rem; background: #16a34a; color: white; border-radius: 0.375rem; text-decoration: none;">Return to Booking</a>
+          </div>
+        `);
+      }
+      return res.status(400).json(paystackResult);
+    }
+  };
+
+  app.post("/save-order-and-pay", handleSaveOrderAndPay);
+  app.post("/api/save-order-and-pay", handleSaveOrderAndPay);
+
+  // Initialize Paystack transaction API
   app.post("/api/paystack/initialize", async (req, res) => {
-    const { email, amount, currency = "GHS", reference, metadata, channels, callback_url } = req.body;
+    const email = req.body?.email || req.body?.user_email;
+    const amount = req.body?.amount;
+    const currency = req.body?.currency || "GHS";
+    const reference = req.body?.reference || req.body?.cartid;
+    const metadata = req.body?.metadata;
+    const channels = req.body?.channels;
+    const protocol = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+    const host = req.get("host") || "localhost:3000";
+    const callback_url = req.body?.callback_url || `${protocol}://${host}/booking`;
 
     if (!email || !amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       return res.status(400).json({ 
         status: false, 
-        error: "Valid email and positive numeric amount are required for Paystack payment" 
+        error: "Valid email (or user_email) and positive numeric amount are required for Paystack payment" 
       });
     }
 
-    const secretKey = process.env.PAYSTACK_SECRET_KEY;
-    const amountInPesewas = Math.round(Number(amount) * 100);
-    const txRef = reference || `GREFAS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const result = await initializePaystackTransaction({
+      email,
+      amount,
+      currency,
+      reference,
+      metadata,
+      channels,
+      callback_url
+    });
 
-    // If Paystack Secret Key is configured, make the live/test API call
-    if (secretKey) {
-      try {
-        const paystackRes = await fetch("https://api.paystack.co/transaction/initialize", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${secretKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email,
-            amount: amountInPesewas,
-            currency: currency || "GHS",
-            reference: txRef,
-            callback_url: callback_url || `${req.protocol}://${req.get("host")}/booking`,
-            metadata: metadata || {},
-            channels: channels || ["card", "mobile_money", "bank_transfer"],
-          }),
-        });
-
-        const paystackData = await paystackRes.json();
-        if (!paystackRes.ok || !paystackData.status) {
-          console.warn("Paystack API initialization notice:", paystackData);
-          return res.status(paystackRes.status || 400).json({
-            status: false,
-            message: paystackData.message || "Paystack initialization rejected",
-            error: paystackData.message,
-            data: paystackData.data
-          });
-        }
-
-        return res.json({
-          status: true,
-          message: paystackData.message || "Paystack authorization URL generated",
-          data: {
-            ...paystackData.data,
-            reference: txRef,
-            amountInGhs: Number(amount)
-          }
-        });
-      } catch (err: any) {
-        console.error("Paystack API network exception:", err);
-        return res.status(502).json({
-          status: false,
-          error: "Could not establish secure link to Paystack servers",
-          message: err.message
-        });
-      }
+    if (!result.status) {
+      return res.status(400).json(result);
     }
 
-    // Graceful fallback for sandbox / development environment
-    return res.json({
-      status: true,
-      message: "Paystack transaction initialized (Sandbox / Development Mode)",
-      isDemo: true,
-      data: {
-        authorization_url: "",
-        access_code: `demo_${Date.now()}`,
-        reference: txRef,
-        amountInGhs: Number(amount)
-      }
-    });
+    return res.json(result);
   });
 
   // Verify a Paystack transaction by reference
@@ -706,12 +877,17 @@ Sitemap: ${domain}/sitemap.xml`);
         }
 
         const tx = paystackData.data;
+        const isSuccess = tx && tx.status === "success";
+
         return res.json({
-          status: true,
-          message: "Transaction verified successfully",
+          status: isSuccess,
+          message: isSuccess
+            ? "Transaction verified successfully"
+            : `Transaction status is '${tx?.status || "pending"}'. Gateway response: ${tx?.gateway_response || "Payment pending or not completed on Paystack."}`,
           data: {
             ...tx,
-            amountInGhs: (tx.amount || 0) / 100
+            status: tx?.status || "pending",
+            amountInGhs: (tx?.amount || 0) / 100
           }
         });
       } catch (err: any) {
@@ -744,17 +920,218 @@ Sitemap: ${domain}/sitemap.xml`);
     });
   });
 
-  // Paystack Webhook Handler
-  app.post("/api/paystack/webhook", express.raw({ type: "application/json" }), (req, res) => {
-    try {
-      const event = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      console.log("Paystack Webhook Received:", event?.event, event?.data?.reference);
-      // Acknowledge receipt to Paystack
-      res.sendStatus(200);
-    } catch (err) {
-      console.error("Paystack webhook processing warning:", err);
-      res.sendStatus(200);
+  // ==========================================
+  // PAYSTACK WEBHOOK HANDLER & CLOUD FUNCTION
+  // ==========================================
+
+  const handlePaystackWebhook = async (req: express.Request, res: express.Response) => {
+    const signature = req.headers["x-paystack-signature"] as string;
+    const rawBody = (req as any).rawBody || (typeof req.body === "string" ? req.body : JSON.stringify(req.body));
+    const secretKey = process.env.PAYSTACK_SECRET_KEY || "";
+
+    // Verify HMAC SHA-512 signature
+    const verification = verifyPaystackSignature(rawBody, signature, secretKey);
+
+    if (secretKey && !verification.isValid) {
+      console.warn("⚠️ Paystack Webhook Unauthorized Signature:", verification.reason);
+      return res.status(401).json({
+        status: false,
+        error: "Unauthorized Paystack Webhook Signature",
+        message: verification.reason
+      });
     }
+
+    try {
+      let eventPayload: PaystackWebhookEvent;
+      if (typeof req.body === "string") {
+        eventPayload = JSON.parse(req.body);
+      } else if (Buffer.isBuffer(req.body)) {
+        eventPayload = JSON.parse(req.body.toString("utf8"));
+      } else {
+        eventPayload = req.body;
+      }
+
+      // Record event log in memory/queryable store
+      const logEntry = recordWebhookEvent(eventPayload, verification.isValid);
+      console.log(`🔔 Paystack Webhook Received: [${eventPayload?.event}] Ref: ${logEntry.reference} | Status: ${logEntry.status} | GHS ${logEntry.amountInGhs}`);
+
+      // Process event-specific automations
+      if (eventPayload?.event === "charge.success") {
+        const txData = eventPayload.data || ({} as any);
+        const amountGhs = logEntry.amountInGhs;
+        const customerEmail = logEntry.customerEmail;
+        const customerPhone = logEntry.customerPhone || txData.customer?.phone || (txData.metadata?.phone as string);
+        const customerName =
+          (txData.metadata?.fullName as string) ||
+          (txData.metadata?.name as string) ||
+          `${txData.customer?.first_name || ""} ${txData.customer?.last_name || ""}`.trim() ||
+          "Valued Client";
+
+        // 1. Dispatch SMS confirmation if customer phone is available
+        if (customerPhone) {
+          const smsMsg = `Grefas Consult: Payment of GH₵${amountGhs.toFixed(2)} received successfully! (Ref: ${logEntry.reference}). Thank you for choosing Grefas!`;
+          sendSMS(customerPhone, smsMsg).catch((smsErr) => {
+            console.warn("Webhook SMS alert notice:", smsErr.message || smsErr);
+          });
+        }
+
+        // 2. Dispatch Email Receipt if Resend and customer email are available
+        if (resend && customerEmail && customerEmail !== "N/A" && customerEmail.includes("@")) {
+          try {
+            const receiptPdfBuffer = generatePaymentReceiptPDF({
+              fullName: customerName,
+              emailAddress: customerEmail,
+              contact: customerPhone,
+              amountPaid: amountGhs,
+              paymentPlan: (txData.metadata?.serviceTitle as string) || "Grefas Official Service",
+              paymentMethod: txData.channel === "card" ? "Debit/Credit Card (Paystack)" : `Mobile Money (${(txData.channel || "momo").toUpperCase()})`,
+              totalPrice: amountGhs,
+              balanceDue: 0,
+              paymentStatus: "Fully Paid",
+              refId: logEntry.reference
+            });
+
+            resend.emails.send({
+              from: getFromEmail("Grefas Consult & Entertainment"),
+              to: customerEmail,
+              subject: `Official Payment Receipt [${logEntry.reference}] - GH₵${amountGhs.toFixed(2)}`,
+              html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                  <div style="background-color: #16a34a; padding: 15px; border-radius: 6px; text-align: center; color: #ffffff;">
+                    <h2 style="margin: 0; font-size: 20px;">Payment Verified Successfully</h2>
+                  </div>
+                  <div style="padding: 20px 0;">
+                    <p style="font-size: 15px; color: #374151;">Dear <strong>${customerName}</strong>,</p>
+                    <p style="font-size: 14px; color: #4b5563;">
+                      We have received your payment of <strong>GH₵ ${amountGhs.toFixed(2)}</strong> via Paystack gateway.
+                    </p>
+                    <div style="background-color: #f9fafb; padding: 15px; border-radius: 6px; margin: 15px 0; border: 1px solid #e5e7eb;">
+                      <table style="width: 100%; font-size: 13px; color: #4b5563;">
+                        <tr><td style="padding: 4px 0;"><strong>Reference:</strong></td><td>${logEntry.reference}</td></tr>
+                        <tr><td style="padding: 4px 0;"><strong>Amount Paid:</strong></td><td>GH₵ ${amountGhs.toFixed(2)}</td></tr>
+                        <tr><td style="padding: 4px 0;"><strong>Payment Channel:</strong></td><td>${logEntry.channel.toUpperCase()}</td></tr>
+                        <tr><td style="padding: 4px 0;"><strong>Status:</strong></td><td style="color: #16a34a; font-weight: bold;">VERIFIED & APPROVED</td></tr>
+                        <tr><td style="padding: 4px 0;"><strong>Date:</strong></td><td>${new Date().toLocaleString()}</td></tr>
+                      </table>
+                    </div>
+                    <p style="font-size: 13px; color: #6b7280;">Your official PDF payment receipt is attached to this email.</p>
+                  </div>
+                  <div style="border-top: 1px solid #e5e7eb; padding-top: 15px; text-align: center; font-size: 12px; color: #9ca3af;">
+                    Grefas Consult & Entertainment &bull; Accra, Ghana &bull; support@grefas.com
+                  </div>
+                </div>
+              `,
+              attachments: [
+                {
+                  filename: `Grefas_Receipt_${logEntry.reference}.pdf`,
+                  content: receiptPdfBuffer
+                }
+              ]
+            }).catch((emailErr) => {
+              console.warn("Webhook PDF receipt email notice:", emailErr.message || emailErr);
+            });
+          } catch (pdfErr) {
+            console.warn("Webhook PDF compilation notice:", pdfErr);
+          }
+        }
+      } else if (eventPayload?.event === "charge.failed") {
+        console.warn(`[Paystack Webhook] Charge failed for Ref: ${logEntry.reference} - ${logEntry.gatewayResponse}`);
+      }
+
+      // Fast 200 HTTP response acknowledgment to Paystack
+      return res.status(200).json({
+        status: true,
+        message: "Paystack webhook processed successfully",
+        event: eventPayload?.event,
+        reference: logEntry.reference,
+        statusResult: logEntry.status
+      });
+    } catch (err: any) {
+      console.error("Paystack webhook parsing error:", err);
+      return res.status(200).json({
+        status: false,
+        warning: "Webhook received with parsing notes",
+        error: err.message
+      });
+    }
+  };
+
+  // Mount Paystack Webhook on standard paths
+  app.post("/api/paystack/webhook", handlePaystackWebhook);
+  app.post("/paystack/webhook", handlePaystackWebhook);
+
+  // Retrieve received Paystack webhook events log
+  app.get("/api/paystack/webhook/events", (req, res) => {
+    const reference = req.query.reference as string;
+    const eventType = req.query.event as string;
+    const events = getWebhookEvents({ reference, event: eventType });
+    res.json({
+      status: true,
+      count: events.length,
+      data: events
+    });
+  });
+
+  // Query webhook status for a specific transaction reference
+  app.get("/api/paystack/webhook/events/:reference", (req, res) => {
+    const ref = req.params.reference;
+    const events = getWebhookEvents({ reference: ref });
+    if (events.length > 0) {
+      res.json({
+        status: true,
+        found: true,
+        data: events[0],
+        allEventsForRef: events
+      });
+    } else {
+      res.json({
+        status: true,
+        found: false,
+        message: `No webhook event recorded yet for reference '${ref}'.`
+      });
+    }
+  });
+
+  // Test / Simulate a Paystack webhook event
+  app.post("/api/paystack/webhook/test", (req, res) => {
+    const eventType = req.body?.event || "charge.success";
+    const amount = Number(req.body?.amount) || 5000;
+    const reference = req.body?.reference || `GREFAS-TEST-${Date.now()}`;
+    const email = req.body?.email || "test.client@example.com";
+    const phone = req.body?.phone || "+233244000000";
+    const channel = req.body?.channel || "mobile_money";
+
+    const simulatedEvent: PaystackWebhookEvent = {
+      event: eventType,
+      data: {
+        id: Math.floor(1000000 + Math.random() * 9000000),
+        domain: "test",
+        status: eventType === "charge.success" ? "success" : "failed",
+        reference,
+        amount,
+        gateway_response: eventType === "charge.success" ? "Approved" : "Insufficient funds / Declined",
+        channel,
+        currency: "GHS",
+        customer: {
+          email,
+          phone,
+          first_name: "Test",
+          last_name: "User"
+        },
+        metadata: {
+          fullName: "Test User",
+          serviceTitle: "Consultation Booking (Simulated Test)",
+          phone
+        }
+      }
+    };
+
+    const log = recordWebhookEvent(simulatedEvent, true);
+    res.json({
+      status: true,
+      message: `Simulated '${eventType}' webhook event generated and recorded successfully`,
+      data: log
+    });
   });
 
   // Proxy download for images and videos to bypass browser CORS rules on external assets (such as Firebase Storage)

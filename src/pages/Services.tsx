@@ -12,13 +12,23 @@ import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import { compressImage, blobToBase64 } from '@/lib/utils';
-import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
+import { 
+  generatePaystackReference, 
+  initializePaystackPayment, 
+  verifyPaystackPayment, 
+  savePendingPayment, 
+  clearPendingPayment,
+  openPaystackModal
+} from '@/lib/paystack';
+import PaystackPop from '@paystack/inline-js';
+import { usePaystack } from '@/providers/PaystackProvider';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
 const artistImg = '/src/assets/images/service_artist_1782127476185.jpg';
 
 export default function Services() {
+  const paystackContext = usePaystack();
   const [services, setServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('All');
@@ -58,6 +68,8 @@ export default function Services() {
   const [cardCvv, setCardCvv] = useState('');
   const [cardName, setCardName] = useState('');
   const [isPaying, setIsPaying] = useState(false);
+  const [paystackAuthUrl, setPaystackAuthUrl] = useState<string | null>(null);
+  const [isVerifyingDirect, setIsVerifyingDirect] = useState(false);
   const [paymentSteps, setPaymentSteps] = useState<string[]>([]);
   const [currentPaymentStep, setCurrentPaymentStep] = useState(0);
   const [paymentRef, setPaymentRef] = useState('');
@@ -1180,9 +1192,10 @@ export default function Services() {
 
     try {
       const refCode = generatePaystackReference('GREFAS-CASTING');
+      setPaymentRef(refCode);
       
       // Initialize with Paystack
-      await initializePaystackPayment({
+      const initResult = await initializePaystackPayment({
         email: formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com',
         amount: Number(intakePrice),
         currency: 'GHS',
@@ -1198,39 +1211,140 @@ export default function Services() {
         channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
       });
 
-      await new Promise(resolve => setTimeout(resolve, 600));
-      setCurrentPaymentStep(1);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setCurrentPaymentStep(2);
-      await new Promise(resolve => setTimeout(resolve, 900));
-      setCurrentPaymentStep(3);
+      const authUrl = initResult.data?.authorization_url;
+      const accessCode = initResult.data?.access_code;
 
-      // Verify with Paystack
-      await verifyPaystackPayment(refCode);
-      setPaymentRef(refCode);
+      if (authUrl) {
+        setPaystackAuthUrl(authUrl);
+      }
 
-      // Write direct to Firestore Transactions Collection
-      const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
-      await addDoc(collection(db, 'transactions'), {
-        description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
+      const activePublicKey = paystackContext?.publicKey || 
+                              ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || 
+                              '';
+
+      // Open Paystack popup modal with full parameter injection
+      const modalResult = await openPaystackModal({
+        publicKey: activePublicKey,
+        email: formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com',
         amount: Number(intakePrice),
-        type: 'credit',
-        category: 'Audition / Casting Fee',
-        ref: refCode,
-        gateway: 'Paystack',
-        channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
-        recordedBy: recordedByEmail,
-        createdAt: new Date(),
-        transactionDate: new Date().toISOString()
+        currency: 'GHS',
+        reference: refCode,
+        access_code: accessCode,
+        authorization_url: authUrl,
+        channels: paymentProvider === 'card' ? ['card'] : ['mobile_money'],
+        metadata: {
+          fullName: formData.fullName,
+          roleType: formData.roleType,
+          contact: formData.contact,
+          paymentProvider,
+          phone: momoNumber || formData.contact
+        },
+        onSuccess: async (receiptData: any) => {
+          setCurrentPaymentStep(3);
+          const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
+          await addDoc(collection(db, 'transactions'), {
+            description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
+            amount: Number(intakePrice),
+            type: 'credit',
+            category: 'Audition / Casting Fee',
+            ref: refCode,
+            gateway: 'Paystack',
+            channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+            recordedBy: recordedByEmail,
+            createdAt: new Date(),
+            transactionDate: new Date().toISOString()
+          });
+
+          setPriceConfirmed(true);
+          setIsPaying(false);
+          clearPendingPayment(refCode);
+          toast.success(`Paystack payment of GH₵ ${intakePrice.toFixed(2)} verified successfully!`);
+        },
+        onCancel: () => {
+          setIsPaying(false);
+        }
       });
 
-      setPriceConfirmed(true);
-      toast.success(`Paystack payment of GH₵ ${intakePrice.toFixed(2)} verified successfully!`);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setCurrentPaymentStep(1);
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setCurrentPaymentStep(2);
+
+      // Background verification polling for 60 seconds
+      let pollCount = 0;
+      const intervalId = setInterval(async () => {
+        pollCount++;
+        if (pollCount > 30) {
+          clearInterval(intervalId);
+          return;
+        }
+        try {
+          const verifyRes = await verifyPaystackPayment(refCode);
+          if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
+            clearInterval(intervalId);
+            setCurrentPaymentStep(3);
+
+            // Write direct to Firestore Transactions Collection
+            const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
+            await addDoc(collection(db, 'transactions'), {
+              description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
+              amount: Number(intakePrice),
+              type: 'credit',
+              category: 'Audition / Casting Fee',
+              ref: refCode,
+              gateway: 'Paystack',
+              channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+              recordedBy: recordedByEmail,
+              createdAt: new Date(),
+              transactionDate: new Date().toISOString()
+            });
+
+            setPriceConfirmed(true);
+            setIsPaying(false);
+            toast.success(`Paystack payment of GH₵ ${intakePrice.toFixed(2)} verified successfully!`);
+          }
+        } catch (vErr) {
+          // ignore transient poll errors
+        }
+      }, 3500);
+
     } catch (err: any) {
       console.error("Paystack payment execution failure:", err);
-      toast.error(err.message || "Payment verification failed. Please try again.");
-    } finally {
+      toast.error(err.message || "Payment initialization failed. Please try again.");
       setIsPaying(false);
+    }
+  };
+
+  const handleManualVerifyPayment = async () => {
+    if (!paymentRef) return;
+    setIsVerifyingDirect(true);
+    try {
+      const verifyRes = await verifyPaystackPayment(paymentRef);
+      if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
+        const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
+        await addDoc(collection(db, 'transactions'), {
+          description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
+          amount: Number(intakePrice),
+          type: 'credit',
+          category: 'Audition / Casting Fee',
+          ref: paymentRef,
+          gateway: 'Paystack',
+          channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+          recordedBy: recordedByEmail,
+          createdAt: new Date(),
+          transactionDate: new Date().toISOString()
+        });
+
+        setPriceConfirmed(true);
+        setIsPaying(false);
+        toast.success(`Paystack payment verified and confirmed successfully!`);
+      } else {
+        toast.info(verifyRes.message || "Payment has not yet been confirmed by Paystack. Please complete authorization.");
+      }
+    } catch (err: any) {
+      toast.error("Could not verify transaction with Paystack yet.");
+    } finally {
+      setIsVerifyingDirect(false);
     }
   };
 
@@ -2585,15 +2699,59 @@ export default function Services() {
                                           </div>
                                         ))}
                                       </div>
+
+                                      {paystackAuthUrl && (
+                                        <div className="pt-2 space-y-2">
+                                          <Button
+                                            type="button"
+                                            onClick={() => window.open(paystackAuthUrl, '_blank', 'noopener,noreferrer')}
+                                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
+                                          >
+                                            Proceed to Paystack Checkout ↗
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleManualVerifyPayment}
+                                            disabled={isVerifyingDirect}
+                                            className="w-full text-xs h-8 rounded-xl border-border"
+                                          >
+                                            {isVerifyingDirect ? 'Verifying status...' : 'I have authorized payment (Verify Now)'}
+                                          </Button>
+                                        </div>
+                                      )}
                                     </div>
                                   ) : (
-                                    <Button
-                                      type="button"
-                                      onClick={handleProcessPayment}
-                                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
-                                    >
-                                      <LucideIcons.Lock className="h-3.5 w-3.5" /> Authorize & Pay GH₵ {intakePrice.toFixed(2)}
-                                    </Button>
+                                    <div className="space-y-2">
+                                      <Button
+                                        type="button"
+                                        onClick={handleProcessPayment}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
+                                      >
+                                        <LucideIcons.Lock className="h-3.5 w-3.5" /> Proceed to Paystack Payment (GH₵ {intakePrice.toFixed(2)})
+                                      </Button>
+                                      {paystackAuthUrl && (
+                                        <div className="flex gap-2">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => window.open(paystackAuthUrl, '_blank', 'noopener,noreferrer')}
+                                            className="flex-1 text-xs h-9 rounded-xl border-emerald-500/40 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                                          >
+                                            Open Paystack Tab ↗
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={handleManualVerifyPayment}
+                                            disabled={isVerifyingDirect}
+                                            className="flex-1 text-xs h-9 rounded-xl border-border"
+                                          >
+                                            {isVerifyingDirect ? 'Checking...' : 'Check Status'}
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               ) : (

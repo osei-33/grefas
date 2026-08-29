@@ -20,7 +20,16 @@ import SEO from '@/components/SEO';
 import { showBrowserNotification } from '@/lib/utils';
 import AppointmentCountdown from '@/components/AppointmentCountdown';
 import AuthDialog from '@/components/AuthDialog';
-import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
+import { 
+  generatePaystackReference, 
+  initializePaystackPayment, 
+  verifyPaystackPayment,
+  savePendingPayment,
+  getPendingPayment,
+  clearPendingPayment,
+  openPaystackModal
+} from '@/lib/paystack';
+import PaystackPop from '@paystack/inline-js';
 import { usePaystack } from '@/providers/PaystackProvider';
 import { useResendPayment } from '@/hooks/useResendPayment';
 
@@ -42,6 +51,7 @@ const convertAccraTimeToUserTimezone = (accraTimeStr: string, targetTimezone: st
 };
 
 export default function Booking() {
+  const paystackContext = usePaystack();
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [bookedDates, setBookedDates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -84,10 +94,76 @@ export default function Booking() {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
   const [copied, setCopied] = useState(false);
+  const [paystackAuthUrl, setPaystackAuthUrl] = useState<string | null>(null);
+  const [isVerifyingDirect, setIsVerifyingDirect] = useState(false);
+  const [isDemoPaystack, setIsDemoPaystack] = useState(false);
   const location = useLocation();
 
   const { isConfigured: isPaystackConfigured, openPaystackPopup } = usePaystack();
   const { sendBookingPaymentConfirmation } = useResendPayment();
+
+  // Listen for Paystack redirect callbacks (e.g. ?reference=GREFAS-BOOK-xxx or ?trxref=xxx)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const refParam = searchParams.get('reference') || searchParams.get('trxref');
+    
+    if (refParam) {
+      const verifyRedirectedPayment = async () => {
+        setIsPaying(true);
+        toast.info("Verifying returned Paystack payment transaction...");
+        try {
+          const verifyRes = await verifyPaystackPayment(refParam);
+          if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
+            const txData = verifyRes.data;
+            setPaymentRef(refParam);
+            setIsPaid(true);
+            
+            // Restore saved pending booking state if present
+            const pending = getPendingPayment(refParam);
+            if (pending) {
+              if (pending.formData) setFormData(prev => ({ ...prev, ...pending.formData }));
+              if (pending.date) {
+                try {
+                  setDate(new Date(pending.date));
+                } catch (e) {}
+              }
+              if (pending.consultationPrice) setConsultationPrice(pending.consultationPrice);
+              if (pending.paymentProvider) setPaymentProvider(pending.paymentProvider);
+              if (pending.momoNumber) setMomoNumber(pending.momoNumber);
+              if (pending.momoProvider) setMomoProvider(pending.momoProvider);
+              clearPendingPayment(refParam);
+            }
+
+            const verifiedReceipt = {
+              id: txData?.id || Math.floor(100000000 + Math.random() * 900000000),
+              status: 'success',
+              reference: refParam,
+              amount: txData?.amount || 5000,
+              amountInGhs: (txData?.amount ? txData.amount / 100 : 50),
+              channel: txData?.channel || 'paystack',
+              currency: txData?.currency || 'GHS',
+              paid_at: txData?.paid_at || new Date().toISOString(),
+              gateway_response: txData?.gateway_response || 'Approved',
+              customer: txData?.customer || { email: auth.currentUser?.email || 'client@grefas.com' },
+              metadata: txData?.metadata || {}
+            };
+            setPaystackReceipt(verifiedReceipt);
+            setStep(3);
+            toast.success(`Paystack payment verified successfully! Reference: ${refParam}`);
+          } else {
+            toast.error(verifyRes.message || "Payment could not be verified yet. Please try again.");
+          }
+        } catch (err: any) {
+          console.error("Paystack redirect verify error:", err);
+          toast.error("Could not verify returned Paystack transaction");
+        } finally {
+          setIsPaying(false);
+        }
+      };
+
+      verifyRedirectedPayment();
+    }
+  }, [location.search]);
 
   const handleCopyOrderNumber = () => {
     if (!orderNumber) return;
@@ -522,25 +598,13 @@ export default function Booking() {
         toast.error("Please enter your Mobile Money phone number");
         return;
       }
-      if (!/^0[235][0-9]{8}$/.test(momoNumber.trim())) {
-        toast.error("Please enter a valid 10-digit Ghanaian mobile money number starting with 0");
+      if (!/^0[235][0-9]{8}$/.test(momoNumber.trim().replace(/\s+/g, ''))) {
+        toast.error("Please enter a valid 10-digit Ghanaian mobile money number starting with 0 (e.g. 0244123456)");
         return;
       }
     } else {
       if (!cardName.trim()) {
         toast.error("Please enter the cardholder's name");
-        return;
-      }
-      if (!cardNumber.trim()) {
-        toast.error("Please enter your card number");
-        return;
-      }
-      if (!cardExpiry.trim()) {
-        toast.error("Please enter your card expiry date");
-        return;
-      }
-      if (!cardCvv.trim()) {
-        toast.error("Please enter your card CVV");
         return;
       }
     }
@@ -551,17 +615,29 @@ export default function Booking() {
       "Initializing secure Paystack gateway session...",
       `Connecting to Paystack ${paymentProvider === 'card' ? 'Visa/Mastercard Engine' : (momoProvider + ' Central MoMo Node')}...`,
       paymentProvider === 'card' 
-        ? "Processing 3D-Secure card authentication..." 
+        ? "Opening 3D-Secure card verification..." 
         : `Sending USSD authorization prompt to ${momoNumber}...`,
-      "Verifying transaction settlement and confirming booking reservation..."
+      "Verifying transaction settlement with Paystack..."
     ];
     setPaymentSteps(steps);
 
     try {
       const refCode = generatePaystackReference('GREFAS-BOOK');
+      setPaymentRef(refCode);
+
+      // Save pending payment for redirect recovery
+      savePendingPayment(refCode, {
+        formData,
+        date: date ? date.toISOString() : null,
+        consultationPrice,
+        paymentProvider,
+        momoNumber,
+        momoProvider,
+        createdAt: new Date().toISOString()
+      });
       
-      // Step 0: Initialize with Paystack
-      await initializePaystackPayment({
+      // Step 0: Initialize with Paystack backend
+      const initResult = await initializePaystackPayment({
         email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
         amount: Number(consultationPrice),
         currency: 'GHS',
@@ -578,31 +654,173 @@ export default function Booking() {
         channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
       });
 
-      await new Promise(resolve => setTimeout(resolve, 600));
-      setCurrentPaymentStep(1);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setCurrentPaymentStep(2);
-      await new Promise(resolve => setTimeout(resolve, 900));
-      setCurrentPaymentStep(3);
-
-      // Step 3: Verify with Paystack
-      const verifyRes = await verifyPaystackPayment(refCode);
-
-      if (!verifyRes.status || !verifyRes.data || verifyRes.data.status !== 'success') {
-        throw new Error(verifyRes.message || "Paystack payment verification failed. No valid transaction receipt was generated.");
+      if (initResult.isDemo) {
+        setIsDemoPaystack(true);
       }
 
-      setPaymentRef(refCode);
-      setPaystackReceipt(verifyRes.data);
-      setIsPaid(true);
-      toast.success(`Paystack payment of GH₵ ${consultationPrice.toFixed(2)} verified successfully! Receipt #${verifyRes.data.id || refCode}`);
+      const authUrl = initResult.data?.authorization_url;
+      const accessCode = initResult.data?.access_code;
+
+      if (authUrl) {
+        setPaystackAuthUrl(authUrl);
+      }
+
+      const activePublicKey = paystackContext?.publicKey || 
+                              ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || 
+                              '';
+
+      // Open Paystack popup modal with full parameter injection
+      const modalResult = await openPaystackModal({
+        publicKey: activePublicKey,
+        email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
+        amount: Number(consultationPrice),
+        currency: 'GHS',
+        reference: refCode,
+        access_code: accessCode,
+        authorization_url: authUrl,
+        channels: paymentProvider === 'card' ? ['card'] : ['mobile_money'],
+        metadata: {
+          fullName: formData.userName,
+          serviceTitle: formData.serviceTitle || 'General Consultation',
+          date: date ? format(date, 'yyyy-MM-dd') : '',
+          time: formData.time,
+          paymentProvider,
+          phone: momoNumber || formData.userPhone
+        },
+        onSuccess: (receiptData: any) => {
+          setCurrentPaymentStep(3);
+          const verifiedReceipt = {
+            id: receiptData?.id || receiptData?.trans || Math.floor(100000000 + Math.random() * 900000000),
+            status: 'success',
+            reference: receiptData?.reference || refCode,
+            amount: Math.round(Number(consultationPrice) * 100),
+            amountInGhs: Number(consultationPrice),
+            channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+            currency: 'GHS',
+            paid_at: receiptData?.paid_at || new Date().toISOString(),
+            gateway_response: receiptData?.gateway_response || 'Approved',
+            customer: {
+              email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
+              phone: momoNumber || formData.userPhone
+            },
+            metadata: {
+              fullName: formData.userName,
+              serviceTitle: formData.serviceTitle || 'General Consultation',
+              paymentProvider
+            }
+          };
+
+          setPaymentRef(refCode);
+          setPaystackReceipt(verifiedReceipt);
+          setIsPaid(true);
+          setIsPaying(false);
+          clearPendingPayment(refCode);
+          toast.success(`Paystack payment of GH₵ ${consultationPrice.toFixed(2)} verified successfully!`);
+        },
+        onCancel: () => {
+          setIsPaying(false);
+        }
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setCurrentPaymentStep(1);
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setCurrentPaymentStep(2);
+
+      // Poll verification for 60 seconds
+      let attempts = 0;
+      const checkInterval = setInterval(async () => {
+        attempts++;
+        if (attempts > 30) {
+          clearInterval(checkInterval);
+          return;
+        }
+        try {
+          const verifyRes = await verifyPaystackPayment(refCode);
+          if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
+            clearInterval(checkInterval);
+            setCurrentPaymentStep(3);
+            
+            const receiptData = verifyRes.data;
+            const verifiedReceipt = {
+              id: receiptData?.id || Math.floor(100000000 + Math.random() * 900000000),
+              status: 'success',
+              reference: refCode,
+              amount: Math.round(Number(consultationPrice) * 100),
+              amountInGhs: Number(consultationPrice),
+              channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+              currency: 'GHS',
+              paid_at: receiptData?.paid_at || new Date().toISOString(),
+              gateway_response: receiptData?.gateway_response || 'Approved',
+              customer: {
+                email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
+                phone: momoNumber || formData.userPhone
+              },
+              metadata: {
+                fullName: formData.userName,
+                serviceTitle: formData.serviceTitle || 'General Consultation',
+                paymentProvider
+              }
+            };
+
+            setPaymentRef(refCode);
+            setPaystackReceipt(verifiedReceipt);
+            setIsPaid(true);
+            setIsPaying(false);
+            clearPendingPayment(refCode);
+            toast.success(`Paystack payment of GH₵ ${consultationPrice.toFixed(2)} verified successfully!`);
+          }
+        } catch (vErr) {
+          // ignore transient poll errors
+        }
+      }, 3500);
+
     } catch (err: any) {
       console.error("Paystack payment execution failure:", err);
-      setIsPaid(false);
-      setPaystackReceipt(null);
-      toast.error(err.message || "Payment verification failed. Please check your credentials and try again.");
-    } finally {
+      toast.error(err.message || "Payment initialization failed. Please check connection and try again.");
       setIsPaying(false);
+    }
+  };
+
+  const handleManualVerifyPayment = async () => {
+    if (!paymentRef) return;
+    setIsVerifyingDirect(true);
+    try {
+      const verifyRes = await verifyPaystackPayment(paymentRef);
+      if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
+        const receiptData = verifyRes.data;
+        const verifiedReceipt = {
+          id: receiptData?.id || Math.floor(100000000 + Math.random() * 900000000),
+          status: 'success',
+          reference: paymentRef,
+          amount: Math.round(Number(consultationPrice) * 100),
+          amountInGhs: Number(consultationPrice),
+          channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+          currency: 'GHS',
+          paid_at: receiptData?.paid_at || new Date().toISOString(),
+          gateway_response: receiptData?.gateway_response || 'Approved',
+          customer: {
+            email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
+            phone: momoNumber || formData.userPhone
+          },
+          metadata: {
+            fullName: formData.userName,
+            serviceTitle: formData.serviceTitle || 'General Consultation',
+            paymentProvider
+          }
+        };
+        setPaystackReceipt(verifiedReceipt);
+        setIsPaid(true);
+        setIsPaying(false);
+        clearPendingPayment(paymentRef);
+        toast.success("Paystack transaction verified and approved successfully!");
+      } else {
+        toast.info(verifyRes.message || "Payment has not yet been confirmed by Paystack. Please complete authorization.");
+      }
+    } catch (err: any) {
+      toast.error("Could not verify transaction with Paystack yet.");
+    } finally {
+      setIsVerifyingDirect(false);
     }
   };
 
@@ -1519,15 +1737,59 @@ export default function Booking() {
                                       </div>
                                     ))}
                                   </div>
+
+                                  {paystackAuthUrl && (
+                                    <div className="pt-2 space-y-2">
+                                      <Button
+                                        type="button"
+                                        onClick={() => window.open(paystackAuthUrl, '_blank', 'noopener,noreferrer')}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
+                                      >
+                                        Proceed to Paystack Checkout ↗
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleManualVerifyPayment}
+                                        disabled={isVerifyingDirect}
+                                        className="w-full text-xs h-8 rounded-xl border-border"
+                                      >
+                                        {isVerifyingDirect ? 'Verifying status...' : 'I have authorized payment (Verify Now)'}
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
-                                <Button
-                                  type="button"
-                                  onClick={handleProcessPayment}
-                                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
-                                >
-                                  <Lock className="h-3.5 w-3.5" /> Authorize & Pay GH₵ {consultationPrice.toFixed(2)}
-                                </Button>
+                                <div className="space-y-2">
+                                  <Button
+                                    type="button"
+                                    onClick={handleProcessPayment}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
+                                  >
+                                    <Lock className="h-3.5 w-3.5" /> Proceed to Paystack Payment (GH₵ {consultationPrice.toFixed(2)})
+                                  </Button>
+                                  {paystackAuthUrl && (
+                                    <div className="flex gap-2">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => window.open(paystackAuthUrl, '_blank', 'noopener,noreferrer')}
+                                        className="flex-1 text-xs h-9 rounded-xl border-emerald-500/40 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                                      >
+                                        Open Paystack Tab ↗
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={handleManualVerifyPayment}
+                                        disabled={isVerifyingDirect}
+                                        className="flex-1 text-xs h-9 rounded-xl border-border"
+                                      >
+                                        {isVerifyingDirect ? 'Checking...' : 'Check Status'}
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
                           ) : (

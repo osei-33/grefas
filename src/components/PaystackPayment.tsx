@@ -1,19 +1,22 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   CreditCard, Smartphone, ShieldCheck, Lock, CheckCircle2, 
-  AlertCircle, Loader2, ArrowRight, X, ExternalLink, RefreshCw 
+  AlertCircle, Loader2, ArrowRight, X, ExternalLink, RefreshCw, Check 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import PaystackPop from '@paystack/inline-js';
 import { 
   generatePaystackReference, 
   initializePaystackPayment, 
   verifyPaystackPayment, 
-  loadPaystackInlineScript 
+  loadPaystackInlineScript,
+  openPaystackModal
 } from '@/lib/paystack';
+import { usePaystack } from '@/providers/PaystackProvider';
 import { toast } from 'sonner';
 
 export interface PaystackPaymentProps {
@@ -47,6 +50,7 @@ export default function PaystackPayment({
   metadata = {},
   onSuccess,
 }: PaystackPaymentProps) {
+  const paystackContext = usePaystack();
   const [paymentChannel, setPaymentChannel] = useState<'mobile_money' | 'card'>('mobile_money');
   const [momoProvider, setMomoProvider] = useState<'MTN' | 'Telecel' | 'AT'>('MTN');
   const [momoNumber, setMomoNumber] = useState(phone || '');
@@ -61,10 +65,14 @@ export default function PaystackPayment({
 
   // Processing & verification states
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isVerifyingManual, setIsVerifyingManual] = useState(false);
   const [step, setStep] = useState<'details' | 'authorizing' | 'success' | 'failed'>('details');
   const [stepMessage, setStepMessage] = useState('Initializing Paystack Gateway...');
   const [activeReference, setActiveReference] = useState('');
   const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -74,12 +82,35 @@ export default function PaystackPayment({
       setCardName(fullName || '');
       setStep('details');
       setIsProcessing(false);
+      setIsVerifyingManual(false);
       setActiveReference('');
       setAuthUrl(null);
-      // Pre-load Paystack script in the background
+      setIsDemoMode(false);
       loadPaystackInlineScript();
     }
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
   }, [isOpen, email, fullName, phone]);
+
+  // Handle successful verification
+  const handlePaymentApproved = (ref: string, verifyData?: any) => {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    setStep('success');
+    setStepMessage('Payment verified and confirmed!');
+    toast.success(`Paystack payment of GH₵ ${Number(amount).toFixed(2)} successful!`);
+
+    setTimeout(() => {
+      onSuccess({
+        reference: ref,
+        amount: Number(amount),
+        channel: paymentChannel === 'mobile_money' ? `momo_${momoProvider.toLowerCase()}` : 'card',
+        paidAt: verifyData?.paid_at || new Date().toISOString(),
+        gatewayResponse: verifyData?.gateway_response || 'Approved',
+      });
+      onClose();
+    }, 1200);
+  };
 
   const handlePay = async () => {
     if (!userEmail || !userEmail.includes('@')) {
@@ -101,28 +132,20 @@ export default function PaystackPayment({
         toast.error('Please enter the name on the card.');
         return;
       }
-      if (!cardNumber.trim() || cardNumber.replace(/\s+/g, '').length < 15) {
-        toast.error('Please enter a valid 16-digit card number.');
-        return;
-      }
-      if (!cardExpiry.trim()) {
-        toast.error('Please enter card expiry date (MM/YY).');
-        return;
-      }
-      if (!cardCvv.trim() || cardCvv.length < 3) {
-        toast.error('Please enter card CVV security code.');
-        return;
-      }
     }
 
     setIsProcessing(true);
     setStep('authorizing');
-    setStepMessage('Connecting to Paystack secure servers...');
+    setStepMessage('Initializing transaction on Paystack gateway...');
 
     const ref = generatePaystackReference('GREFAS');
     setActiveReference(ref);
 
     try {
+      const activePublicKey = paystackContext?.publicKey || 
+                              ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || 
+                              '';
+
       // 1. Initialize with server proxy
       const initResult = await initializePaystackPayment({
         email: userEmail.trim(),
@@ -140,49 +163,92 @@ export default function PaystackPayment({
         channels: paymentChannel === 'mobile_money' ? ['mobile_money'] : ['card'],
       });
 
-      if (initResult.data?.authorization_url) {
-        setAuthUrl(initResult.data.authorization_url);
+      if (initResult.isDemo) {
+        setIsDemoMode(true);
       }
 
-      // 2. Multi-step progress simulation & verification
-      setStepMessage(`Routing request to Paystack ${paymentChannel === 'mobile_money' ? momoProvider + ' Mobile Money' : 'Card Clearing'} engine...`);
-      await new Promise((r) => setTimeout(r, 900));
+      const returnedAuthUrl = initResult.data?.authorization_url;
+      const returnedAccessCode = initResult.data?.access_code;
+
+      if (returnedAuthUrl) {
+        setAuthUrl(returnedAuthUrl);
+      }
+
+      // 2. Open inline popup modal with verified parameters
+      const modalLaunch = await openPaystackModal({
+        publicKey: activePublicKey,
+        email: userEmail.trim(),
+        amount: Number(amount),
+        currency: 'GHS',
+        reference: ref,
+        access_code: returnedAccessCode,
+        authorization_url: returnedAuthUrl,
+        channels: paymentChannel === 'mobile_money' ? ['mobile_money'] : ['card'],
+        metadata: {
+          ...metadata,
+          fullName: userName.trim() || fullName,
+          phone: momoNumber.trim() || phone,
+        },
+        onSuccess: (resp) => {
+          handlePaymentApproved(resp.reference || ref, resp);
+        },
+        onCancel: () => {
+          setIsProcessing(false);
+          setStep('details');
+        }
+      });
 
       setStepMessage(
         paymentChannel === 'mobile_money'
-          ? `Sending secure USSD authorization prompt to ${momoNumber}...`
-          : 'Validating 3D-Secure card verification...'
+          ? `Authorization ready for ${momoProvider} (${momoNumber}). Complete prompt on your device.`
+          : 'Card checkout ready. Complete payment authorization.'
       );
-      await new Promise((r) => setTimeout(r, 1200));
 
-      setStepMessage('Verifying transaction completion with Paystack...');
-      const verifyResult = await verifyPaystackPayment(ref);
+      // 3. Start polling for transaction status in the background
+      let pollCount = 0;
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      pollTimerRef.current = setInterval(async () => {
+        pollCount++;
+        if (pollCount > 60) {
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          return;
+        }
+        try {
+          const checkRes = await verifyPaystackPayment(ref);
+          if (checkRes.status && checkRes.data?.status === 'success') {
+            handlePaymentApproved(ref, checkRes.data);
+          }
+        } catch (e) {
+          // ignore transient poll errors
+        }
+      }, 3500);
 
-      if (verifyResult.status || verifyResult.data?.status === 'success' || verifyResult.isDemo) {
-        setStep('success');
-        setStepMessage('Payment verified and confirmed!');
-        toast.success(`Paystack payment of GH₵ ${Number(amount).toFixed(2)} successful!`);
-
-        setTimeout(() => {
-          onSuccess({
-            reference: ref,
-            amount: Number(amount),
-            channel: paymentChannel === 'mobile_money' ? `momo_${momoProvider.toLowerCase()}` : 'card',
-            paidAt: new Date().toISOString(),
-            gatewayResponse: verifyResult.data?.gateway_response || 'Approved',
-          });
-          onClose();
-        }, 1200);
-      } else {
-        throw new Error(verifyResult.message || 'Transaction could not be verified by Paystack');
-      }
     } catch (err: any) {
       console.error('Paystack transaction error:', err);
       setStep('failed');
-      setStepMessage(err.message || 'Payment authorization failed. Please try again.');
-      toast.error(err.message || 'Payment failed. Please verify your details.');
+      setStepMessage(err.message || 'Payment initialization failed. Please check connection and try again.');
+      toast.error(err.message || 'Payment initialization failed.');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleManualCheckStatus = async () => {
+    if (!activeReference) return;
+    setIsVerifyingManual(true);
+    try {
+      const verifyResult = await verifyPaystackPayment(activeReference);
+      if (verifyResult.status && verifyResult.data?.status === 'success') {
+        handlePaymentApproved(activeReference, verifyResult.data);
+      } else if (verifyResult.isDemo) {
+        handlePaymentApproved(activeReference, verifyResult.data);
+      } else {
+        toast.info(verifyResult.message || 'Payment is still pending on Paystack. Please complete authorization.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Could not verify payment yet. Please ensure payment is authorized.');
+    } finally {
+      setIsVerifyingManual(false);
     }
   };
 
@@ -322,7 +388,7 @@ export default function PaystackPayment({
                         className="h-9 text-xs font-mono bg-card border-border"
                       />
                       <p className="text-[10px] text-muted-foreground mt-1">
-                        You will receive an instant USSD prompt on this phone to enter your Mobile Money PIN.
+                        You will authorize payment through Paystack's official secure gateway for {momoProvider}.
                       </p>
                     </div>
                   </div>
@@ -341,57 +407,9 @@ export default function PaystackPayment({
                         className="h-9 text-xs bg-card border-border"
                       />
                     </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-foreground mb-1 block">
-                        Card Number <span className="text-red-500">*</span>
-                      </label>
-                      <Input
-                        type="text"
-                        placeholder="4111 2222 3333 4444"
-                        maxLength={19}
-                        value={cardNumber}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ');
-                          setCardNumber(val);
-                        }}
-                        className="h-9 text-xs font-mono bg-card border-border"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-bold text-foreground mb-1 block">
-                          Expiry Date <span className="text-red-500">*</span>
-                        </label>
-                        <Input
-                          type="text"
-                          placeholder="MM/YY"
-                          maxLength={5}
-                          value={cardExpiry}
-                          onChange={(e) => {
-                            let val = e.target.value.replace(/\D/g, '');
-                            if (val.length >= 2) val = val.substring(0, 2) + '/' + val.substring(2, 4);
-                            setCardExpiry(val);
-                          }}
-                          className="h-9 text-xs font-mono bg-card border-border"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-bold text-foreground mb-1 block">
-                          CVV / CVC <span className="text-red-500">*</span>
-                        </label>
-                        <Input
-                          type="password"
-                          placeholder="123"
-                          maxLength={4}
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, ''))}
-                          className="h-9 text-xs font-mono bg-card border-border"
-                        />
-                      </div>
-                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Card credentials and 3D-Secure authentication are encrypted and handled directly by Paystack PCI-DSS certified gateway.
+                    </p>
                   </div>
                 )}
 
@@ -418,9 +436,15 @@ export default function PaystackPayment({
                     type="button"
                     onClick={handlePay}
                     disabled={isProcessing}
-                    className="w-2/3 text-xs font-bold h-10 bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5"
+                    className="w-2/3 text-xs font-bold h-10 bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 shadow-sm"
                   >
-                    <Lock className="h-3.5 w-3.5" /> Pay GH₵ {Number(amount).toFixed(2)}
+                    {isProcessing ? (
+                      <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting...</span>
+                    ) : (
+                      <>
+                        <Lock className="h-3.5 w-3.5" /> Proceed to Paystack (GH₵ {Number(amount).toFixed(2)})
+                      </>
+                    )}
                   </Button>
                 </div>
               </motion.div>
@@ -432,7 +456,7 @@ export default function PaystackPayment({
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="py-8 text-center space-y-4"
+                className="py-6 text-center space-y-4"
               >
                 <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
                   <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20 animate-ping" />
@@ -443,7 +467,7 @@ export default function PaystackPayment({
 
                 <div>
                   <h4 className="font-extrabold text-foreground text-sm">
-                    Processing Paystack Payment
+                    Paystack Payment Gateway Active
                   </h4>
                   <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
                     {stepMessage}
@@ -451,24 +475,54 @@ export default function PaystackPayment({
                 </div>
 
                 {activeReference && (
-                  <div className="bg-muted/40 p-2.5 rounded-lg text-[10px] font-mono text-muted-foreground max-w-xs mx-auto">
+                  <div className="bg-muted/40 p-2 rounded-lg text-[10px] font-mono text-muted-foreground max-w-xs mx-auto">
                     Reference: <span className="font-bold text-foreground">{activeReference}</span>
                   </div>
                 )}
 
-                {authUrl && (
-                  <div className="pt-2">
+                <div className="space-y-2 pt-2 max-w-xs mx-auto">
+                  {authUrl && (
                     <Button
                       type="button"
-                      variant="outline"
-                      size="sm"
                       onClick={handleOpenPaystackDirect}
-                      className="text-xs gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50"
+                      className="w-full text-xs font-bold h-10 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" /> Open in Paystack Checkout Tab
+                      <ExternalLink className="h-3.5 w-3.5" /> Proceed to Paystack Checkout ↗
                     </Button>
-                  </div>
-                )}
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleManualCheckStatus}
+                    disabled={isVerifyingManual}
+                    className="w-full text-xs h-9 gap-1.5 border-border"
+                  >
+                    {isVerifyingManual ? (
+                      <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Checking Gateway...</span>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-3 w-3" /> I Have Completed Payment (Verify)
+                      </>
+                    )}
+                  </Button>
+
+                  {isDemoMode && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => handlePaymentApproved(activeReference)}
+                      className="w-full text-[11px] h-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                    >
+                      Instant Sandbox Approve (Demo Mode)
+                    </Button>
+                  )}
+                </div>
+
+                <div className="text-[10px] text-muted-foreground flex items-center justify-center gap-1 pt-1">
+                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Auto-listening for Paystack confirmation...
+                </div>
               </motion.div>
             )}
 
@@ -486,7 +540,7 @@ export default function PaystackPayment({
                   Payment Completed & Verified!
                 </h4>
                 <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                  Your transaction has been recorded. An official payment receipt was sent to {userEmail}.
+                  Your transaction has been confirmed. An official payment receipt was sent to {userEmail}.
                 </p>
                 <div className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 p-2 rounded-lg inline-block">
                   Ref: {activeReference}
@@ -506,7 +560,7 @@ export default function PaystackPayment({
                 </div>
                 <div>
                   <h4 className="text-sm font-extrabold text-foreground">
-                    Payment Could Not Be Completed
+                    Payment Initialization Notice
                   </h4>
                   <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
                     {stepMessage}
@@ -537,3 +591,4 @@ export default function PaystackPayment({
     </Dialog>
   );
 }
+
