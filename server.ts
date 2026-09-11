@@ -600,8 +600,89 @@ Sitemap: ${domain}/sitemap.xml`);
   // --- PAYSTACK PAYMENT GATEWAY INTEGRATION ---
 
   /**
+   * Intelligently resolves Paystack secret and public keys from environment variables.
+   * Handles cases where keys may be in PAYSTACK_SECRET_KEY, PAYSTACK_PUBLIC_KEY, or VITE_PAYSTACK_PUBLIC_KEY,
+   * detects live vs test mode, ensures matching live keys are paired together, and verifies valid formats.
+   */
+  function getResolvedPaystackCredentials(): {
+    secretKey: string;
+    publicKey: string;
+    isSecretConfigured: boolean;
+    isPublicConfigured: boolean;
+    isConfigured: boolean;
+    environment: "live" | "test";
+  } {
+    const rawSecret = (process.env.PAYSTACK_SECRET_KEY || "").trim();
+    const rawPublic = (process.env.PAYSTACK_PUBLIC_KEY || "").trim();
+    const rawVitePublic = (process.env.VITE_PAYSTACK_PUBLIC_KEY || "").trim();
+
+    const allValues = [rawSecret, rawPublic, rawVitePublic].filter(Boolean);
+
+    // Filter valid Paystack secret keys (sk_live_... or sk_test_...)
+    const secretKeys = allValues.filter((k) =>
+      /^sk_(test|live)_[a-zA-Z0-9_\-]{14,}$/i.test(k) &&
+      !k.includes("sample") &&
+      !k.includes("placeholder") &&
+      !k.includes("your_key")
+    );
+
+    // Filter valid Paystack public keys (pk_live_... or pk_test_...)
+    const publicKeys = allValues.filter((k) =>
+      /^pk_(test|live)_[a-zA-Z0-9_\-]{14,}$/i.test(k) &&
+      !k.includes("sample") &&
+      !k.includes("placeholder") &&
+      !k.includes("your_key")
+    );
+
+    // Determine target environment: prefer live if any live key is present
+    const hasLiveSecret = secretKeys.some((k) => k.startsWith("sk_live_"));
+    const hasLivePublic = publicKeys.some((k) => k.startsWith("pk_live_"));
+    const isLive = hasLiveSecret || hasLivePublic;
+
+    // Pick best matching secret key
+    let resolvedSecret = "";
+    if (isLive) {
+      resolvedSecret = secretKeys.find((k) => k.startsWith("sk_live_")) || secretKeys[0] || "";
+    } else {
+      resolvedSecret = secretKeys.find((k) => k.startsWith("sk_test_")) || secretKeys[0] || "";
+    }
+
+    // Pick best matching public key
+    let resolvedPublic = "";
+    if (isLive) {
+      resolvedPublic = publicKeys.find((k) => k.startsWith("pk_live_")) || publicKeys[0] || "";
+    } else {
+      resolvedPublic = publicKeys.find((k) => k.startsWith("pk_test_")) || publicKeys[0] || "";
+    }
+
+    // Fallbacks if regex didn't match slightly atypical length strings
+    if (!resolvedSecret && rawSecret.startsWith("sk_")) {
+      resolvedSecret = rawSecret;
+    }
+    if (!resolvedPublic && rawVitePublic.startsWith("pk_")) {
+      resolvedPublic = rawVitePublic;
+    }
+    if (!resolvedPublic && rawPublic.startsWith("pk_")) {
+      resolvedPublic = rawPublic;
+    }
+
+    const isSecretConfigured = Boolean(resolvedSecret && resolvedSecret.length > 20);
+    const isPublicConfigured = Boolean(resolvedPublic && resolvedPublic.length > 20);
+
+    return {
+      secretKey: resolvedSecret,
+      publicKey: resolvedPublic,
+      isSecretConfigured,
+      isPublicConfigured,
+      isConfigured: isSecretConfigured || isPublicConfigured,
+      environment: (resolvedSecret.startsWith("sk_live_") || resolvedPublic.startsWith("pk_live_")) ? "live" : "test"
+    };
+  }
+
+  /**
    * Core Paystack Transaction Initializer using standard Node https.request
    * Targets https://api.paystack.co/transaction/initialize
+   * Explicitly includes User-Agent header to prevent Cloudflare Error 1010 on cloud deployments.
    */
   function initializePaystackTransaction(params: {
     email: string;
@@ -613,15 +694,7 @@ Sitemap: ${domain}/sitemap.xml`);
     channels?: string[];
   }): Promise<{ status: boolean; message: string; data?: any; error?: string; isDemo?: boolean }> {
     return new Promise((resolve) => {
-      const secretKey = (process.env.PAYSTACK_SECRET_KEY || "").trim();
-      const isRealSecret = Boolean(
-        secretKey &&
-        !secretKey.includes("sample") &&
-        !secretKey.includes("placeholder") &&
-        !secretKey.includes("your_key") &&
-        secretKey.length > 20 &&
-        /^sk_(test|live)_[a-zA-Z0-9_\-]{15,}$/.test(secretKey)
-      );
+      const { secretKey, isSecretConfigured } = getResolvedPaystackCredentials();
       const rawAmount = Number(params.amount);
 
       if (!params.email || isNaN(rawAmount) || rawAmount <= 0) {
@@ -639,7 +712,7 @@ Sitemap: ${domain}/sitemap.xml`);
       const txRef = params.reference || `GREFAS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
       // Graceful fallback for sandbox / development environment if SECRET_KEY is not configured
-      if (!isRealSecret) {
+      if (!isSecretConfigured) {
         return resolve({
           status: true,
           message: "Paystack transaction initialized (Sandbox / Development Mode)",
@@ -672,7 +745,8 @@ Sitemap: ${domain}/sitemap.xml`);
         headers: {
           Authorization: `Bearer ${secretKey}`,
           "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(postData)
+          "Content-Length": Buffer.byteLength(postData),
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 PaystackClient/1.0"
         }
       };
 
@@ -698,11 +772,11 @@ Sitemap: ${domain}/sitemap.xml`);
                 }
               });
             } else {
-              console.warn("Paystack initialize rejected:", parsed);
+              console.warn("Paystack initialize rejected by gateway:", parsed);
               resolve({
                 status: false,
                 message: parsed?.message || "Paystack transaction initialization failed",
-                error: parsed?.message,
+                error: parsed?.message || "Gateway rejected initialization",
                 data: parsed?.data
               });
             }
@@ -710,7 +784,9 @@ Sitemap: ${domain}/sitemap.xml`);
             console.error("Paystack response parse exception:", responseBody, parseError);
             resolve({
               status: false,
-              message: "Malformed response received from Paystack",
+              message: responseBody.includes("error code: 1010")
+                ? "Security handshake blocked by Paystack Cloudflare firewall. Please retry."
+                : (responseBody.slice(0, 150) || "Malformed response received from Paystack"),
               error: parseError.message
             });
           }
@@ -733,24 +809,7 @@ Sitemap: ${domain}/sitemap.xml`);
 
   // Returns Paystack integration configuration and connection status
   app.get("/api/paystack/config", (req, res) => {
-    const secretKey = (process.env.PAYSTACK_SECRET_KEY || "").trim();
-    const publicKey = (process.env.PAYSTACK_PUBLIC_KEY || process.env.VITE_PAYSTACK_PUBLIC_KEY || "").trim();
-    const isSecretConfigured = Boolean(
-      secretKey &&
-      !secretKey.includes("sample") &&
-      !secretKey.includes("placeholder") &&
-      !secretKey.includes("your_key") &&
-      secretKey.length > 20 &&
-      /^sk_(test|live)_[a-zA-Z0-9_\-]{15,}$/.test(secretKey)
-    );
-    const isPublicConfigured = Boolean(
-      publicKey &&
-      !publicKey.includes("sample") &&
-      !publicKey.includes("placeholder") &&
-      !publicKey.includes("your_key") &&
-      publicKey.length > 20 &&
-      /^pk_(test|live)_[a-zA-Z0-9_\-]{15,}$/.test(publicKey)
-    );
+    const { publicKey, isSecretConfigured, isPublicConfigured, environment } = getResolvedPaystackCredentials();
 
     res.json({
       configured: isSecretConfigured || isPublicConfigured,
@@ -759,7 +818,7 @@ Sitemap: ${domain}/sitemap.xml`);
       currency: "GHS",
       supportedChannels: ["mobile_money", "card", "bank_transfer"],
       supportedNetworks: ["MTN MoMo", "Telecel Cash", "AT Money", "Visa", "Mastercard"],
-      environment: secretKey.startsWith("sk_live") || publicKey.startsWith("pk_live") ? "live" : "test"
+      environment
     });
   });
 
@@ -879,22 +938,15 @@ Sitemap: ${domain}/sitemap.xml`);
       return res.status(400).json({ status: false, error: "Reference parameter is required" });
     }
 
-    const secretKey = (process.env.PAYSTACK_SECRET_KEY || "").trim();
-    const isRealSecret = Boolean(
-      secretKey &&
-      !secretKey.includes("sample") &&
-      !secretKey.includes("placeholder") &&
-      !secretKey.includes("your_key") &&
-      secretKey.length > 20 &&
-      /^sk_(test|live)_[a-zA-Z0-9_\-]{15,}$/.test(secretKey)
-    );
+    const { secretKey, isSecretConfigured } = getResolvedPaystackCredentials();
 
-    if (isRealSecret) {
+    if (isSecretConfigured) {
       try {
         const paystackRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${secretKey}`,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 PaystackClient/1.0"
           },
         });
 
@@ -958,7 +1010,7 @@ Sitemap: ${domain}/sitemap.xml`);
   const handlePaystackWebhook = async (req: express.Request, res: express.Response) => {
     const signature = req.headers["x-paystack-signature"] as string;
     const rawBody = (req as any).rawBody || (typeof req.body === "string" ? req.body : JSON.stringify(req.body));
-    const secretKey = process.env.PAYSTACK_SECRET_KEY || "";
+    const { secretKey } = getResolvedPaystackCredentials();
 
     // Verify HMAC SHA-512 signature
     const verification = verifyPaystackSignature(rawBody, signature, secretKey);

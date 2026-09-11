@@ -97,7 +97,7 @@ export async function initializePaystackPayment(
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({ error: 'Failed to initialize payment' }));
-    throw new Error(errData.error || errData.message || 'Payment initialization failed');
+    throw new Error(errData.message || errData.error || 'Payment initialization failed');
   }
 
   return await res.json();
