@@ -20,13 +20,13 @@ declare module '@paystack/inline-js' {
 
   export interface PaystackPopInstance {
     newTransaction: (options: PaystackTransactionOptions) => void;
-    resumeTransaction: (accessCode: string) => void;
+    resumeTransaction: (accessCode: string, options?: { onSuccess?: (data: any) => void; onCancel?: () => void; onError?: (err: any) => void }) => void;
   }
 
   export default class PaystackPop {
     constructor();
     newTransaction(options: PaystackTransactionOptions): void;
-    resumeTransaction(accessCode: string): void;
+    resumeTransaction(accessCode: string, options?: { onSuccess?: (data: any) => void; onCancel?: () => void; onError?: (err: any) => void }): void;
     static setup(options: PaystackTransactionOptions): {
       openIframe: () => void;
     };

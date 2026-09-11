@@ -613,7 +613,15 @@ Sitemap: ${domain}/sitemap.xml`);
     channels?: string[];
   }): Promise<{ status: boolean; message: string; data?: any; error?: string; isDemo?: boolean }> {
     return new Promise((resolve) => {
-      const secretKey = process.env.PAYSTACK_SECRET_KEY || "";
+      const secretKey = (process.env.PAYSTACK_SECRET_KEY || "").trim();
+      const isRealSecret = Boolean(
+        secretKey &&
+        !secretKey.includes("sample") &&
+        !secretKey.includes("placeholder") &&
+        !secretKey.includes("your_key") &&
+        secretKey.length > 20 &&
+        /^sk_(test|live)_[a-zA-Z0-9_\-]{15,}$/.test(secretKey)
+      );
       const rawAmount = Number(params.amount);
 
       if (!params.email || isNaN(rawAmount) || rawAmount <= 0) {
@@ -631,7 +639,7 @@ Sitemap: ${domain}/sitemap.xml`);
       const txRef = params.reference || `GREFAS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
       // Graceful fallback for sandbox / development environment if SECRET_KEY is not configured
-      if (!secretKey) {
+      if (!isRealSecret) {
         return resolve({
           status: true,
           message: "Paystack transaction initialized (Sandbox / Development Mode)",
@@ -725,18 +733,33 @@ Sitemap: ${domain}/sitemap.xml`);
 
   // Returns Paystack integration configuration and connection status
   app.get("/api/paystack/config", (req, res) => {
-    const secretKey = process.env.PAYSTACK_SECRET_KEY || "";
-    const publicKey = process.env.PAYSTACK_PUBLIC_KEY || process.env.VITE_PAYSTACK_PUBLIC_KEY || "";
-    const isConfigured = Boolean(secretKey && secretKey.length > 5);
+    const secretKey = (process.env.PAYSTACK_SECRET_KEY || "").trim();
+    const publicKey = (process.env.PAYSTACK_PUBLIC_KEY || process.env.VITE_PAYSTACK_PUBLIC_KEY || "").trim();
+    const isSecretConfigured = Boolean(
+      secretKey &&
+      !secretKey.includes("sample") &&
+      !secretKey.includes("placeholder") &&
+      !secretKey.includes("your_key") &&
+      secretKey.length > 20 &&
+      /^sk_(test|live)_[a-zA-Z0-9_\-]{15,}$/.test(secretKey)
+    );
+    const isPublicConfigured = Boolean(
+      publicKey &&
+      !publicKey.includes("sample") &&
+      !publicKey.includes("placeholder") &&
+      !publicKey.includes("your_key") &&
+      publicKey.length > 20 &&
+      /^pk_(test|live)_[a-zA-Z0-9_\-]{15,}$/.test(publicKey)
+    );
 
     res.json({
-      configured: isConfigured,
-      publicKey: publicKey ? (publicKey.startsWith("pk_") ? `${publicKey.substring(0, 8)}...` : "Configured") : "",
-      rawPublicKey: publicKey || "",
+      configured: isSecretConfigured || isPublicConfigured,
+      publicKey: isPublicConfigured ? `${publicKey.substring(0, 8)}...` : "",
+      rawPublicKey: isPublicConfigured ? publicKey : "",
       currency: "GHS",
       supportedChannels: ["mobile_money", "card", "bank_transfer"],
       supportedNetworks: ["MTN MoMo", "Telecel Cash", "AT Money", "Visa", "Mastercard"],
-      environment: secretKey.startsWith("sk_live") ? "live" : "test"
+      environment: secretKey.startsWith("sk_live") || publicKey.startsWith("pk_live") ? "live" : "test"
     });
   });
 
@@ -856,9 +879,17 @@ Sitemap: ${domain}/sitemap.xml`);
       return res.status(400).json({ status: false, error: "Reference parameter is required" });
     }
 
-    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    const secretKey = (process.env.PAYSTACK_SECRET_KEY || "").trim();
+    const isRealSecret = Boolean(
+      secretKey &&
+      !secretKey.includes("sample") &&
+      !secretKey.includes("placeholder") &&
+      !secretKey.includes("your_key") &&
+      secretKey.length > 20 &&
+      /^sk_(test|live)_[a-zA-Z0-9_\-]{15,}$/.test(secretKey)
+    );
 
-    if (secretKey) {
+    if (isRealSecret) {
       try {
         const paystackRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
           method: "GET",
