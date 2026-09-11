@@ -2516,6 +2516,11 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    const paystackCreds = getResolvedPaystackCredentials();
+    console.log(`[Paystack Server Runtime] Deployment Environment Status:`);
+    console.log(`  - Environment Mode: ${paystackCreds.environment}`);
+    console.log(`  - PAYSTACK_PUBLIC_KEY: ${paystackCreds.isPublicConfigured ? `Loaded (${paystackCreds.publicKey.slice(0, 8)}...${paystackCreds.publicKey.slice(-4)})` : 'Not loaded'}`);
+    console.log(`  - PAYSTACK_SECRET_KEY: ${paystackCreds.isSecretConfigured ? `Loaded (${paystackCreds.secretKey.slice(0, 8)}...${paystackCreds.secretKey.slice(-4)})` : 'Not loaded'}`);
   });
 }
 

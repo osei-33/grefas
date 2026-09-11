@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import PaystackPop from '@paystack/inline-js';
 import { 
   PaystackInitializeOptions, 
@@ -8,7 +8,8 @@ import {
   verifyPaystackPayment,
   generatePaystackReference,
   openPaystackModal,
-  loadPaystackInlineScript
+  loadPaystackInlineScript,
+  isValidPaystackPublicKey
 } from '@/lib/paystack';
 import { toast } from 'sonner';
 
@@ -19,6 +20,7 @@ export interface PaystackContextType {
   currency: string;
   environment: 'live' | 'test' | 'sandbox';
   supportedChannels: string[];
+  paystackInstance: PaystackPop | null;
   initializePayment: (options: PaystackInitializeOptions) => Promise<PaystackInitResponse>;
   verifyPayment: (reference: string) => Promise<PaystackVerifyResponse>;
   openPaystackPopup: (options: {
@@ -52,8 +54,10 @@ export interface PaystackContextType {
 const PaystackContext = createContext<PaystackContextType | null>(null);
 
 export function PaystackProvider({ children }: { children: ReactNode }) {
+  // 1. Correctly load the Paystack public key from environment variable VITE_PAYSTACK_PUBLIC_KEY
   const [publicKey, setPublicKey] = useState<string>(() => {
-    return ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || '';
+    const envKey = (import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY;
+    return typeof envKey === 'string' ? envKey.trim() : '';
   });
   const [isConfigured, setIsConfigured] = useState<boolean>(false);
   const [currency, setCurrency] = useState<string>('GHS');
@@ -65,7 +69,42 @@ export function PaystackProvider({ children }: { children: ReactNode }) {
   ]);
   const [isScriptLoaded, setIsScriptLoaded] = useState<boolean>(false);
 
-  // 1. Fetch server config and public key
+  // Paystack library instance reference
+  const paystackRef = useRef<PaystackPop | null>(null);
+  const [paystackInstance, setPaystackInstance] = useState<PaystackPop | null>(null);
+
+  // Log and verify environment variable injection at runtime
+  useEffect(() => {
+    const rawEnvKey = (import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY;
+    if (rawEnvKey && typeof rawEnvKey === 'string' && rawEnvKey.trim().length > 0) {
+      const isPlaceholder = rawEnvKey.includes('sample_key') || rawEnvKey.includes('placeholder');
+      console.log(
+        `[PaystackProvider] Successfully loaded public key from VITE_PAYSTACK_PUBLIC_KEY: ${
+          isPlaceholder ? 'Placeholder/Sample Key' : `${rawEnvKey.slice(0, 8)}...${rawEnvKey.slice(-4)}`
+        }`
+      );
+    } else {
+      console.info(
+        '[PaystackProvider] VITE_PAYSTACK_PUBLIC_KEY not detected in client bundle. Loading credentials via /api/paystack/config...'
+      );
+    }
+  }, []);
+
+  // Initialize the Paystack library instance using VITE_PAYSTACK_PUBLIC_KEY
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && typeof PaystackPop === 'function') {
+        const instance = new PaystackPop();
+        paystackRef.current = instance;
+        setPaystackInstance(instance);
+        console.log('[PaystackProvider] PaystackPop library instance initialized successfully.');
+      }
+    } catch (popInitErr) {
+      console.warn('[PaystackProvider] PaystackPop instantiation notice:', popInitErr);
+    }
+  }, []);
+
+  // 1. Fetch server config and public key (provides fallback if env var was not injected at build time)
   useEffect(() => {
     let isMounted = true;
     async function loadConfig() {
@@ -74,10 +113,13 @@ export function PaystackProvider({ children }: { children: ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           if (isMounted) {
-            if (data.rawPublicKey) {
-              setPublicKey(data.rawPublicKey);
+            const envKey = ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || '';
+            const resolvedPublicKey = data.rawPublicKey || (isValidPaystackPublicKey(envKey) ? envKey : (data.publicKey || envKey));
+            
+            if (resolvedPublicKey) {
+              setPublicKey(resolvedPublicKey);
             }
-            setIsConfigured(Boolean(data.configured || data.rawPublicKey || publicKey));
+            setIsConfigured(Boolean(data.configured || resolvedPublicKey));
             if (data.currency) setCurrency(data.currency);
             if (data.environment) setEnvironment(data.environment);
             if (data.supportedChannels) setSupportedChannels(data.supportedChannels);
@@ -248,6 +290,7 @@ export function PaystackProvider({ children }: { children: ReactNode }) {
         currency,
         environment,
         supportedChannels,
+        paystackInstance,
         initializePayment: initializePaystackPayment,
         verifyPayment: verifyPaystackPayment,
         openPaystackPopup,
