@@ -19,6 +19,8 @@ export default defineConfig(({mode}) => {
       dedupe: [
         'react',
         'react-dom',
+        'react-router',
+        'react-router-dom',
         'firebase',
         '@firebase/app',
         '@firebase/auth',
@@ -35,6 +37,7 @@ export default defineConfig(({mode}) => {
         'react',
         'react-dom',
         'react/jsx-runtime',
+        'react-router',
         'react-router-dom',
         'react-helmet-async',
         'firebase/app',

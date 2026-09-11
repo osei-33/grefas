@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useSafeNavigate } from '@/lib/safeRouter';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { collection, onSnapshot, addDoc, serverTimestamp, doc } from 'firebase/firestore';
@@ -88,7 +89,7 @@ export default function Team() {
   const [filter, setFilter] = useState<'all' | 'consulting' | 'entertainment'>('all');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [activeModalMember, setActiveModalMember] = useState<TeamMember | null>(null);
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
 
   const [settings, setSettings] = useState<any>(null);
   const [isMessaging, setIsMessaging] = useState(false);

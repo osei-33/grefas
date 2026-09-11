@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, Navigate } from 'react-router-dom';
+import { useSafeNavigate, useSafeLocation } from '@/lib/safeRouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -123,8 +124,8 @@ export default function Admin() {
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate = useSafeNavigate();
+  const location = useSafeLocation();
   const hasAdminAccess = role === 'admin' || role === 'editor' || isAdminEmail(user?.email);
 
   // Session inactivity/expiration management
@@ -3165,7 +3166,7 @@ function ManageCareerApplications() {
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
   const [savingNotesId, setSavingNotesId] = useState<string | null>(null);
 
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
 
   // Load Subtitle Text from settings/global
   useEffect(() => {

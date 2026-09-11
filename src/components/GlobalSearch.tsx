@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useSafeNavigate } from '@/lib/safeRouter';
 import { Search, Loader2, FileText, Briefcase, FolderKanban, BookOpen, X, Sparkles, CornerDownLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '@/firebase';
@@ -23,7 +24,7 @@ export default function GlobalSearch() {
   const [allData, setAllData] = useState<SearchResult[]>([]);
   const [fetched, setFetched] = useState(false);
   
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
