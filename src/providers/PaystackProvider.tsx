@@ -160,18 +160,25 @@ export function PaystackProvider({ children }: { children: ReactNode }) {
       toast.info('Connecting to Paystack gateway...');
 
       try {
-        // Step 1: Initialize transaction via server proxy to obtain authorization URL and access code
-        const initRes = await initializePaystackPayment({
-          email: options.email,
-          amount: options.amount,
-          currency: currency || 'GHS',
-          reference: ref,
-          metadata: options.metadata,
-          channels: (options.channels as any) || ['card', 'mobile_money']
-        });
+        // Step 1: Attempt to initialize transaction via server proxy to obtain authorization URL and access code
+        let authUrl: string | undefined;
+        let accessCode: string | undefined;
 
-        const authUrl = initRes.data?.authorization_url;
-        const accessCode = initRes.data?.access_code;
+        try {
+          const initRes = await initializePaystackPayment({
+            email: options.email,
+            amount: options.amount,
+            currency: currency || 'GHS',
+            reference: ref,
+            metadata: options.metadata,
+            channels: (options.channels as any) || ['card', 'mobile_money']
+          });
+
+          authUrl = initRes.data?.authorization_url;
+          accessCode = initRes.data?.access_code;
+        } catch (initErr) {
+          console.warn('[PaystackProvider Notice] Server initialization notice:', initErr);
+        }
 
         // Step 2: Open Paystack inline popup modal with verified parameters
         const modalResult = await openPaystackModal({

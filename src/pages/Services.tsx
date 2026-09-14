@@ -1194,28 +1194,35 @@ export default function Services() {
       const refCode = generatePaystackReference('GREFAS-CASTING');
       setPaymentRef(refCode);
       
-      // Initialize with Paystack
-      const initResult = await initializePaystackPayment({
-        email: formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com',
-        amount: Number(intakePrice),
-        currency: 'GHS',
-        reference: refCode,
-        metadata: {
-          fullName: formData.fullName,
-          roleType: formData.roleType,
-          contact: formData.contact,
-          paymentProvider,
-          momoProvider: paymentProvider !== 'card' ? momoProvider : undefined,
-          phone: momoNumber || formData.contact
-        },
-        channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
-      });
+      // Attempt to initialize with Paystack server proxy
+      let authUrl: string | undefined;
+      let accessCode: string | undefined;
 
-      const authUrl = initResult.data?.authorization_url;
-      const accessCode = initResult.data?.access_code;
+      try {
+        const initResult = await initializePaystackPayment({
+          email: formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com',
+          amount: Number(intakePrice),
+          currency: 'GHS',
+          reference: refCode,
+          metadata: {
+            fullName: formData.fullName,
+            roleType: formData.roleType,
+            contact: formData.contact,
+            paymentProvider,
+            momoProvider: paymentProvider !== 'card' ? momoProvider : undefined,
+            phone: momoNumber || formData.contact
+          },
+          channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
+        });
 
-      if (authUrl) {
-        setPaystackAuthUrl(authUrl);
+        authUrl = initResult.data?.authorization_url;
+        accessCode = initResult.data?.access_code;
+
+        if (authUrl) {
+          setPaystackAuthUrl(authUrl);
+        }
+      } catch (backendInitErr: any) {
+        console.warn('[Paystack Notice] Server initialization unavailable or skipped, proceeding with client checkout:', backendInitErr?.message || backendInitErr);
       }
 
       const activePublicKey = paystackContext?.publicKey || 

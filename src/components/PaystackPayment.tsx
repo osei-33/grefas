@@ -146,32 +146,39 @@ export default function PaystackPayment({
                               ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || 
                               '';
 
-      // 1. Initialize with server proxy
-      const initResult = await initializePaystackPayment({
-        email: userEmail.trim(),
-        amount: Number(amount),
-        currency: 'GHS',
-        reference: ref,
-        metadata: {
-          ...metadata,
-          fullName: userName.trim() || fullName,
-          phone: momoNumber.trim() || phone,
-          channel: paymentChannel,
-          momoProvider: paymentChannel === 'mobile_money' ? momoProvider : undefined,
-          serviceTitle: title,
-        },
-        channels: paymentChannel === 'mobile_money' ? ['mobile_money'] : ['card'],
-      });
+      // 1. Attempt server-side initialization
+      let returnedAuthUrl: string | undefined;
+      let returnedAccessCode: string | undefined;
 
-      if (initResult.isDemo) {
-        setIsDemoMode(true);
-      }
+      try {
+        const initResult = await initializePaystackPayment({
+          email: userEmail.trim(),
+          amount: Number(amount),
+          currency: 'GHS',
+          reference: ref,
+          metadata: {
+            ...metadata,
+            fullName: userName.trim() || fullName,
+            phone: momoNumber.trim() || phone,
+            channel: paymentChannel,
+            momoProvider: paymentChannel === 'mobile_money' ? momoProvider : undefined,
+            serviceTitle: title,
+          },
+          channels: paymentChannel === 'mobile_money' ? ['mobile_money'] : ['card'],
+        });
 
-      const returnedAuthUrl = initResult.data?.authorization_url;
-      const returnedAccessCode = initResult.data?.access_code;
+        if (initResult.isDemo) {
+          setIsDemoMode(true);
+        }
 
-      if (returnedAuthUrl) {
-        setAuthUrl(returnedAuthUrl);
+        returnedAuthUrl = initResult.data?.authorization_url;
+        returnedAccessCode = initResult.data?.access_code;
+
+        if (returnedAuthUrl) {
+          setAuthUrl(returnedAuthUrl);
+        }
+      } catch (backendInitErr: any) {
+        console.warn('[Paystack Notice] Server initialization notice:', backendInitErr?.message || backendInitErr);
       }
 
       // 2. Open inline popup modal with verified parameters

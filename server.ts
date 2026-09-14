@@ -602,7 +602,7 @@ Sitemap: ${domain}/sitemap.xml`);
   /**
    * Intelligently resolves Paystack secret and public keys from environment variables.
    * Handles cases where keys may be in PAYSTACK_SECRET_KEY, PAYSTACK_PUBLIC_KEY, or VITE_PAYSTACK_PUBLIC_KEY,
-   * detects live vs test mode, ensures matching live keys are paired together, and verifies valid formats.
+   * strips surrounding quotes, detects live vs test mode, ensures matching live keys are paired together, and verifies valid formats.
    */
   function getResolvedPaystackCredentials(): {
     secretKey: string;
@@ -612,14 +612,24 @@ Sitemap: ${domain}/sitemap.xml`);
     isConfigured: boolean;
     environment: "live" | "test";
   } {
-    const rawSecret = (process.env.PAYSTACK_SECRET_KEY || "").trim();
-    const rawPublic = (process.env.PAYSTACK_PUBLIC_KEY || "").trim();
-    const rawVitePublic = (process.env.VITE_PAYSTACK_PUBLIC_KEY || "").trim();
+    const cleanKey = (k?: string) => (k || "").trim().replace(/^["']|["']$/g, "").trim();
 
-    const allValues = [rawSecret, rawPublic, rawVitePublic].filter(Boolean);
+    const candidateKeys = [
+      cleanKey(process.env.PAYSTACK_SECRET_KEY),
+      cleanKey(process.env.PAYSTACK_SECRET),
+      cleanKey(process.env.PAYSTACK_SK),
+      cleanKey(process.env.SECRET_KEY),
+      cleanKey(process.env.VITE_PAYSTACK_SECRET_KEY),
+      cleanKey(process.env.PAYSTACK_PUBLIC_KEY),
+      cleanKey(process.env.VITE_PAYSTACK_PUBLIC_KEY),
+      cleanKey(process.env.PAYSTACK_PUBLIC),
+      cleanKey(process.env.PAYSTACK_PK),
+      cleanKey(process.env.PUBLIC_KEY),
+      cleanKey(process.env.PAYSTACK_KEY)
+    ].filter(Boolean);
 
     // Filter valid Paystack secret keys (sk_live_... or sk_test_...)
-    const secretKeys = allValues.filter((k) =>
+    const secretKeys = candidateKeys.filter((k) =>
       /^sk_(test|live)_[a-zA-Z0-9_\-]{14,}$/i.test(k) &&
       !k.includes("sample") &&
       !k.includes("placeholder") &&
@@ -627,7 +637,7 @@ Sitemap: ${domain}/sitemap.xml`);
     );
 
     // Filter valid Paystack public keys (pk_live_... or pk_test_...)
-    const publicKeys = allValues.filter((k) =>
+    const publicKeys = candidateKeys.filter((k) =>
       /^pk_(test|live)_[a-zA-Z0-9_\-]{14,}$/i.test(k) &&
       !k.includes("sample") &&
       !k.includes("placeholder") &&
@@ -656,6 +666,10 @@ Sitemap: ${domain}/sitemap.xml`);
     }
 
     // Fallbacks if regex didn't match slightly atypical length strings
+    const rawSecret = cleanKey(process.env.PAYSTACK_SECRET_KEY);
+    const rawPublic = cleanKey(process.env.PAYSTACK_PUBLIC_KEY);
+    const rawVitePublic = cleanKey(process.env.VITE_PAYSTACK_PUBLIC_KEY);
+
     if (!resolvedSecret && rawSecret.startsWith("sk_")) {
       resolvedSecret = rawSecret;
     }
@@ -680,11 +694,11 @@ Sitemap: ${domain}/sitemap.xml`);
   }
 
   /**
-   * Core Paystack Transaction Initializer using standard Node https.request
+   * Core Paystack Transaction Initializer using modern global fetch with timeout
    * Targets https://api.paystack.co/transaction/initialize
    * Explicitly includes User-Agent header to prevent Cloudflare Error 1010 on cloud deployments.
    */
-  function initializePaystackTransaction(params: {
+  async function initializePaystackTransaction(params: {
     email: string;
     amount: number | string; // in lowest unit (pesewas/cents) e.g. "500000" or in standard GHS e.g. 50
     currency?: string;
@@ -693,132 +707,153 @@ Sitemap: ${domain}/sitemap.xml`);
     metadata?: Record<string, any>;
     channels?: string[];
   }): Promise<{ status: boolean; message: string; data?: any; error?: string; isDemo?: boolean }> {
-    return new Promise((resolve) => {
-      const { secretKey, isSecretConfigured } = getResolvedPaystackCredentials();
-      const rawAmount = Number(params.amount);
+    const { secretKey, isSecretConfigured, environment } = getResolvedPaystackCredentials();
+    const rawAmount = Number(params.amount);
 
-      if (!params.email || isNaN(rawAmount) || rawAmount <= 0) {
-        return resolve({
-          status: false,
-          message: "Valid email and positive numeric amount are required",
-          error: "Invalid email or amount"
-        });
+    if (!params.email || isNaN(rawAmount) || rawAmount <= 0) {
+      return {
+        status: false,
+        message: "Valid email and positive numeric amount are required",
+        error: "Invalid email or amount"
+      };
+    }
+
+    // Calculate amount in lowest currency unit (pesewas)
+    // Standard GHS amounts (e.g. 50, 150, 500) are converted (* 100)
+    // Large integers (e.g. 500000 from Paystack params) are preserved
+    const amountInLowestUnit = rawAmount < 10000 ? Math.round(rawAmount * 100) : Math.round(rawAmount);
+    const txRef = params.reference || `GREFAS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+    // Graceful fallback for sandbox / development environment if SECRET_KEY is not configured
+    if (!isSecretConfigured) {
+      console.info("[Paystack Server] Notice: PAYSTACK_SECRET_KEY not set in deployment environment; using resilient demo authorization.");
+      return {
+        status: true,
+        message: "Paystack transaction initialized (Sandbox / Development Mode)",
+        isDemo: true,
+        data: {
+          authorization_url: params.callback_url ? `${params.callback_url}${params.callback_url.includes('?') ? '&' : '?'}reference=${encodeURIComponent(txRef)}&status=sandbox_success` : "",
+          access_code: `demo_acc_${Date.now()}`,
+          reference: txRef,
+          amount: amountInLowestUnit,
+          amountInGhs: amountInLowestUnit / 100
+        }
+      };
+    }
+
+    // Sanitize callback_url: only send if valid public HTTP(S) URL; omit localhost in live mode
+    let validCallbackUrl: string | undefined = undefined;
+    if (params.callback_url && /^https?:\/\//i.test(params.callback_url)) {
+      if (environment === "live" && (params.callback_url.includes("localhost") || params.callback_url.includes("127.0.0.1"))) {
+        validCallbackUrl = undefined;
+      } else {
+        validCallbackUrl = params.callback_url;
       }
+    }
 
-      // Calculate amount in lowest currency unit (pesewas)
-      // Standard GHS amounts (e.g. 50, 150, 500) are converted (* 100)
-      // Large integers (e.g. 500000 from Paystack params) are preserved
-      const amountInLowestUnit = rawAmount < 10000 ? Math.round(rawAmount * 100) : Math.round(rawAmount);
-      const txRef = params.reference || `GREFAS-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const payload: Record<string, any> = {
+      email: params.email.trim(),
+      amount: amountInLowestUnit, // Numeric integer as required by Paystack
+      currency: params.currency || "GHS",
+      reference: txRef,
+      metadata: params.metadata || {},
+      channels: params.channels || ["card", "mobile_money"]
+    };
+    if (validCallbackUrl) {
+      payload.callback_url = validCallbackUrl;
+    }
 
-      // Graceful fallback for sandbox / development environment if SECRET_KEY is not configured
-      if (!isSecretConfigured) {
-        return resolve({
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const paystackRes = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 PaystackClient/1.0"
+        },
+        body: JSON.stringify(payload)
+      });
+      clearTimeout(timeoutId);
+
+      const parsed = await paystackRes.json().catch(() => null);
+
+      if (paystackRes.ok && parsed && parsed.status) {
+        return {
           status: true,
-          message: "Paystack transaction initialized (Sandbox / Development Mode)",
-          isDemo: true,
+          message: parsed.message || "Paystack authorization URL generated",
           data: {
-            authorization_url: params.callback_url ? `${params.callback_url}${params.callback_url.includes('?') ? '&' : '?'}reference=${encodeURIComponent(txRef)}&status=sandbox_success` : "",
-            access_code: `demo_acc_${Date.now()}`,
+            ...parsed.data,
             reference: txRef,
             amount: amountInLowestUnit,
             amountInGhs: amountInLowestUnit / 100
           }
-        });
-      }
-
-      const postData = JSON.stringify({
-        email: params.email,
-        amount: String(amountInLowestUnit),
-        currency: params.currency || "GHS",
-        reference: txRef,
-        callback_url: params.callback_url,
-        metadata: params.metadata || {},
-        channels: params.channels || ["card", "mobile_money", "bank_transfer"]
-      });
-
-      const options = {
-        hostname: "api.paystack.co",
-        port: 443,
-        path: "/transaction/initialize",
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(postData),
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 PaystackClient/1.0"
-        }
-      };
-
-      const paystackReq = https.request(options, (paystackRes) => {
-        let responseBody = "";
-
-        paystackRes.on("data", (chunk) => {
-          responseBody += chunk;
-        });
-
-        paystackRes.on("end", () => {
-          try {
-            const parsed = JSON.parse(responseBody);
-            if (parsed && parsed.status) {
-              resolve({
-                status: true,
-                message: parsed.message || "Paystack authorization URL generated",
-                data: {
-                  ...parsed.data,
-                  reference: txRef,
-                  amount: amountInLowestUnit,
-                  amountInGhs: amountInLowestUnit / 100
-                }
-              });
-            } else {
-              console.warn("Paystack initialize rejected by gateway:", parsed);
-              resolve({
-                status: false,
-                message: parsed?.message || "Paystack transaction initialization failed",
-                error: parsed?.message || "Gateway rejected initialization",
-                data: parsed?.data
-              });
-            }
-          } catch (parseError: any) {
-            console.error("Paystack response parse exception:", responseBody, parseError);
-            resolve({
-              status: false,
-              message: responseBody.includes("error code: 1010")
-                ? "Security handshake blocked by Paystack Cloudflare firewall. Please retry."
-                : (responseBody.slice(0, 150) || "Malformed response received from Paystack"),
-              error: parseError.message
-            });
-          }
-        });
-      });
-
-      paystackReq.on("error", (requestError) => {
-        console.error("Paystack HTTPS request error:", requestError);
-        resolve({
+        };
+      } else {
+        console.warn("[Paystack Gateway Response]", paystackRes.status, parsed);
+        const errMsg = parsed?.message || (paystackRes.status === 401 
+          ? "Paystack API key unauthorized. Please verify PAYSTACK_SECRET_KEY in deployment environment variables." 
+          : "Paystack gateway rejected transaction initialization.");
+        return {
           status: false,
-          message: "Failed to establish secure link to Paystack servers",
-          error: requestError.message
-        });
-      });
-
-      paystackReq.write(postData);
-      paystackReq.end();
-    });
+          message: errMsg,
+          error: errMsg,
+          data: parsed?.data
+        };
+      }
+    } catch (fetchErr: any) {
+      console.error("[Paystack Network Exception]", fetchErr);
+      const isTimeout = fetchErr.name === "AbortError" || fetchErr.message?.includes("aborted");
+      return {
+        status: false,
+        message: isTimeout 
+          ? "Paystack gateway handshake timed out. Client-side payment modal will be utilized."
+          : (fetchErr.message || "Failed to establish secure link to Paystack servers"),
+        error: fetchErr.message
+      };
+    }
   }
 
   // Returns Paystack integration configuration and connection status
   app.get("/api/paystack/config", (req, res) => {
-    const { publicKey, isSecretConfigured, isPublicConfigured, environment } = getResolvedPaystackCredentials();
+    const { secretKey, publicKey, isSecretConfigured, isPublicConfigured, environment } = getResolvedPaystackCredentials();
 
     res.json({
       configured: isSecretConfigured || isPublicConfigured,
-      publicKey: isPublicConfigured ? `${publicKey.substring(0, 8)}...` : "",
+      publicKey: isPublicConfigured ? `${publicKey.substring(0, 8)}...${publicKey.slice(-4)}` : "",
       rawPublicKey: isPublicConfigured ? publicKey : "",
       currency: "GHS",
       supportedChannels: ["mobile_money", "card", "bank_transfer"],
       supportedNetworks: ["MTN MoMo", "Telecel Cash", "AT Money", "Visa", "Mastercard"],
-      environment
+      environment,
+      diagnostics: {
+        isSecretConfigured,
+        isPublicConfigured,
+        secretPrefix: isSecretConfigured ? `${secretKey.substring(0, 7)}...` : "not_configured",
+        publicPrefix: isPublicConfigured ? `${publicKey.substring(0, 7)}...` : "not_configured",
+        detectedMode: environment,
+        readyForLive: isSecretConfigured && environment === "live"
+      }
+    });
+  });
+
+  // Paystack diagnostics endpoint to help users verify deployment configuration
+  app.get("/api/paystack/diagnostics", (req, res) => {
+    const creds = getResolvedPaystackCredentials();
+    res.json({
+      serverTime: new Date().toISOString(),
+      nodeEnv: process.env.NODE_ENV || "development",
+      credentials: {
+        secretConfigured: creds.isSecretConfigured,
+        publicConfigured: creds.isPublicConfigured,
+        environment: creds.environment,
+        secretKeyPrefix: creds.secretKey ? creds.secretKey.slice(0, 8) + "..." : "missing",
+        publicKeyPrefix: creds.publicKey ? creds.publicKey.slice(0, 8) + "..." : "missing"
+      },
+      instructions: creds.isConfigured ? "Paystack is configured." : "To make live payments work after deployment, add PAYSTACK_SECRET_KEY and VITE_PAYSTACK_PUBLIC_KEY to your deployment environment variables."
     });
   });
 

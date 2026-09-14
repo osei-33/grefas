@@ -636,33 +636,40 @@ export default function Booking() {
         createdAt: new Date().toISOString()
       });
       
-      // Step 0: Initialize with Paystack backend
-      const initResult = await initializePaystackPayment({
-        email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
-        amount: Number(consultationPrice),
-        currency: 'GHS',
-        reference: refCode,
-        metadata: {
-          fullName: formData.userName,
-          serviceTitle: formData.serviceTitle || 'General Consultation',
-          date: date ? format(date, 'yyyy-MM-dd') : '',
-          time: formData.time,
-          paymentProvider,
-          momoProvider: paymentProvider !== 'card' ? momoProvider : undefined,
-          phone: momoNumber || formData.userPhone
-        },
-        channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
-      });
+      // Step 0: Attempt to initialize with Paystack backend proxy
+      let authUrl: string | undefined;
+      let accessCode: string | undefined;
 
-      if (initResult.isDemo) {
-        setIsDemoPaystack(true);
-      }
+      try {
+        const initResult = await initializePaystackPayment({
+          email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
+          amount: Number(consultationPrice),
+          currency: 'GHS',
+          reference: refCode,
+          metadata: {
+            fullName: formData.userName,
+            serviceTitle: formData.serviceTitle || 'General Consultation',
+            date: date ? format(date, 'yyyy-MM-dd') : '',
+            time: formData.time,
+            paymentProvider,
+            momoProvider: paymentProvider !== 'card' ? momoProvider : undefined,
+            phone: momoNumber || formData.userPhone
+          },
+          channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
+        });
 
-      const authUrl = initResult.data?.authorization_url;
-      const accessCode = initResult.data?.access_code;
+        if (initResult.isDemo) {
+          setIsDemoPaystack(true);
+        }
 
-      if (authUrl) {
-        setPaystackAuthUrl(authUrl);
+        authUrl = initResult.data?.authorization_url;
+        accessCode = initResult.data?.access_code;
+
+        if (authUrl) {
+          setPaystackAuthUrl(authUrl);
+        }
+      } catch (backendInitErr: any) {
+        console.warn('[Paystack Notice] Server initialization unavailable or skipped, proceeding with client checkout:', backendInitErr?.message || backendInitErr);
       }
 
       const activePublicKey = paystackContext?.publicKey || 

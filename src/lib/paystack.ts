@@ -95,12 +95,33 @@ export async function initializePaystackPayment(
     body: JSON.stringify(options),
   });
 
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({ error: 'Failed to initialize payment' }));
-    throw new Error(errData.message || errData.error || 'Payment initialization failed');
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok || !data) {
+    const errorMsg = data?.message || data?.error || `Server returned HTTP ${res.status}`;
+    throw new Error(errorMsg);
   }
 
-  return await res.json();
+  if (data.status === false) {
+    throw new Error(data.message || data.error || 'Payment gateway rejected initialization');
+  }
+
+  return data;
+}
+
+/**
+ * Safe initializer that returns a success flag and result without throwing,
+ * enabling seamless fallback to client-side modal with public key.
+ */
+export async function initializePaystackPaymentSafe(
+  options: PaystackInitializeOptions
+): Promise<{ success: boolean; result?: PaystackInitResponse; error?: string }> {
+  try {
+    const result = await initializePaystackPayment(options);
+    return { success: true, result };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Server initialization unavailable' };
+  }
 }
 
 /**
@@ -413,9 +434,25 @@ export async function openPaystackModal(options: OpenPaystackModalOptions): Prom
     return { opened: false, reason: 'SSR environment' };
   }
 
-  const rawKey = options.publicKey || 
-                 ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || 
-                 '';
+  let rawKey = (options.publicKey || 
+                ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || 
+                '').trim().replace(/^["']|["']$/g, '').trim();
+
+  // If public key is not in client bundle, query the server runtime config as fallback
+  if (!isValidPaystackPublicKey(rawKey)) {
+    try {
+      const cfgRes = await fetch('/api/paystack/config');
+      if (cfgRes.ok) {
+        const cfgData = await cfgRes.json();
+        if (cfgData.rawPublicKey && isValidPaystackPublicKey(cfgData.rawPublicKey)) {
+          rawKey = cfgData.rawPublicKey.trim();
+        }
+      }
+    } catch (e) {
+      console.warn('[Paystack] Could not fetch server public key fallback:', e);
+    }
+  }
+
   const hasValidKey = isValidPaystackPublicKey(rawKey);
   const isRealAccessCode = Boolean(options.access_code && !options.access_code.startsWith('demo_') && options.access_code.length > 5);
   const isRealAuthUrl = Boolean(
