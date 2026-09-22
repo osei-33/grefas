@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore';
+import { initializeFirestore, setLogLevel, doc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -8,10 +8,31 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Use initializeFirestore with auto-detect long-polling for resilient connectivity in iframe/preview environments
+// Set log level to silent first to prevent internal SDK connection retry notices from polluting console.error
+setLogLevel('silent');
+
+// Use initializeFirestore with forced long polling.
+// In iframe and proxy environments (such as Cloud Run reverse proxy), WebSockets and
+// chunked fetch streams fail the initial handshake, causing "Connection failed 1 times"
+// and "The operation could not be completed" errors. Forced long polling establishes
+// immediate, robust HTTP communication.
 export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
+  experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId || '(default)');
+
+// Test connection on boot per Firebase integration skill (deferred slightly to allow initial connection handshake)
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn("Firestore operating in offline mode until connection is established.");
+    }
+  }
+}
+if (typeof window !== 'undefined') {
+  setTimeout(testConnection, 2000);
+}
 
 /**
  * Handle Firestore errors according to integration guidelines

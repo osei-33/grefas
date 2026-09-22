@@ -15,6 +15,7 @@ import Team from './pages/Team';
 import Admin from './pages/Admin';
 import MyApplications from './pages/MyApplications';
 import WorkWithUs from './pages/WorkWithUs';
+import Sponsorship from './pages/Sponsorship';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import NotFound from './pages/NotFound';
 import { Toaster } from 'sonner';
@@ -78,6 +79,12 @@ function AnimatedRoutes() {
 
             <Route path="/contact" element={<Contact />} />
             <Route path="/contact-us" element={<Navigate to="/contact" replace />} />
+
+            <Route path="/sponsorship" element={<Sponsorship />} />
+            <Route path="/sponsor" element={<Navigate to="/sponsorship" replace />} />
+            <Route path="/sponsor-us" element={<Navigate to="/sponsorship" replace />} />
+            <Route path="/donate" element={<Navigate to="/sponsorship" replace />} />
+            <Route path="/donations" element={<Navigate to="/sponsorship" replace />} />
 
             <Route path="/work-with-us" element={<WorkWithUs />} />
             <Route path="/workwithus" element={<Navigate to="/work-with-us" replace />} />

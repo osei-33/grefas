@@ -388,6 +388,33 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp" }
       },
       "required": ["description", "amount", "type", "category"]
+    },
+    "Sponsorship": {
+      "title": "Sponsorship and Donation",
+      "description": "A donation or sponsorship contribution made by an individual or organization.",
+      "type": "object",
+      "properties": {
+        "sponsorType": { "type": "string", "enum": ["individual", "organization"] },
+        "sponsorName": { "type": "string", "description": "Name of the sponsor or organization" },
+        "contactPerson": { "type": "string", "description": "Contact person name for organizations" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "amount": { "type": "number", "description": "Contribution amount in GHS" },
+        "currency": { "type": "string", "description": "Currency code e.g. GHS" },
+        "tier": { "type": "string", "description": "Bronze, Silver, Gold, Platinum, Custom" },
+        "message": { "type": "string", "description": "Optional message of encouragement or dedication" },
+        "isAnonymous": { "type": "boolean", "description": "Whether the sponsor wishes to remain anonymous on public honor rolls" },
+        "paymentMethod": { "type": "string", "description": "Paystack (MoMo/Card) or Offline" },
+        "paymentStatus": { "type": "string", "enum": ["completed", "pending", "failed"] },
+        "paymentReference": { "type": "string", "description": "Payment gateway reference ID" },
+        "thankYouSent": { "type": "boolean", "description": "Whether admin has sent an official thank you acknowledgement" },
+        "thankYouSentAt": { "type": "string", "format": "date-time" },
+        "thankYouMessage": { "type": "string" },
+        "adminNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sponsorType", "sponsorName", "email", "amount", "paymentStatus", "createdAt"]
     }
   },
   "firestore": {
@@ -486,6 +513,10 @@
     "/activity_logs/{logId}": {
       "schema": "ActivityLog",
       "description": "Log of client activities, logins, and status updates"
+    },
+    "/sponsorships/{sponsorshipId}": {
+      "schema": "Sponsorship",
+      "description": "Collection of sponsorships and donations made to Grefas Consult & Entertainment"
     }
   }
 }

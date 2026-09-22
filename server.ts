@@ -2183,6 +2183,254 @@ Sitemap: ${domain}/sitemap.xml`);
     res.json({ status: "ok", results });
   });
 
+  // --- SPONSORSHIP & DONATION MANAGEMENT APIS ---
+  app.post("/api/sponsorship/notify-new", async (req, res) => {
+    const { sponsorName, email, phone, amount, currency, sponsorType, message, reference } = req.body;
+    const formattedAmount = Number(amount || 0).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const curr = currency || "GHS";
+
+    const results: { email: string; sms: string; adminAlert: string } = {
+      email: "skipped",
+      sms: "skipped",
+      adminAlert: "skipped",
+    };
+
+    // 1. Send SMS to donor if phone provided
+    if (phone) {
+      try {
+        const donorSms = `Dear ${sponsorName}, thank you for your generous sponsorship of ${curr} ${formattedAmount} to Grefas Consult & Entertainment (Ref: ${reference || 'OFFLINE'}). Your support transforms lives & talents!`;
+        const smsStatus = await sendSMS(phone, donorSms);
+        results.sms = smsStatus;
+      } catch (smsErr) {
+        console.warn("Could not send donor SMS:", smsErr);
+        results.sms = "failed";
+      }
+    }
+
+    // 2. Send automated confirmation email to donor
+    if (resend && email) {
+      try {
+        await resend.emails.send({
+          from: getFromEmail("Grefas Sponsorship Desk"),
+          to: [email],
+          subject: `Thank You for Sponsoring Grefas Consult & Entertainment`,
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #18181b; max-width: 620px; margin: 0 auto; border: 1px solid #e4e4e7; border-radius: 12px; overflow: hidden;">
+              <div style="background-color: #111827; padding: 28px; text-align: center; border-bottom: 4px solid #ea580c;">
+                <h1 style="color: white; margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;">Official Sponsorship Acknowledgment</h1>
+                <p style="color: #ea580c; font-size: 13px; margin: 8px 0 0 0; font-weight: 600;">GREFAS CONSULT & ENTERTAINMENT</p>
+              </div>
+              <div style="padding: 32px;">
+                <p style="font-size: 15px; line-height: 1.6;">Dear <strong>${sponsorName}</strong>,</p>
+                <p style="font-size: 14px; line-height: 1.6; color: #374151;">
+                  We have received your generous sponsorship contribution of <strong>${curr} ${formattedAmount}</strong>.
+                  On behalf of our entire team, board of directors, and the budding young creatives whose dreams you are directly championing, we express our profound gratitude.
+                </p>
+                
+                <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                  <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 6px 0; color: #6b7280; width: 40%;"><strong>Contributor:</strong></td>
+                      <td style="padding: 6px 0; font-weight: bold; color: #111827;">${sponsorName} (${sponsorType === 'organization' ? 'Organization' : 'Individual'})</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #6b7280;"><strong>Contribution Amount:</strong></td>
+                      <td style="padding: 6px 0; font-weight: bold; color: #ea580c; font-size: 15px;">${curr} ${formattedAmount}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #6b7280;"><strong>Reference ID:</strong></td>
+                      <td style="padding: 6px 0; font-family: monospace; color: #374151;">${reference || 'N/A'}</td>
+                    </tr>
+                    ${message ? `
+                    <tr>
+                      <td style="padding: 6px 0; color: #6b7280; vertical-align: top;"><strong>Message of Support:</strong></td>
+                      <td style="padding: 6px 0; color: #374151; font-style: italic;">"${message}"</td>
+                    </tr>` : ''}
+                  </table>
+                </div>
+
+                <p style="font-size: 13px; color: #4b5563; line-height: 1.6;">
+                  Your backing fuels talent mentorship, grassroots creative workshops, quality skit & movie productions, and community youth empowerment in Nyinahin, the Ashanti Region, and across Ghana.
+                </p>
+                
+                <p style="margin-top: 32px; font-size: 13px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+                  Warmest regards,<br>
+                  <strong>Executive Management</strong><br>
+                  Grefas Consult & Entertainment<br>
+                  <span style="font-size: 12px; color: #9ca3af;">Nyinahin-Ashanti, Ghana | Tel: +233 123 456 789</span>
+                </p>
+              </div>
+            </div>
+          `
+        });
+        results.email = "sent";
+      } catch (emailErr) {
+        console.warn("Could not send donor email:", emailErr);
+        results.email = "failed";
+      }
+    }
+
+    // 3. Alert admins
+    if (resend) {
+      try {
+        const adminReceipts = ["serwaahlinda1995@gmail.com", "asantegrice@gmail.com", "asantegrifice@gmail.com", "oseikwameemmanuel33@gmail.com"];
+        await resend.emails.send({
+          from: getFromEmail("Grefas Sponsorship Alert"),
+          to: adminReceipts,
+          subject: `[NEW SPONSORSHIP] ${curr} ${formattedAmount} from ${sponsorName}`,
+          html: `
+            <div style="font-family: sans-serif; color: #1f2937; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px;">
+              <h2 style="color: #ea580c; margin-top: 0;">New Sponsorship Received!</h2>
+              <p>A new sponsorship donation has been registered:</p>
+              <ul>
+                <li><strong>Sponsor:</strong> ${sponsorName} (${sponsorType || 'individual'})</li>
+                <li><strong>Amount:</strong> ${curr} ${formattedAmount}</li>
+                <li><strong>Email:</strong> ${email || 'N/A'}</li>
+                <li><strong>Phone:</strong> ${phone || 'N/A'}</li>
+                <li><strong>Reference:</strong> ${reference || 'N/A'}</li>
+                ${message ? `<li><strong>Dedication:</strong> "${message}"</li>` : ''}
+              </ul>
+              <p>Log in to your Admin portal to view details and send a personalized thank you.</p>
+            </div>
+          `
+        });
+        results.adminAlert = "sent";
+      } catch (adminErr) {
+        console.warn("Could not alert admin:", adminErr);
+      }
+    }
+
+    res.json({ status: "ok", results });
+  });
+
+  // Admin manually sending a personalized Thank You Letter & SMS
+  app.post("/api/sponsorship/send-thank-you", async (req, res) => {
+    const {
+      sponsorName,
+      sponsorEmail,
+      sponsorPhone,
+      sponsorType = "individual",
+      amount,
+      currency = "GHS",
+      subject,
+      thankYouMessage,
+      sendEmail = true,
+      sendSms = true,
+      signedBy = "Management & Board of Directors"
+    } = req.body;
+
+    if (!sponsorName) {
+      return res.status(400).json({ error: "Sponsor name is required" });
+    }
+
+    const formattedAmount = Number(amount || 0).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const finalSubject = subject || `Official Certificate of Appreciation & Thank You — Grefas Consult & Entertainment`;
+
+    const finalBodyText = thankYouMessage || `On behalf of the entire board of directors, management team, and creative talent at Grefas Consult & Entertainment, we write to convey our heartfelt gratitude for your generous sponsorship contribution of ${currency} ${formattedAmount}. Your partnership is vital in empowering young Ghanaian talents, producing impactful media, and elevating creative arts. We are deeply honored by your trust and support.`;
+
+    const deliveryStatus = {
+      email: "skipped",
+      sms: "skipped",
+      timestamp: new Date().toISOString()
+    };
+
+    // 1. Send Email if requested and available
+    if (sendEmail && sponsorEmail) {
+      if (resend) {
+        try {
+          await resend.emails.send({
+            from: getFromEmail("Grefas Executive Management"),
+            to: [sponsorEmail],
+            subject: finalSubject,
+            html: `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #18181b; max-width: 640px; margin: 0 auto; border: 1px solid #e4e4e7; border-radius: 12px; overflow: hidden; background: #ffffff;">
+                <div style="background: linear-gradient(135deg, #18181b 0%, #09090b 100%); padding: 32px; text-align: center; border-bottom: 4px solid #ea580c;">
+                  <div style="display: inline-block; background: #ea580c; color: white; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px;">
+                    Official Appreciation
+                  </div>
+                  <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em;">
+                    LETTER OF GRATITUDE & RECOGNITION
+                  </h1>
+                  <p style="color: #a1a1aa; font-size: 13px; margin: 6px 0 0 0;">
+                    Grefas Consult & Entertainment • Nyinahin-Ashanti, Ghana
+                  </p>
+                </div>
+                
+                <div style="padding: 36px 32px;">
+                  <p style="font-size: 15px; line-height: 1.6; color: #18181b;">
+                    Dear <strong>${sponsorName}</strong>${sponsorType === 'organization' ? ' and Team' : ''},
+                  </p>
+                  
+                  <div style="font-size: 14px; line-height: 1.8; color: #3f3f46; margin: 20px 0;">
+                    ${finalBodyText.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br />')}
+                  </div>
+
+                  <div style="background: #fff7ed; border: 1px solid #ffedd5; border-radius: 10px; padding: 18px 20px; margin: 28px 0;">
+                    <div style="font-size: 12px; font-weight: 700; color: #9a3412; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">
+                      Sponsorship Recognition Summary
+                    </div>
+                    <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                      <tr>
+                        <td style="padding: 4px 0; color: #78350f;">Honoree / Partner:</td>
+                        <td style="padding: 4px 0; font-weight: 700; color: #18181b; text-align: right;">${sponsorName}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 4px 0; color: #78350f;">Contribution Amount:</td>
+                        <td style="padding: 4px 0; font-weight: 800; color: #ea580c; text-align: right; font-size: 15px;">${currency} ${formattedAmount}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 4px 0; color: #78350f;">Classification:</td>
+                        <td style="padding: 4px 0; font-weight: 600; color: #18181b; text-align: right;">${sponsorType === 'organization' ? 'Corporate Sponsor' : 'Individual Benefactor'}</td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <p style="font-size: 13px; line-height: 1.6; color: #52525b;">
+                    Because of partners like you, our youth film masterclasses, talent mentorship tracks, and community productions continue to thrive. We look forward to sharing our upcoming milestone achievements with you.
+                  </p>
+
+                  <div style="margin-top: 36px; padding-top: 24px; border-top: 1px solid #f4f4f5;">
+                    <p style="font-size: 14px; font-weight: 700; color: #18181b; margin: 0;">${signedBy}</p>
+                    <p style="font-size: 12px; color: #71717a; margin: 2px 0 0 0;">Grefas Consult & Entertainment</p>
+                    <p style="font-size: 11px; color: #a1a1aa; margin: 2px 0 0 0;">Digital Verification ID: REF-${Date.now().toString(36).toUpperCase()}</p>
+                  </div>
+                </div>
+              </div>
+            `
+          });
+          deliveryStatus.email = "sent";
+        } catch (err: any) {
+          console.error("Error sending thank you email:", err);
+          deliveryStatus.email = `error: ${err.message || "Failed"}`;
+        }
+      } else {
+        deliveryStatus.email = "simulated_success (Resend not configured)";
+      }
+    }
+
+    // 2. Send SMS if requested and phone exists
+    if (sendSms && sponsorPhone) {
+      try {
+        const smsContent = `Dear ${sponsorName}, Grefas Consult & Entertainment conveys our heartfelt appreciation for your kind sponsorship of ${currency} ${formattedAmount}. Thank you for championing our youth & creative vision! - Management`;
+        const smsResult = await sendSMS(sponsorPhone, smsContent);
+        deliveryStatus.sms = smsResult;
+      } catch (smsErr: any) {
+        console.error("Error sending thank you SMS:", smsErr);
+        deliveryStatus.sms = `error: ${smsErr.message || "Failed"}`;
+      }
+    }
+
+    res.json({
+      status: "ok",
+      message: "Thank you letter processed successfully",
+      delivery: deliveryStatus,
+      preview: {
+        subject: finalSubject,
+        body: finalBodyText
+      }
+    });
+  });
+
   app.post("/api/letters/generate", async (req, res) => {
     const { recipientName, recipientType, recipientAddress, subject, additionalContext, tone } = req.body;
     

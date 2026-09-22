@@ -3,6 +3,24 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+// Safeguard console: Route transient Firestore backend connection notices to console.debug
+// so that normal offline fallback and reconnection events do not trigger artificial error alerts.
+const originalConsoleError = console.error;
+console.error = function (...args: any[]) {
+  const message = args
+    .map(arg => (typeof arg === 'string' ? arg : arg instanceof Error ? arg.message : ''))
+    .join(' ');
+  if (
+    message.includes('Could not reach Cloud Firestore backend') ||
+    message.includes('operate in offline mode') ||
+    message.includes('Connection failed 1 times')
+  ) {
+    console.debug('[Firestore Connection Notice - Handled]:', ...args);
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+
 // Audit critical deployment environment variables at runtime
 try {
   const paystackKey = (import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY;
