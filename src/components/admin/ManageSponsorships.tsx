@@ -22,7 +22,14 @@ import {
   DollarSign, 
   FileText,
   X,
-  MessageSquare
+  MessageSquare,
+  Landmark,
+  MapPin,
+  Navigation,
+  Globe,
+  Save,
+  CreditCard,
+  ShieldCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +44,8 @@ import {
   updateDoc, 
   deleteDoc, 
   addDoc, 
-  serverTimestamp 
+  serverTimestamp,
+  setDoc
 } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { Sponsorship } from '@/types/sponsorship';
@@ -73,6 +81,77 @@ export default function ManageSponsorships() {
   const [manualAmount, setManualAmount] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [isSavingManual, setIsSavingManual] = useState(false);
+
+  // Bank & Physical Office Quick Edit Modal
+  const [showBankOfficeModal, setShowBankOfficeModal] = useState(false);
+  const [bankOfficeData, setBankOfficeData] = useState({
+    bankName: 'GCB Bank / Stanbic Bank Ghana',
+    bankAccountName: 'Grefas Consult & Entertainment Ltd',
+    bankAccountNumber: '2041009876543',
+    bankBranch: 'Nkawie / Nyinahin Branch',
+    bankSwiftCode: 'GCBLGHAC',
+    bankInstructions: 'Please include your Full Name or Donor/Invoice Reference in the wire transfer narration for swift accounting reconciliation.',
+    momoMerchantName: 'Grefas Entertainment & Consult',
+    momoNumber: '+233 24 123 4567',
+    officeAddress: 'Nyinahin-Ashanti, Ashanti Region, Ghana',
+    officeGps: 'AI-0008-9223',
+    officeLandmarks: 'Adjacent Nyinahin Post Office, Opposite Central Market Road',
+    officePhone: '+233 123 456 789 / +233 54 123 4567',
+    officeEmail: 'info@grefasconsultandentertainment.com',
+    officeHours: 'Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM',
+    officeDropoffNotes: 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.'
+  });
+  const [isSavingBankOffice, setIsSavingBankOffice] = useState(false);
+
+  // Real-time sync for global bank & office settings
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'global'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setBankOfficeData({
+          bankName: d.bankName || 'GCB Bank / Stanbic Bank Ghana',
+          bankAccountName: d.bankAccountName || 'Grefas Consult & Entertainment Ltd',
+          bankAccountNumber: d.bankAccountNumber || '2041009876543',
+          bankBranch: d.bankBranch || 'Nkawie / Nyinahin Branch',
+          bankSwiftCode: d.bankSwiftCode || 'GCBLGHAC',
+          bankInstructions: d.bankInstructions || 'Please include your Full Name or Donor/Invoice Reference in the wire transfer narration for swift accounting reconciliation.',
+          momoMerchantName: d.momoMerchantName || 'Grefas Entertainment & Consult',
+          momoNumber: d.momoNumber || '+233 24 123 4567',
+          officeAddress: d.officeAddress || d.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana',
+          officeGps: d.officeGps || 'AI-0008-9223',
+          officeLandmarks: d.officeLandmarks || 'Adjacent Nyinahin Post Office, Opposite Central Market Road',
+          officePhone: d.officePhone || d.phone || '+233 123 456 789 / +233 54 123 4567',
+          officeEmail: d.officeEmail || d.email || 'info@grefasconsultandentertainment.com',
+          officeHours: d.officeHours || 'Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM',
+          officeDropoffNotes: d.officeDropoffNotes || 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.'
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSaveBankOffice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingBankOffice(true);
+    try {
+      await setDoc(doc(db, 'settings', 'global'), {
+        ...bankOfficeData,
+        // Also keep primary address & phone synced
+        address: bankOfficeData.officeAddress,
+        phone: bankOfficeData.officePhone,
+        email: bankOfficeData.officeEmail
+      }, { merge: true });
+      toast.success('Official bank & physical office details saved successfully!', {
+        description: 'Updates are live across the public Sponsorship portal and Contact page.'
+      });
+      setShowBankOfficeModal(false);
+    } catch (err: any) {
+      console.error('Failed to update bank & office details:', err);
+      toast.error('Failed to update details. Please check your permissions.');
+    } finally {
+      setIsSavingBankOffice(false);
+    }
+  };
 
   // Real-time Firestore sync
   useEffect(() => {
@@ -289,7 +368,17 @@ export default function ManageSponsorships() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowBankOfficeModal(true)}
+            className="border-orange-500/30 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/20 text-xs font-semibold h-9 flex items-center gap-1.5"
+            id="admin-btn-bank-office"
+          >
+            <Landmark className="h-4 w-4 text-orange-600" />
+            <span>Bank & Office Details</span>
+          </Button>
+
           <Button
             variant="outline"
             onClick={() => window.open('/sponsorship', '_blank')}
@@ -959,6 +1048,236 @@ export default function ManageSponsorships() {
                 >
                   {isSavingManual ? 'Saving...' : 'Save Contribution'}
                 </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Official Bank & Physical Office Details Modal */}
+      {showBankOfficeModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-card border border-border rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Landmark className="h-5 w-5 text-orange-600" />
+                  <span>Edit Official Bank & Physical Office Details</span>
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Update bank accounts for incoming wires and official office desk coordinates.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBankOfficeModal(false)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBankOffice} className="space-y-5">
+              {/* Bank Transfer Details Section */}
+              <div className="p-4 rounded-xl bg-muted/30 border border-border space-y-3">
+                <div className="flex items-center gap-2 pb-1 border-b border-border">
+                  <Building2 className="h-4 w-4 text-orange-600" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    Corporate Bank Wire & MoMo
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="font-semibold block mb-1">Bank Name</label>
+                    <Input
+                      value={bankOfficeData.bankName}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, bankName: e.target.value })}
+                      placeholder="e.g. GCB Bank / Stanbic Bank Ghana"
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Account Beneficiary Name</label>
+                    <Input
+                      value={bankOfficeData.bankAccountName}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, bankAccountName: e.target.value })}
+                      placeholder="e.g. Grefas Consult & Entertainment Ltd"
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Account Number</label>
+                    <Input
+                      value={bankOfficeData.bankAccountNumber}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, bankAccountNumber: e.target.value })}
+                      placeholder="e.g. 2041009876543"
+                      className="text-xs h-9 font-mono font-bold text-orange-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Bank Branch</label>
+                    <Input
+                      value={bankOfficeData.bankBranch}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, bankBranch: e.target.value })}
+                      placeholder="e.g. Nkawie / Nyinahin Branch"
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">SWIFT / BIC (Int'l Wire)</label>
+                    <Input
+                      value={bankOfficeData.bankSwiftCode}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, bankSwiftCode: e.target.value })}
+                      placeholder="e.g. GCBLGHAC"
+                      className="text-xs h-9 font-mono uppercase"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Mobile Money Number / Merchant</label>
+                    <Input
+                      value={bankOfficeData.momoNumber}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, momoNumber: e.target.value })}
+                      placeholder="e.g. +233 24 123 4567"
+                      className="text-xs h-9"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Wire Narration / Transfer Memo Guide</label>
+                  <Textarea
+                    value={bankOfficeData.bankInstructions}
+                    onChange={(e) => setBankOfficeData({ ...bankOfficeData, bankInstructions: e.target.value })}
+                    placeholder="Instructions for donors when wiring funds..."
+                    rows={2}
+                    className="text-xs resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Physical Office Section */}
+              <div className="p-4 rounded-xl bg-muted/30 border border-border space-y-3">
+                <div className="flex items-center gap-2 pb-1 border-b border-border">
+                  <MapPin className="h-4 w-4 text-orange-600" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    Physical Office & Walk-In Desk
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="font-semibold block mb-1">Physical Street Address</label>
+                    <Input
+                      value={bankOfficeData.officeAddress}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, officeAddress: e.target.value })}
+                      placeholder="e.g. Nyinahin-Ashanti, Ashanti Region, Ghana"
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">GhanaPost GPS Digital Address</label>
+                    <Input
+                      value={bankOfficeData.officeGps}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, officeGps: e.target.value })}
+                      placeholder="e.g. AI-0008-9223"
+                      className="text-xs h-9 font-mono font-bold text-orange-600 uppercase"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Office Telephone</label>
+                    <Input
+                      value={bankOfficeData.officePhone}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, officePhone: e.target.value })}
+                      placeholder="e.g. +233 123 456 789 / +233 54 123 4567"
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Office Contact Email</label>
+                    <Input
+                      value={bankOfficeData.officeEmail}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, officeEmail: e.target.value })}
+                      placeholder="e.g. info@grefasconsultandentertainment.com"
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Working / Open Hours</label>
+                    <Input
+                      value={bankOfficeData.officeHours}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, officeHours: e.target.value })}
+                      placeholder="e.g. Monday – Friday: 8:00 AM – 5:00 PM"
+                      className="text-xs h-9"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold block mb-1">Landmarks / Directions</label>
+                    <Input
+                      value={bankOfficeData.officeLandmarks}
+                      onChange={(e) => setBankOfficeData({ ...bankOfficeData, officeLandmarks: e.target.value })}
+                      placeholder="e.g. Adjacent Nyinahin Post Office"
+                      className="text-xs h-9"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold block mb-1">Walk-in & Cheque Drop-off Instructions</label>
+                  <Textarea
+                    value={bankOfficeData.officeDropoffNotes}
+                    onChange={(e) => setBankOfficeData({ ...bankOfficeData, officeDropoffNotes: e.target.value })}
+                    placeholder="Instructions for donors visiting in person or sending checks..."
+                    rows={2}
+                    className="text-xs resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-border">
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  Synced immediately to Sponsorship portal & Contact page
+                </span>
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowBankOfficeModal(false)}
+                    disabled={isSavingBankOffice}
+                    className="text-xs h-9"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSavingBankOffice}
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold h-9 flex items-center gap-1.5"
+                  >
+                    {isSavingBankOffice ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Saving Changes...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-3.5 w-3.5" />
+                        <span>Save & Publish Details</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

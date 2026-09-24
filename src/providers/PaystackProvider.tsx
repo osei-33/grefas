@@ -11,6 +11,7 @@ import {
   loadPaystackInlineScript,
   isValidPaystackPublicKey
 } from '@/lib/paystack';
+import { calculateTransactionCharge } from '@/lib/transactionFees';
 import { toast } from 'sonner';
 
 export interface PaystackContextType {
@@ -43,10 +44,13 @@ export interface PaystackContextType {
     momoProvider?: string;
     bookingDate?: string;
     bookingTime?: string;
+    isSponsorship?: boolean;
   }) => Promise<{
     reference: string;
     receipt: NonNullable<PaystackVerifyResponse['data']>;
     amount: number;
+    baseAmount?: number;
+    processingFee?: number;
     channel: string;
   }>;
 }
@@ -247,14 +251,19 @@ export function PaystackProvider({ children }: { children: ReactNode }) {
       momoProvider?: string;
       bookingDate?: string;
       bookingTime?: string;
+      isSponsorship?: boolean;
     }) => {
       const refCode = generatePaystackReference('GREFAS-BOOK');
       const channel = params.paymentProvider === 'card' ? 'card' : 'mobile_money';
+      
+      // Calculate 1% transaction fee (or 0% if sponsorship)
+      const feeBreakdown = calculateTransactionCharge(params.amount, { isSponsorship: params.isSponsorship });
+      const payableAmount = feeBreakdown.totalAmount;
 
       // 1. Initialize Paystack Transaction
       await initializePaystackPayment({
         email: params.email || 'client@grefas.com',
-        amount: Number(params.amount),
+        amount: payableAmount,
         currency: 'GHS',
         reference: refCode,
         metadata: {
@@ -264,7 +273,12 @@ export function PaystackProvider({ children }: { children: ReactNode }) {
           bookingDate: params.bookingDate,
           bookingTime: params.bookingTime,
           momoProvider: params.paymentProvider !== 'card' ? params.momoProvider : undefined,
-          provider: params.paymentProvider
+          provider: params.paymentProvider,
+          baseAmount: feeBreakdown.baseAmount,
+          transactionFee: feeBreakdown.feeAmount,
+          feePercentage: feeBreakdown.feePercentageDisplay,
+          isSponsorship: Boolean(params.isSponsorship),
+          totalPayable: payableAmount,
         },
         channels: [channel as any]
       });
@@ -281,7 +295,9 @@ export function PaystackProvider({ children }: { children: ReactNode }) {
       return {
         reference: refCode,
         receipt: verifyRes.data,
-        amount: Number(params.amount),
+        amount: payableAmount,
+        baseAmount: feeBreakdown.baseAmount,
+        processingFee: feeBreakdown.feeAmount,
         channel: params.paymentProvider === 'card' ? 'card' : `momo_${(params.momoProvider || 'mtn').toLowerCase()}`
       };
     },

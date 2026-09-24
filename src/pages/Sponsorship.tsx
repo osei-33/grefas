@@ -23,13 +23,17 @@ import {
   Film,
   Compass,
   ArrowRight,
-  MessageSquare
+  MessageSquare,
+  Copy,
+  Check,
+  MapPin,
+  Navigation
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { db } from '@/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { Helmet } from 'react-helmet-async';
 import { openPaystackModal, generatePaystackReference } from '@/lib/paystack';
@@ -80,6 +84,81 @@ export default function Sponsorship() {
   const [publicSponsors, setPublicSponsors] = useState<SponsorRecord[]>([]);
   const [totalRaised, setTotalRaised] = useState<number>(0);
   const [sponsorCount, setSponsorCount] = useState<number>(0);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Official Bank & Physical Office Details State (real-time synced from admin settings)
+  const [bankOfficeSettings, setBankOfficeSettings] = useState<{
+    bankName?: string;
+    bankAccountName?: string;
+    bankAccountNumber?: string;
+    bankBranch?: string;
+    bankSwiftCode?: string;
+    bankInstructions?: string;
+    momoMerchantName?: string;
+    momoNumber?: string;
+    officeAddress?: string;
+    officeGps?: string;
+    officeLandmarks?: string;
+    officePhone?: string;
+    officeEmail?: string;
+    officeHours?: string;
+    officeDropoffNotes?: string;
+  }>({
+    bankName: 'GCB Bank / Stanbic Bank Ghana',
+    bankAccountName: 'Grefas Consult & Entertainment Ltd',
+    bankAccountNumber: '2041009876543',
+    bankBranch: 'Nkawie / Nyinahin Branch',
+    bankSwiftCode: 'GCBLGHAC',
+    bankInstructions: 'Please include your Full Name or Donor/Invoice Reference in the wire transfer narration for swift accounting reconciliation.',
+    momoMerchantName: 'Grefas Entertainment & Consult',
+    momoNumber: '+233 24 123 4567',
+    officeAddress: 'Nyinahin-Ashanti, Ashanti Region, Ghana',
+    officeGps: 'AI-0008-9223',
+    officeLandmarks: 'Adjacent Nyinahin Post Office, Opposite Central Market Road',
+    officePhone: '+233 123 456 789 / +233 54 123 4567',
+    officeEmail: 'info@grefasconsultandentertainment.com',
+    officeHours: 'Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM',
+    officeDropoffNotes: 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.'
+  });
+
+  const copyToClipboard = (text: string, fieldId: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      toast.success('Copied to clipboard!');
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      toast.info(text);
+    }
+  };
+
+  // Sync official bank & office details from Firestore
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'global'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setBankOfficeSettings(prev => ({
+          ...prev,
+          bankName: d.bankName || prev.bankName,
+          bankAccountName: d.bankAccountName || prev.bankAccountName,
+          bankAccountNumber: d.bankAccountNumber || prev.bankAccountNumber,
+          bankBranch: d.bankBranch || prev.bankBranch,
+          bankSwiftCode: d.bankSwiftCode || prev.bankSwiftCode,
+          bankInstructions: d.bankInstructions || prev.bankInstructions,
+          momoMerchantName: d.momoMerchantName || prev.momoMerchantName,
+          momoNumber: d.momoNumber || prev.momoNumber,
+          officeAddress: d.officeAddress || d.address || prev.officeAddress,
+          officeGps: d.officeGps || prev.officeGps,
+          officeLandmarks: d.officeLandmarks || prev.officeLandmarks,
+          officePhone: d.officePhone || d.phone || prev.officePhone,
+          officeEmail: d.officeEmail || d.email || prev.officeEmail,
+          officeHours: d.officeHours || prev.officeHours,
+          officeDropoffNotes: d.officeDropoffNotes || prev.officeDropoffNotes,
+        }));
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Listen to recent completed public sponsorships
   useEffect(() => {
@@ -288,13 +367,19 @@ export default function Sponsorship() {
             // Also record in financial ledger if active
             try {
               await addDoc(collection(db, 'transactions'), {
-                description: `Sponsorship donation from ${isAnonymous ? 'Anonymous' : sponsorName} (${tier})`,
+                description: `Sponsorship donation from ${isAnonymous ? 'Anonymous' : sponsorName} (${tier}) [0% processing fee - Sponsorship Exemption]`,
                 amount: activeAmount,
+                subtotal: activeAmount,
+                processingFee: 0,
+                feePercentage: 0,
+                isExempt: true,
                 type: 'credit',
                 category: 'Sponsorship & Donations',
                 ref: finalRef,
+                gateway: 'Paystack',
                 recordedBy: 'system_paystack_gateway',
                 createdAt: new Date().toISOString(),
+                transactionDate: new Date().toISOString()
               });
             } catch (ledgerErr) {
               console.warn('Optional ledger entry non-blocking error:', ledgerErr);
@@ -670,8 +755,31 @@ export default function Sponsorship() {
                   </div>
                 </div>
 
+                {/* 0% Transaction Charge Exemption Notice & Transparent Summary */}
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground font-medium">Sponsorship Contribution:</span>
+                    <span className="text-foreground font-bold font-mono">GH₵ {activeAmount ? activeAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span>Transaction Processing Charge:</span>
+                    </span>
+                    <span className="text-emerald-700 dark:text-emerald-300 font-bold font-mono">GH₵ 0.00 (0% Fee Exempt)</span>
+                  </div>
+                  <div className="h-px bg-emerald-500/20 my-1" />
+                  <div className="flex items-center justify-between text-xs font-extrabold text-foreground">
+                    <span>Total Charged to You:</span>
+                    <span className="text-emerald-600 font-mono text-sm font-black">GH₵ {activeAmount ? activeAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 dark:text-emerald-200/90 leading-relaxed pt-1">
+                    ★ <strong>100% Direct Impact Guarantee:</strong> Sponsorship and donation pages do not attract any 1% transaction charges. 100% of your contribution directly funds youth talent development, casting gear, and community short films.
+                  </p>
+                </div>
+
                 {/* Submit Action */}
-                <div className="pt-4 border-t border-border">
+                <div className="pt-2 border-t border-border">
                   <Button
                     type="submit"
                     disabled={isSubmitting || activeAmount <= 0}
@@ -759,20 +867,132 @@ export default function Sponsorship() {
               </button>
 
               {showDirectBankInfo && (
-                <div className="pt-4 mt-3 border-t border-border space-y-3 text-xs text-muted-foreground">
-                  <div className="p-3 rounded-xl bg-muted/40 space-y-1.5">
-                    <p className="font-semibold text-foreground">Bank Wire Transfer:</p>
-                    <p><strong>Bank:</strong> GCB Bank / Stanbic Bank Ghana</p>
-                    <p><strong>Account Name:</strong> Grefas Consult & Entertainment Ltd</p>
-                    <p><strong>Account Number:</strong> 2041009876543</p>
-                    <p><strong>Branch:</strong> Nkawie / Nyinahin Branch</p>
+                <div className="pt-4 mt-3 border-t border-border space-y-3.5 text-xs text-muted-foreground">
+                  {/* Bank Wire Details */}
+                  <div className="p-3.5 rounded-xl bg-muted/40 border border-border/50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-foreground flex items-center gap-1.5 text-xs">
+                        <Landmark className="h-3.5 w-3.5 text-orange-600" /> Bank Wire Transfer:
+                      </p>
+                      <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                        Official Bank Account
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p><strong className="text-foreground">Bank:</strong> {bankOfficeSettings.bankName}</p>
+                      <p><strong className="text-foreground">Account Name:</strong> {bankOfficeSettings.bankAccountName}</p>
+                      <div className="flex items-center justify-between bg-background p-2 rounded-lg border border-border/80 my-1">
+                        <div>
+                          <span className="text-[10px] text-muted-foreground block">Account Number:</span>
+                          <span className="font-mono font-bold text-sm text-orange-600 dark:text-orange-400 tracking-wider">
+                            {bankOfficeSettings.bankAccountNumber}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(bankOfficeSettings.bankAccountNumber || '', 'acct')}
+                          className="h-7 px-2 text-xs flex items-center gap-1"
+                        >
+                          {copiedField === 'acct' ? (
+                            <>
+                              <Check className="h-3.5 w-3.5 text-emerald-600" />
+                              <span className="text-[10px] text-emerald-600 font-bold">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="text-[10px]">Copy</span>
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <p><strong className="text-foreground">Branch:</strong> {bankOfficeSettings.bankBranch}</p>
+                      {bankOfficeSettings.bankSwiftCode && (
+                        <p><strong className="text-foreground">SWIFT / BIC:</strong> <span className="font-mono">{bankOfficeSettings.bankSwiftCode}</span></p>
+                      )}
+                      {bankOfficeSettings.momoNumber && (
+                        <p className="pt-1 border-t border-border/40">
+                          <strong className="text-foreground">MoMo Pay:</strong> {bankOfficeSettings.momoNumber} ({bankOfficeSettings.momoMerchantName})
+                        </p>
+                      )}
+                      {bankOfficeSettings.bankInstructions && (
+                        <p className="text-[11px] text-muted-foreground/90 italic pt-1">
+                          Note: {bankOfficeSettings.bankInstructions}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-muted/40 space-y-1.5">
-                    <p className="font-semibold text-foreground">Physical Office (Walk-in & Check Drop-off):</p>
-                    <p>Nyinahin-Ashanti, Ashanti Region, Ghana</p>
-                    <p><strong>GPS Digital Address:</strong> AI-0008-9223</p>
-                    <p><strong>Phone:</strong> +233 123 456 789 / +233 54 123 4567</p>
+                  {/* Physical Office Details */}
+                  <div className="p-3.5 rounded-xl bg-muted/40 border border-border/50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-foreground flex items-center gap-1.5 text-xs">
+                        <Building2 className="h-3.5 w-3.5 text-orange-600" /> Physical Office (Walk-in & Check Drop-off):
+                      </p>
+                      <span className="text-[10px] text-orange-600 font-semibold bg-orange-500/10 px-2 py-0.5 rounded-full">
+                        Headquarters
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-foreground font-medium">{bankOfficeSettings.officeAddress}</p>
+                      <div className="flex items-center justify-between bg-background p-2 rounded-lg border border-border/80 my-1">
+                        <div>
+                          <span className="text-[10px] text-muted-foreground block">GhanaPost GPS Digital Address:</span>
+                          <span className="font-mono font-bold text-sm text-foreground tracking-wider">
+                            {bankOfficeSettings.officeGps}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(bankOfficeSettings.officeGps || '', 'gps')}
+                            className="h-7 px-2 text-xs flex items-center gap-1"
+                          >
+                            {copiedField === 'gps' ? (
+                              <>
+                                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                <span className="text-[10px] text-emerald-600 font-bold">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="text-[10px]">Copy</span>
+                              </>
+                            )}
+                          </Button>
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((bankOfficeSettings.officeGps || '') + ', ' + (bankOfficeSettings.officeAddress || 'Ghana'))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="h-7 px-2 text-xs font-semibold bg-orange-600 hover:bg-orange-700 text-white rounded-md inline-flex items-center gap-1 transition-colors"
+                          >
+                            <Navigation className="h-3 w-3" />
+                            <span className="text-[10px]">Directions</span>
+                          </a>
+                        </div>
+                      </div>
+                      {bankOfficeSettings.officeLandmarks && (
+                        <p><strong className="text-foreground">Landmarks:</strong> {bankOfficeSettings.officeLandmarks}</p>
+                      )}
+                      <p><strong className="text-foreground">Phone:</strong> {bankOfficeSettings.officePhone}</p>
+                      {bankOfficeSettings.officeEmail && (
+                        <p><strong className="text-foreground">Email:</strong> {bankOfficeSettings.officeEmail}</p>
+                      )}
+                      {bankOfficeSettings.officeHours && (
+                        <p><strong className="text-foreground">Hours:</strong> {bankOfficeSettings.officeHours}</p>
+                      )}
+                      {bankOfficeSettings.officeDropoffNotes && (
+                        <p className="text-[11px] text-muted-foreground/90 italic pt-1">
+                          Note: {bankOfficeSettings.officeDropoffNotes}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -891,10 +1111,44 @@ export default function Sponsorship() {
               </div>
 
               {successReceipt.isPendingBank && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-800 dark:text-amber-300">
-                  <p className="font-bold">Next Steps for Bank Transfer:</p>
-                  <p className="mt-1">
-                    Please reference <strong>{successReceipt.reference}</strong> in your bank wire memo. Once credited, our admin will send an official thank you letter and tax acknowledgement.
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                  <p className="font-bold flex items-center gap-1.5 text-foreground">
+                    <Landmark className="h-3.5 w-3.5 text-orange-600" />
+                    <span>Official Bank Wire & Physical Drop-off Instructions:</span>
+                  </p>
+                  <div className="p-2.5 rounded-lg bg-background border border-border/60 text-[11px] font-mono space-y-1 text-foreground">
+                    <div className="flex justify-between items-center">
+                      <span>Bank:</span>
+                      <span className="font-bold">{bankOfficeSettings.bankName}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Account Name:</span>
+                      <span className="font-bold">{bankOfficeSettings.bankAccountName}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-0.5">
+                      <span>Account No:</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-orange-600 dark:text-orange-400 text-xs">{bankOfficeSettings.bankAccountNumber}</span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(bankOfficeSettings.bankAccountNumber || '', 'modal-acct')}
+                          className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                        >
+                          {copiedField === 'modal-acct' ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Branch:</span>
+                      <span>{bankOfficeSettings.bankBranch}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Transfer Memo / Ref:</span>
+                      <span className="font-bold text-orange-600">{successReceipt.reference}</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Walk-in donations and crossed cheques payable to <strong>{bankOfficeSettings.bankAccountName}</strong> can also be dropped off at our Nyinahin office (GPS: {bankOfficeSettings.officeGps}). Once credited, our admin team will send an official thank-you letter.
                   </p>
                 </div>
               )}

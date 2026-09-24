@@ -17,6 +17,7 @@ import {
   openPaystackModal
 } from '@/lib/paystack';
 import { usePaystack } from '@/providers/PaystackProvider';
+import { calculateTransactionCharge } from '@/lib/transactionFees';
 import { toast } from 'sonner';
 
 export interface PaystackPaymentProps {
@@ -29,9 +30,12 @@ export interface PaystackPaymentProps {
   title: string;
   description?: string;
   metadata?: Record<string, any>;
+  isSponsorship?: boolean; // When true, 0% charges. When false/undefined, standard 1% charge applies.
   onSuccess: (paymentData: {
     reference: string;
     amount: number;
+    baseAmount?: number;
+    processingFee?: number;
     channel: string;
     paidAt: string;
     gatewayResponse?: string;
@@ -48,9 +52,15 @@ export default function PaystackPayment({
   title,
   description,
   metadata = {},
+  isSponsorship = false,
   onSuccess,
 }: PaystackPaymentProps) {
   const paystackContext = usePaystack();
+  const feeBreakdown = calculateTransactionCharge(amount, { isSponsorship });
+  const totalPayable = feeBreakdown.totalAmount;
+  const feeAmount = feeBreakdown.feeAmount;
+  const baseAmount = feeBreakdown.baseAmount;
+
   const [paymentChannel, setPaymentChannel] = useState<'mobile_money' | 'card'>('mobile_money');
   const [momoProvider, setMomoProvider] = useState<'MTN' | 'Telecel' | 'AT'>('MTN');
   const [momoNumber, setMomoNumber] = useState(phone || '');
@@ -98,12 +108,14 @@ export default function PaystackPayment({
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     setStep('success');
     setStepMessage('Payment verified and confirmed!');
-    toast.success(`Paystack payment of GH₵ ${Number(amount).toFixed(2)} successful!`);
+    toast.success(`Paystack payment of GH₵ ${totalPayable.toFixed(2)} successful!`);
 
     setTimeout(() => {
       onSuccess({
         reference: ref,
-        amount: Number(amount),
+        amount: totalPayable,
+        baseAmount,
+        processingFee: feeAmount,
         channel: paymentChannel === 'mobile_money' ? `momo_${momoProvider.toLowerCase()}` : 'card',
         paidAt: verifyData?.paid_at || new Date().toISOString(),
         gatewayResponse: verifyData?.gateway_response || 'Approved',
@@ -153,7 +165,7 @@ export default function PaystackPayment({
       try {
         const initResult = await initializePaystackPayment({
           email: userEmail.trim(),
-          amount: Number(amount),
+          amount: totalPayable,
           currency: 'GHS',
           reference: ref,
           metadata: {
@@ -163,6 +175,11 @@ export default function PaystackPayment({
             channel: paymentChannel,
             momoProvider: paymentChannel === 'mobile_money' ? momoProvider : undefined,
             serviceTitle: title,
+            baseAmount,
+            transactionFee: feeAmount,
+            feePercentage: isSponsorship ? '0%' : '1%',
+            isSponsorship,
+            totalPayable,
           },
           channels: paymentChannel === 'mobile_money' ? ['mobile_money'] : ['card'],
         });
@@ -185,7 +202,7 @@ export default function PaystackPayment({
       const modalLaunch = await openPaystackModal({
         publicKey: activePublicKey,
         email: userEmail.trim(),
-        amount: Number(amount),
+        amount: totalPayable,
         currency: 'GHS',
         reference: ref,
         access_code: returnedAccessCode,
@@ -195,6 +212,10 @@ export default function PaystackPayment({
           ...metadata,
           fullName: userName.trim() || fullName,
           phone: momoNumber.trim() || phone,
+          baseAmount,
+          transactionFee: feeAmount,
+          isSponsorship,
+          totalPayable,
         },
         onSuccess: (resp) => {
           handlePaymentApproved(resp.reference || ref, resp);
@@ -285,8 +306,13 @@ export default function PaystackPayment({
             <div className="text-right">
               <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">Total Amount</span>
               <span className="text-lg font-black text-white font-mono">
-                GH₵ {Number(amount).toFixed(2)}
+                GH₵ {totalPayable.toFixed(2)}
               </span>
+              {isSponsorship ? (
+                <span className="text-[10px] text-emerald-400 block font-semibold">0% Charge Exempt</span>
+              ) : (
+                <span className="text-[10px] text-orange-400 block font-semibold">Incl. 1% charge</span>
+              )}
             </div>
           </div>
           <p className="text-xs text-zinc-300 mt-2 truncate font-medium">
@@ -420,6 +446,32 @@ export default function PaystackPayment({
                   </div>
                 )}
 
+                {/* Transparent Transaction Fee Breakdown */}
+                <div className="bg-muted/40 rounded-xl p-3 border border-border/50 text-xs space-y-1.5">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Base Amount:</span>
+                    <span className="font-mono font-semibold text-foreground">GH₵ {baseAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      {isSponsorship ? 'Sponsorship Exemption:' : '1% Transaction Charge:'}
+                      {isSponsorship ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-1 py-0.5 rounded">0% Fee</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1 py-0.5 rounded">1%</span>
+                      )}
+                    </span>
+                    <span className={`font-mono font-bold ${isSponsorship ? 'text-emerald-600' : 'text-orange-600'}`}>
+                      {isSponsorship ? 'GH₵ 0.00 (Exempt)' : `+ GH₵ ${feeAmount.toFixed(2)}`}
+                    </span>
+                  </div>
+                  <div className="h-px bg-border/60 my-1" />
+                  <div className="flex justify-between font-bold">
+                    <span className="text-foreground">Total Accurate Payable:</span>
+                    <span className="text-emerald-600 font-mono font-extrabold text-sm">GH₵ {totalPayable.toFixed(2)}</span>
+                  </div>
+                </div>
+
                 {/* Security Trust Badges */}
                 <div className="flex items-center justify-between px-2 text-[10px] text-muted-foreground border-t border-border/50 pt-2">
                   <span className="flex items-center gap-1">
@@ -449,7 +501,7 @@ export default function PaystackPayment({
                       <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting...</span>
                     ) : (
                       <>
-                        <Lock className="h-3.5 w-3.5" /> Proceed to Paystack (GH₵ {Number(amount).toFixed(2)})
+                        <Lock className="h-3.5 w-3.5" /> Proceed to Paystack (GH₵ {totalPayable.toFixed(2)})
                       </>
                     )}
                   </Button>

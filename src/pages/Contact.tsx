@@ -521,13 +521,13 @@ export default function Contact() {
                 </div>
                 <div>
                   <p className="font-semibold text-foreground">Address</p>
-                  <p className="text-muted-foreground">{settings?.address || '123 Business Avenue, Nyinahin-Ashanti, Ashanti Region, Ghana'}</p>
+                  <p className="text-muted-foreground">{settings?.officeAddress || settings?.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'}</p>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     <span className="text-sm font-semibold text-orange-600 dark:text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-2.5 py-1 rounded inline-block">
-                      GPS Address: AI-0008-9223
+                      GPS Address: {settings?.officeGps || 'AI-0008-9223'}
                     </span>
                     <a
-                      href="https://www.google.com/maps/dir/?api=1&destination=AI-0008-9223,+Nyinahin-Ashanti,+Ashanti+Region,+Ghana"
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent((settings?.officeGps || 'AI-0008-9223') + ', ' + (settings?.officeAddress || settings?.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'))}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-white bg-orange-600 hover:bg-orange-700 transition-colors px-3 py-1 rounded-md shadow-sm"
@@ -549,17 +549,17 @@ export default function Contact() {
                 className="border-0 w-full h-full grayscale-[15%] group-hover:grayscale-0 transition-all duration-500"
                 loading="lazy"
                 allowFullScreen
-                src="https://maps.google.com/maps?q=AI-0008-9223,+Nyinahin-Ashanti,+Ghana&t=&z=16&ie=UTF8&iwloc=&output=embed"
+                src={`https://maps.google.com/maps?q=${encodeURIComponent((settings?.officeGps || 'AI-0008-9223') + ', ' + (settings?.officeAddress || 'Nyinahin-Ashanti, Ghana'))}&t=&z=16&ie=UTF8&iwloc=&output=embed`}
               ></iframe>
               <div className="absolute bottom-4 left-4 right-4 z-10 flex justify-center">
                 <a
-                  href="https://www.google.com/maps/dir/?api=1&destination=AI-0008-9223,+Nyinahin-Ashanti,+Ashanti+Region,+Ghana"
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent((settings?.officeGps || 'AI-0008-9223') + ', ' + (settings?.officeAddress || settings?.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'))}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="bg-black/80 hover:bg-black text-white text-xs font-bold uppercase tracking-widest px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-lg transition-all duration-300 border border-white/10 hover:border-orange-500 hover:scale-[1.02] active:scale-95 cursor-pointer"
                 >
                   <Navigation className="h-3.5 w-3.5 text-orange-500 fill-orange-500/20" />
-                  <span>Navigate To GPS Address</span>
+                  <span>Navigate To GPS Address ({settings?.officeGps || 'AI-0008-9223'})</span>
                   <ExternalLink className="h-3 w-3 opacity-60" />
                 </a>
               </div>

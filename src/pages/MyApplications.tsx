@@ -18,6 +18,7 @@ import SEO from '@/components/SEO';
 import AuthDialog from '@/components/AuthDialog';
 import { jsPDF } from 'jspdf';
 import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
+import { calculateTransactionCharge } from '@/lib/transactionFees';
 
 export default function MyApplications() {
   const [user, setUser] = useState<any>(null);
@@ -603,12 +604,16 @@ export default function MyApplications() {
     setPaymentStep('processing');
     
     const txnId = generatePaystackReference('GREFAS-INST');
+    const baseInstAmount = Number(activePaymentInstallment.amount) || 0;
+    const instFeeBreakdown = calculateTransactionCharge(baseInstAmount, { isSponsorship: false });
+    const instTransactionFee = instFeeBreakdown.feeAmount;
+    const instTotalPayable = instFeeBreakdown.totalAmount;
       
     try {
-      // 1. Initialize Paystack Transaction
+      // 1. Initialize Paystack Transaction with 1% charge included
       await initializePaystackPayment({
         email: activePaymentApp.emailAddress || user?.email || 'client@grefas.com',
-        amount: Number(activePaymentInstallment.amount),
+        amount: Number(instTotalPayable),
         currency: 'GHS',
         reference: txnId,
         metadata: {
@@ -617,7 +622,11 @@ export default function MyApplications() {
           installmentId: activePaymentInstallment.id,
           installmentName: activePaymentInstallment.name,
           paymentMode,
-          phone: momoNumber || activePaymentApp.contact
+          phone: momoNumber || activePaymentApp.contact,
+          baseAmount: baseInstAmount,
+          transactionFee: instTransactionFee,
+          feePercentage: '1%',
+          totalPayable: instTotalPayable
         },
         channels: paymentMode === 'momo' ? ['mobile_money'] : ['card']
       });
@@ -641,6 +650,9 @@ export default function MyApplications() {
             transactionId: txnId,
             gateway: 'Paystack',
             paymentMode,
+            baseAmount: baseInstAmount,
+            transactionFee: instTransactionFee,
+            totalPaid: instTotalPayable,
             ...(paymentMode === 'momo' ? { momoOperator, momoNumber } : {})
           };
         }
@@ -670,10 +682,13 @@ export default function MyApplications() {
         }
       }, { merge: true });
 
-      // Add to main ledger
+      // Add to main ledger with 1% fee itemization
       await addDoc(collection(db, 'transactions'), {
-        description: `Installment Payment (Paystack): ${activePaymentInstallment.name} - ${activePaymentApp.fullName}`,
-        amount: Number(activePaymentInstallment.amount),
+        description: `Installment Payment (Paystack): ${activePaymentInstallment.name} - ${activePaymentApp.fullName} [Base: GH₵ ${baseInstAmount.toFixed(2)} + 1% Fee: GH₵ ${instTransactionFee.toFixed(2)}]`,
+        amount: Number(instTotalPayable),
+        subtotal: Number(baseInstAmount),
+        processingFee: Number(instTransactionFee),
+        feePercentage: 1,
         type: 'credit',
         category: 'Installment Payment',
         ref: txnId,
@@ -694,7 +709,7 @@ export default function MyApplications() {
             fullName: activePaymentApp.fullName,
             emailAddress: activePaymentApp.emailAddress,
             contact: activePaymentApp.contact,
-            amountPaid: activePaymentInstallment.amount,
+            amountPaid: instTotalPayable,
             paymentPlan: activePaymentApp.paymentPlan?.type === 'full' ? 'One-time Full' : activePaymentApp.paymentPlan?.type === 'installments_2' ? '2-Installments (50/50)' : '3-Installments (40/30/30)',
             paymentMethod: paymentMode === 'momo' ? `Mobile Money (${momoOperator.toUpperCase()})` : 'Credit/Debit Card',
             totalPrice: priceVal,
@@ -1362,17 +1377,38 @@ export default function MyApplications() {
             <div className="p-5 flex-1 min-h-[250px] flex flex-col justify-center">
               {paymentStep === 'form' && (
                 <div className="space-y-4">
-                  {/* Summary */}
-                  <div className="p-3 bg-muted/30 rounded-xl border border-border/40 text-xs space-y-1.5">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground font-semibold">Casting Milestone:</span>
-                      <span className="text-foreground font-bold">{activePaymentInstallment.name}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground font-semibold">Amount Due:</span>
-                      <span className="text-orange-600 font-extrabold font-mono">GH₵ {activePaymentInstallment.amount.toLocaleString()}</span>
-                    </div>
-                  </div>
+                  {/* Summary with 1% charge breakdown */}
+                  {(() => {
+                    const baseInstAmount = Number(activePaymentInstallment.amount) || 0;
+                    const feeBreakdown = calculateTransactionCharge(baseInstAmount, { isSponsorship: false });
+                    const instFee = feeBreakdown.feeAmount;
+                    const totalPayable = feeBreakdown.totalAmount;
+
+                    return (
+                      <div className="p-3.5 bg-muted/30 rounded-xl border border-border/40 text-xs space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground font-medium">Casting Milestone:</span>
+                          <span className="text-foreground font-bold">{activePaymentInstallment.name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground font-medium">Milestone Base Amount:</span>
+                          <span className="text-foreground font-mono font-bold">GH₵ {baseInstAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+                            <span>1% Transaction Processing Charge:</span>
+                            <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1.5 py-0.2 rounded">1% Fee</span>
+                          </span>
+                          <span className="text-orange-600 font-bold font-mono">+ GH₵ {instFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="h-px bg-border/60 my-1" />
+                        <div className="flex justify-between items-center font-bold">
+                          <span className="text-foreground">Total Accurate Payable:</span>
+                          <span className="text-orange-600 font-extrabold font-mono text-sm">GH₵ {totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Payment Mode Selector */}
                   <div className="grid grid-cols-2 gap-2 p-1 bg-muted/40 rounded-lg">
@@ -1470,7 +1506,7 @@ export default function MyApplications() {
                     disabled={paymentMode === 'momo' ? !momoNumber : (!cardNumber || !cardExpiry || !cardCvv)}
                     className="w-full h-10 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white cursor-pointer shadow-md mt-2"
                   >
-                    Authorize Payment of GH₵ {activePaymentInstallment.amount.toLocaleString()}
+                    Authorize Payment of GH₵ {(calculateTransactionCharge(Number(activePaymentInstallment.amount) || 0, { isSponsorship: false }).totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Button>
                 </div>
               )}
@@ -1497,7 +1533,7 @@ export default function MyApplications() {
                   <div className="space-y-1">
                     <p className="text-sm font-bold text-foreground">Payment Successful!</p>
                     <p className="text-[11px] text-muted-foreground px-4">
-                      Your transaction GHS {activePaymentInstallment.amount.toLocaleString()} has been processed and recorded in Grefas archives.
+                      Your transaction GHS {(calculateTransactionCharge(Number(activePaymentInstallment.amount) || 0, { isSponsorship: false }).totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been processed and recorded in Grefas archives.
                     </p>
                     <p className="text-[10px] text-emerald-600 font-semibold px-4 pt-1">
                       An automated receipt email and SMS notification has been sent immediately.

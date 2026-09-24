@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -926,14 +926,14 @@ export default function Admin() {
                     to="/admin/settings"
                     onClick={() => setIsSidebarOpen(false)}
                     className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      isActive('/admin/settings') 
+                      (isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details'))
                         ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
                   >
-                    <SettingsIcon className={`h-4 w-4 ${isActive('/admin/settings') ? 'text-orange-600' : ''}`} />
-                    <span>Settings</span>
-                    {isActive('/admin/settings') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                    <SettingsIcon className={`h-4 w-4 ${(isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details')) ? 'text-orange-600' : ''}`} />
+                    <span>Settings & Bank Details</span>
+                    {(isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
                   </Link>
                 </>
               )}
@@ -996,6 +996,9 @@ export default function Admin() {
               <Route path="/chat" element={<ManageChat />} />
               <Route path="/sms" element={<SmsDashboard />} />
               <Route path="/settings" element={<ManageSettings />} />
+              <Route path="/bank-details" element={<ManageSettings />} />
+              <Route path="/bank" element={<ManageSettings />} />
+              <Route path="/office" element={<ManageSettings />} />
             </>
           )}
           <Route path="*" element={<Navigate to="/admin" replace />} />
@@ -5168,10 +5171,22 @@ function ManageTransactions() {
                             </span>
                           ) : 'N/A'}
                         </td>
-                        <td className={`p-4 text-right font-bold text-sm whitespace-nowrap ${
+                        <td className={`p-4 text-right whitespace-nowrap ${
                           t.type === 'credit' ? 'text-emerald-600' : 'text-rose-600'
                         }`}>
-                          {t.type === 'credit' ? '+' : '-'} GH₵ {t.amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          <div className="font-bold text-sm">
+                            {t.type === 'credit' ? '+' : '-'} GH₵ {t.amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </div>
+                          {t.processingFee !== undefined && Number(t.processingFee) > 0 ? (
+                            <div className="text-[10px] font-semibold text-orange-600 dark:text-orange-400 mt-0.5">
+                              incl. 1% fee (GH₵ {Number(t.processingFee).toFixed(2)})
+                            </div>
+                          ) : (t.isExempt || t.category === 'Sponsorship & Donations' || (t.type === 'credit' && t.description?.toLowerCase().includes('sponsorship'))) ? (
+                            <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 inline-flex items-center gap-1">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                              0% Fee (Sponsorship Exempt)
+                            </div>
+                          ) : null}
                         </td>
                         <td className="p-4 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1">
@@ -7181,7 +7196,22 @@ function ManageSettings() {
     privacyDeskLocation: 'Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223)',
     privacyDeskEmail: 'legal@grefas.com',
     privacyDeskPhone: '+233 24 000 0000',
-    policyLastUpdatedDate: 'August 10, 2026'
+    policyLastUpdatedDate: 'August 10, 2026',
+    bankName: 'GCB Bank / Stanbic Bank Ghana',
+    bankAccountName: 'Grefas Consult & Entertainment Ltd',
+    bankAccountNumber: '2041009876543',
+    bankBranch: 'Nkawie / Nyinahin Branch',
+    bankSwiftCode: 'GCBLGHAC',
+    bankInstructions: 'Please include your Full Name or Donor/Invoice Reference in the wire transfer narration for swift accounting reconciliation.',
+    momoMerchantName: 'Grefas Entertainment & Consult',
+    momoNumber: '+233 24 123 4567',
+    officeAddress: 'Nyinahin-Ashanti, Ashanti Region, Ghana',
+    officeGps: 'AI-0008-9223',
+    officeLandmarks: 'Adjacent Nyinahin Post Office, Opposite Central Market Road',
+    officePhone: '+233 123 456 789 / +233 54 123 4567',
+    officeEmail: 'info@grefasconsultandentertainment.com',
+    officeHours: 'Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM',
+    officeDropoffNotes: 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.'
   });
   const [loading, setLoading] = useState(true);
 
@@ -7328,7 +7358,22 @@ function ManageSettings() {
           privacyDeskLocation: data.privacyDeskLocation || 'Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223)',
           privacyDeskEmail: data.privacyDeskEmail || 'legal@grefas.com',
           privacyDeskPhone: data.privacyDeskPhone || '+233 24 000 0000',
-          policyLastUpdatedDate: data.policyLastUpdatedDate || 'August 10, 2026'
+          policyLastUpdatedDate: data.policyLastUpdatedDate || 'August 10, 2026',
+          bankName: data.bankName || 'GCB Bank / Stanbic Bank Ghana',
+          bankAccountName: data.bankAccountName || 'Grefas Consult & Entertainment Ltd',
+          bankAccountNumber: data.bankAccountNumber || '2041009876543',
+          bankBranch: data.bankBranch || 'Nkawie / Nyinahin Branch',
+          bankSwiftCode: data.bankSwiftCode || 'GCBLGHAC',
+          bankInstructions: data.bankInstructions || 'Please include your Full Name or Donor/Invoice Reference in the wire transfer narration for swift accounting reconciliation.',
+          momoMerchantName: data.momoMerchantName || 'Grefas Entertainment & Consult',
+          momoNumber: data.momoNumber || '+233 24 123 4567',
+          officeAddress: data.officeAddress || data.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana',
+          officeGps: data.officeGps || 'AI-0008-9223',
+          officeLandmarks: data.officeLandmarks || 'Adjacent Nyinahin Post Office, Opposite Central Market Road',
+          officePhone: data.officePhone || data.phone || '+233 123 456 789 / +233 54 123 4567',
+          officeEmail: data.officeEmail || data.email || 'info@grefasconsultandentertainment.com',
+          officeHours: data.officeHours || 'Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM',
+          officeDropoffNotes: data.officeDropoffNotes || 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.'
         });
       }
       setLoading(false);
@@ -7432,6 +7477,303 @@ function ManageSettings() {
               <p className="text-xs text-muted-foreground">
                 The standard registration fee shown to clients on the Movie & Skit registration form, which they must confirm before submitting.
               </p>
+            </div>
+
+            {/* Official Bank & Physical Office Details Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-5" id="bank-office-settings">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                    <Landmark className="h-5 w-5 text-orange-600" /> Official Bank & Physical Office Details
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Configure official corporate bank wire accounts and physical office desk credentials displayed on the public Sponsorship portal, Contact page, invoices, and direct deposit accordions.
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold text-orange-600 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 w-fit shrink-0">
+                  Public & Sponsorship Portal
+                </span>
+              </div>
+
+              <div className="space-y-6">
+                {/* 1. Official Bank Accounts */}
+                <div className="bg-muted/30 p-5 rounded-2xl border border-border space-y-4">
+                  <div className="flex items-center gap-2 border-b border-border pb-2">
+                    <Building2 className="h-4 w-4 text-orange-600" />
+                    <h4 className="text-sm font-bold text-foreground">1. Corporate Bank Wire & Remittance Details</h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Landmark className="h-3.5 w-3.5 text-muted-foreground" /> Official Bank Name
+                      </label>
+                      <Input
+                        value={settings.bankName || ''}
+                        onChange={(e) => setSettings({ ...settings, bankName: e.target.value })}
+                        placeholder="e.g. GCB Bank / Stanbic Bank Ghana"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <UserIcon className="h-3.5 w-3.5 text-muted-foreground" /> Account Name (Beneficiary)
+                      </label>
+                      <Input
+                        value={settings.bankAccountName || ''}
+                        onChange={(e) => setSettings({ ...settings, bankAccountName: e.target.value })}
+                        placeholder="e.g. Grefas Consult & Entertainment Ltd"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <CreditCard className="h-3.5 w-3.5 text-muted-foreground" /> Account Number
+                      </label>
+                      <Input
+                        value={settings.bankAccountNumber || ''}
+                        onChange={(e) => setSettings({ ...settings, bankAccountNumber: e.target.value })}
+                        placeholder="e.g. 2041009876543"
+                        className="bg-background border-border font-mono text-sm tracking-wider font-semibold"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Bank Branch
+                      </label>
+                      <Input
+                        value={settings.bankBranch || ''}
+                        onChange={(e) => setSettings({ ...settings, bankBranch: e.target.value })}
+                        placeholder="e.g. Nkawie / Nyinahin Branch"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Globe className="h-3.5 w-3.5 text-muted-foreground" /> SWIFT / BIC Code (Optional for Int'l Wires)
+                      </label>
+                      <Input
+                        value={settings.bankSwiftCode || ''}
+                        onChange={(e) => setSettings({ ...settings, bankSwiftCode: e.target.value })}
+                        placeholder="e.g. GCBLGHAC"
+                        className="bg-background border-border font-mono text-sm uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Phone className="h-3.5 w-3.5 text-muted-foreground" /> Mobile Money Merchant / Number (Alternative)
+                      </label>
+                      <Input
+                        value={settings.momoNumber || ''}
+                        onChange={(e) => setSettings({ ...settings, momoNumber: e.target.value })}
+                        placeholder="e.g. +233 24 123 4567 (Merchant ID / MoMo Pay)"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Info className="h-3.5 w-3.5 text-muted-foreground" /> Wire Remittance Instructions / Narration Guide
+                    </label>
+                    <Textarea
+                      value={settings.bankInstructions || ''}
+                      onChange={(e) => setSettings({ ...settings, bankInstructions: e.target.value })}
+                      placeholder="e.g. Please include your Full Name or Donor Reference code in the transfer narration for swift verification."
+                      rows={2}
+                      className="bg-background border-border text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Physical Office & Front Desk */}
+                <div className="bg-muted/30 p-5 rounded-2xl border border-border space-y-4">
+                  <div className="flex items-center gap-2 border-b border-border pb-2">
+                    <MapPin className="h-4 w-4 text-orange-600" />
+                    <h4 className="text-sm font-bold text-foreground">2. Physical Office & Walk-in Drop-off Desk Details</h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-muted-foreground" /> Physical Office Street Address
+                      </label>
+                      <Input
+                        value={settings.officeAddress || ''}
+                        onChange={(e) => setSettings({ ...settings, officeAddress: e.target.value, address: e.target.value })}
+                        placeholder="e.g. Nyinahin-Ashanti, Ashanti Region, Ghana"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Navigation className="h-3.5 w-3.5 text-orange-600" /> GhanaPost GPS Digital Address
+                      </label>
+                      <Input
+                        value={settings.officeGps || ''}
+                        onChange={(e) => setSettings({ ...settings, officeGps: e.target.value })}
+                        placeholder="e.g. AI-0008-9223"
+                        className="bg-background border-border font-mono text-sm font-bold text-orange-600 dark:text-orange-400 uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Info className="h-3.5 w-3.5 text-muted-foreground" /> Landmarks & Navigational Directions
+                      </label>
+                      <Input
+                        value={settings.officeLandmarks || ''}
+                        onChange={(e) => setSettings({ ...settings, officeLandmarks: e.target.value })}
+                        placeholder="e.g. Adjacent Nyinahin Post Office, Opposite Central Market Road"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Phone className="h-3.5 w-3.5 text-muted-foreground" /> Office Direct Phone Numbers
+                      </label>
+                      <Input
+                        value={settings.officePhone || ''}
+                        onChange={(e) => setSettings({ ...settings, officePhone: e.target.value, phone: e.target.value })}
+                        placeholder="e.g. +233 123 456 789 / +233 54 123 4567"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground" /> Operating / Working Hours
+                      </label>
+                      <Input
+                        value={settings.officeHours || ''}
+                        onChange={(e) => setSettings({ ...settings, officeHours: e.target.value })}
+                        placeholder="e.g. Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Mail className="h-3.5 w-3.5 text-muted-foreground" /> Office Direct Email
+                      </label>
+                      <Input
+                        value={settings.officeEmail || ''}
+                        onChange={(e) => setSettings({ ...settings, officeEmail: e.target.value })}
+                        placeholder="e.g. info@grefasconsultandentertainment.com"
+                        className="bg-background border-border text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground" /> Walk-in & Cheque Drop-off Instructions
+                    </label>
+                    <Textarea
+                      value={settings.officeDropoffNotes || ''}
+                      onChange={(e) => setSettings({ ...settings, officeDropoffNotes: e.target.value })}
+                      placeholder="e.g. Walk-in cash and crossed cheques payable to 'Grefas Consult & Entertainment Ltd' are accepted at our physical front desk."
+                      rows={2}
+                      className="bg-background border-border text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Live Card Preview */}
+                <div className="p-4 rounded-2xl bg-orange-50/50 dark:bg-orange-950/20 border border-orange-200/60 dark:border-orange-900/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-orange-700 dark:text-orange-400 flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5" /> Live Public Preview (As seen on Sponsorship & Contact pages)
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">Auto-rendered from settings</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-background border border-border space-y-1">
+                      <p className="font-bold text-foreground flex items-center gap-1 text-[11px]">
+                        <Landmark className="h-3 w-3 text-orange-600" /> Bank Wire Transfer:
+                      </p>
+                      <p><strong className="text-foreground">Bank:</strong> {settings.bankName || 'GCB Bank / Stanbic Bank Ghana'}</p>
+                      <p><strong className="text-foreground">Account Name:</strong> {settings.bankAccountName || 'Grefas Consult & Entertainment Ltd'}</p>
+                      <p><strong className="text-foreground">Account Number:</strong> <span className="font-mono font-bold text-orange-600">{settings.bankAccountNumber || '2041009876543'}</span></p>
+                      <p><strong className="text-foreground">Branch:</strong> {settings.bankBranch || 'Nkawie / Nyinahin Branch'}</p>
+                      {settings.bankSwiftCode && <p><strong className="text-foreground">SWIFT:</strong> <span className="font-mono">{settings.bankSwiftCode}</span></p>}
+                      {settings.momoNumber && <p><strong className="text-foreground">MoMo Pay:</strong> {settings.momoNumber}</p>}
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-background border border-border space-y-1">
+                      <p className="font-bold text-foreground flex items-center gap-1 text-[11px]">
+                        <Building2 className="h-3 w-3 text-orange-600" /> Physical Office Desk:
+                      </p>
+                      <p><strong className="text-foreground">Address:</strong> {settings.officeAddress || settings.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'}</p>
+                      <p><strong className="text-foreground">GPS Address:</strong> <span className="font-mono font-bold text-orange-600">{settings.officeGps || 'AI-0008-9223'}</span></p>
+                      <p><strong className="text-foreground">Phone:</strong> {settings.officePhone || settings.phone || '+233 123 456 789'}</p>
+                      {settings.officeHours && <p><strong className="text-foreground">Hours:</strong> {settings.officeHours}</p>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Transaction Charges & Sponsorship Exemption Policy Section */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-emerald-600" /> Transaction Processing Charges & Exemption Policy
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Live system rule: A standard 1% transaction fee is applied to general commercial operations (Bookings, Audition Intakes, Invoices). Sponsorship and donation pages are strictly 0% fee exempt.
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 w-fit shrink-0">
+                  Enforced Across Platform
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-orange-50/40 dark:bg-orange-950/20 border border-orange-200/70 dark:border-orange-900/40 p-4 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-orange-900 dark:text-orange-200 flex items-center gap-1.5">
+                      <CreditCard className="h-4 w-4 text-orange-600" /> Standard Commercial Transactions
+                    </span>
+                    <span className="text-xs font-extrabold font-mono bg-orange-600 text-white px-2 py-0.5 rounded-full">
+                      1.0% Processing Fee
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Applies automatically to Consultation bookings, Casting & Audition profile intake fees, and client project installment milestones. Paystack gateway charges and settlement reconciliation are calculated transparently with itemized line items on checkout screens and receipts.
+                  </p>
+                  <div className="pt-2 flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Active on /booking, /services (auditions), and /my-applications</span>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-900/40 p-4 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                      <Heart className="h-4 w-4 text-emerald-600 fill-emerald-600/20" /> Sponsorship & Donation Pages
+                    </span>
+                    <span className="text-xs font-extrabold font-mono bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                      0.0% Fee Exempt (Guaranteed)
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Sponsorships and philanthropic donations MUST NOT attract any 1% charges. 100% of contributed funds go directly to youth talent development, casting equipment, and community movie projects without deduction.
+                  </p>
+                  <div className="pt-2 flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <span>Enforced permanently on /sponsorship page and donation modals</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Homepage Animated Pictures (Hero Carousel) Section */}
@@ -8071,6 +8413,44 @@ function ManageSettings() {
                       rows={4}
                       className="bg-background border-border font-mono text-xs"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Transaction Processing Charges & Exemption Rules Policy */}
+              <div className="pt-6 border-t border-border/60">
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2 mb-2">
+                  <Receipt className="h-4 w-4 text-orange-600" /> Transaction Charges Policy & Exemption Rules
+                </h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Global platform rule enforcing 1% charges on commercial transactions while strictly exempting sponsorships.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl border border-orange-500/20 bg-orange-500/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-foreground">Standard Commercial Transactions</span>
+                      <span className="text-xs font-extrabold font-mono bg-orange-600 text-white px-2 py-0.5 rounded-full">1.0% Charge Active</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      A 1% fee is automatically calculated and added to consultation bookings, audition & casting intakes, and candidate installment payments.
+                    </p>
+                    <div className="text-[11px] text-orange-950 dark:text-orange-200 font-mono pt-1">
+                      Formula: Total Payable = Base Amount + (Base Amount × 0.01)
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-foreground">Sponsorship & Donations Exemption</span>
+                      <span className="text-xs font-extrabold font-mono bg-emerald-600 text-white px-2 py-0.5 rounded-full">0.0% Fee (Strictly Protected)</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      All sponsorship contributions and donations on <code>/sponsorship</code> are strictly exempt and do not attract any 1% charges, ensuring 100% of donor funding goes directly to creative talent.
+                    </p>
+                    <div className="text-[11px] text-emerald-900 dark:text-emerald-200 font-mono pt-1">
+                      Formula: Total Charged = Contribution (0% Transaction Charge)
+                    </div>
                   </div>
                 </div>
               </div>

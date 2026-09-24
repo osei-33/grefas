@@ -32,6 +32,7 @@ import {
 import PaystackPop from '@paystack/inline-js';
 import { usePaystack } from '@/providers/PaystackProvider';
 import { useResendPayment } from '@/hooks/useResendPayment';
+import { calculateTransactionCharge } from '@/lib/transactionFees';
 
 const convertAccraTimeToUserTimezone = (accraTimeStr: string, targetTimezone: string) => {
   try {
@@ -101,6 +102,12 @@ export default function Booking() {
 
   const { isConfigured: isPaystackConfigured, openPaystackPopup } = usePaystack();
   const { sendBookingPaymentConfirmation } = useResendPayment();
+
+  // 1% Transaction fee calculation (bookings attract 1% standard processing fee)
+  const baseConsultationPrice = Math.max(0, Number(consultationPrice) || 150);
+  const bookingFeeBreakdown = calculateTransactionCharge(baseConsultationPrice, { isSponsorship: false });
+  const bookingTransactionFee = bookingFeeBreakdown.feeAmount;
+  const bookingTotalPayable = bookingFeeBreakdown.totalAmount;
 
   // Listen for Paystack redirect callbacks (e.g. ?reference=GREFAS-BOOK-xxx or ?trxref=xxx)
   useEffect(() => {
@@ -629,7 +636,9 @@ export default function Booking() {
       savePendingPayment(refCode, {
         formData,
         date: date ? date.toISOString() : null,
-        consultationPrice,
+        consultationPrice: baseConsultationPrice,
+        transactionFee: bookingTransactionFee,
+        totalPayable: bookingTotalPayable,
         paymentProvider,
         momoNumber,
         momoProvider,
@@ -643,7 +652,7 @@ export default function Booking() {
       try {
         const initResult = await initializePaystackPayment({
           email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
-          amount: Number(consultationPrice),
+          amount: Number(bookingTotalPayable),
           currency: 'GHS',
           reference: refCode,
           metadata: {
@@ -653,7 +662,11 @@ export default function Booking() {
             time: formData.time,
             paymentProvider,
             momoProvider: paymentProvider !== 'card' ? momoProvider : undefined,
-            phone: momoNumber || formData.userPhone
+            phone: momoNumber || formData.userPhone,
+            baseAmount: baseConsultationPrice,
+            transactionFee: bookingTransactionFee,
+            feePercentage: '1%',
+            totalPayable: bookingTotalPayable,
           },
           channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
         });
@@ -680,7 +693,7 @@ export default function Booking() {
       const modalResult = await openPaystackModal({
         publicKey: activePublicKey,
         email: formData.userEmail || auth.currentUser?.email || 'client@grefas.com',
-        amount: Number(consultationPrice),
+        amount: Number(bookingTotalPayable),
         currency: 'GHS',
         reference: refCode,
         access_code: accessCode,
@@ -692,7 +705,11 @@ export default function Booking() {
           date: date ? format(date, 'yyyy-MM-dd') : '',
           time: formData.time,
           paymentProvider,
-          phone: momoNumber || formData.userPhone
+          phone: momoNumber || formData.userPhone,
+          baseAmount: baseConsultationPrice,
+          transactionFee: bookingTransactionFee,
+          feePercentage: '1%',
+          totalPayable: bookingTotalPayable,
         },
         onSuccess: (receiptData: any) => {
           setCurrentPaymentStep(3);
@@ -700,8 +717,10 @@ export default function Booking() {
             id: receiptData?.id || receiptData?.trans || Math.floor(100000000 + Math.random() * 900000000),
             status: 'success',
             reference: receiptData?.reference || refCode,
-            amount: Math.round(Number(consultationPrice) * 100),
-            amountInGhs: Number(consultationPrice),
+            amount: Math.round(Number(bookingTotalPayable) * 100),
+            amountInGhs: Number(bookingTotalPayable),
+            baseAmount: baseConsultationPrice,
+            transactionFee: bookingTransactionFee,
             channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
             currency: 'GHS',
             paid_at: receiptData?.paid_at || new Date().toISOString(),
@@ -713,7 +732,9 @@ export default function Booking() {
             metadata: {
               fullName: formData.userName,
               serviceTitle: formData.serviceTitle || 'General Consultation',
-              paymentProvider
+              paymentProvider,
+              baseAmount: baseConsultationPrice,
+              transactionFee: bookingTransactionFee
             }
           };
 
@@ -722,7 +743,7 @@ export default function Booking() {
           setIsPaid(true);
           setIsPaying(false);
           clearPendingPayment(refCode);
-          toast.success(`Paystack payment of GH₵ ${consultationPrice.toFixed(2)} verified successfully!`);
+          toast.success(`Paystack payment of GH₵ ${bookingTotalPayable.toFixed(2)} verified successfully!`);
         },
         onCancel: () => {
           setIsPaying(false);
@@ -753,8 +774,10 @@ export default function Booking() {
               id: receiptData?.id || Math.floor(100000000 + Math.random() * 900000000),
               status: 'success',
               reference: refCode,
-              amount: Math.round(Number(consultationPrice) * 100),
-              amountInGhs: Number(consultationPrice),
+              amount: Math.round(Number(bookingTotalPayable) * 100),
+              amountInGhs: Number(bookingTotalPayable),
+              baseAmount: baseConsultationPrice,
+              transactionFee: bookingTransactionFee,
               channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
               currency: 'GHS',
               paid_at: receiptData?.paid_at || new Date().toISOString(),
@@ -766,7 +789,9 @@ export default function Booking() {
               metadata: {
                 fullName: formData.userName,
                 serviceTitle: formData.serviceTitle || 'General Consultation',
-                paymentProvider
+                paymentProvider,
+                baseAmount: baseConsultationPrice,
+                transactionFee: bookingTransactionFee
               }
             };
 
@@ -775,7 +800,7 @@ export default function Booking() {
             setIsPaid(true);
             setIsPaying(false);
             clearPendingPayment(refCode);
-            toast.success(`Paystack payment of GH₵ ${consultationPrice.toFixed(2)} verified successfully!`);
+            toast.success(`Paystack payment of GH₵ ${bookingTotalPayable.toFixed(2)} verified successfully!`);
           }
         } catch (vErr) {
           // ignore transient poll errors
@@ -800,8 +825,10 @@ export default function Booking() {
           id: receiptData?.id || Math.floor(100000000 + Math.random() * 900000000),
           status: 'success',
           reference: paymentRef,
-          amount: Math.round(Number(consultationPrice) * 100),
-          amountInGhs: Number(consultationPrice),
+          amount: Math.round(Number(bookingTotalPayable) * 100),
+          amountInGhs: Number(bookingTotalPayable),
+          baseAmount: baseConsultationPrice,
+          transactionFee: bookingTransactionFee,
           channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
           currency: 'GHS',
           paid_at: receiptData?.paid_at || new Date().toISOString(),
@@ -813,14 +840,16 @@ export default function Booking() {
           metadata: {
             fullName: formData.userName,
             serviceTitle: formData.serviceTitle || 'General Consultation',
-            paymentProvider
+            paymentProvider,
+            baseAmount: baseConsultationPrice,
+            transactionFee: bookingTransactionFee
           }
         };
         setPaystackReceipt(verifiedReceipt);
         setIsPaid(true);
         setIsPaying(false);
         clearPendingPayment(paymentRef);
-        toast.success("Paystack transaction verified and approved successfully!");
+        toast.success(`Paystack transaction of GH₵ ${bookingTotalPayable.toFixed(2)} verified and approved successfully!`);
       } else {
         toast.info(verifyRes.message || "Payment has not yet been confirmed by Paystack. Please complete authorization.");
       }
@@ -876,23 +905,31 @@ export default function Booking() {
           id: paystackReceipt.id || null,
           status: paystackReceipt.status || 'success',
           reference: paymentRef,
-          amount: paystackReceipt.amount || (consultationPrice * 100),
-          amountInGhs: paystackReceipt.amountInGhs || consultationPrice,
+          amount: paystackReceipt.amount || (bookingTotalPayable * 100),
+          amountInGhs: paystackReceipt.amountInGhs || bookingTotalPayable,
+          baseAmount: baseConsultationPrice,
+          transactionFee: bookingTransactionFee,
           paid_at: paystackReceipt.paid_at || new Date().toISOString(),
           channel: actualChannel,
           gateway_response: paystackReceipt.gateway_response || 'Approved'
         },
         paymentChannel: actualChannel,
-        paidAmount: paystackReceipt.amountInGhs || consultationPrice,
+        paidAmount: paystackReceipt.amountInGhs || bookingTotalPayable,
         paidAt: paystackReceipt.paid_at || new Date().toISOString(),
-        price: consultationPrice,
+        price: baseConsultationPrice,
+        subtotal: baseConsultationPrice,
+        transactionFee: bookingTransactionFee,
+        feePercentage: '1%',
         createdAt: serverTimestamp()
       });
 
       // Write direct to Firestore Transactions Collection with association to booking
       await addDoc(collection(db, 'transactions'), {
-        description: `Consultation Booking (Paystack): ${formData.serviceTitle || 'General Consult'} (Booking Ref: ${newOrderNumber})`,
-        amount: Number(consultationPrice),
+        description: `Consultation Booking (Paystack): ${formData.serviceTitle || 'General Consult'} (Booking Ref: ${newOrderNumber}) [Base: GH₵ ${baseConsultationPrice.toFixed(2)} + 1% Fee: GH₵ ${bookingTransactionFee.toFixed(2)}]`,
+        amount: Number(paystackReceipt.amountInGhs || bookingTotalPayable),
+        subtotal: Number(baseConsultationPrice),
+        processingFee: Number(bookingTransactionFee),
+        feePercentage: 1,
         type: 'credit',
         category: 'Consultation Booking',
         ref: paymentRef,
@@ -1029,7 +1066,7 @@ export default function Booking() {
           date: dateStr,
           time: formData.time,
           orderNumber: newOrderNumber,
-          amountPaid: Number(consultationPrice),
+          amountPaid: Number(bookingTotalPayable),
           paystackReference: paymentRef,
           paymentChannel: actualChannel === 'card' ? 'Visa / Mastercard Card' : `${momoProvider} Mobile Money`,
           teamMemberName: formData.teamMemberName || 'Primary Available Specialist'
@@ -1613,16 +1650,19 @@ export default function Booking() {
                             </div>
                             <div className="flex justify-between text-xs font-semibold text-muted-foreground">
                               <span>Consultation Base Fee:</span>
-                              <span className="text-foreground font-bold font-mono">GH₵ {consultationPrice.toFixed(2)}</span>
+                              <span className="text-foreground font-bold font-mono">GH₵ {baseConsultationPrice.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between text-xs font-semibold text-muted-foreground">
-                              <span>Gateway Convenience Fee:</span>
-                              <span className="text-emerald-600 font-bold font-mono">GH₵ 0.00 (Waived)</span>
+                              <span className="flex items-center gap-1.5">
+                                <span>1% Transaction Processing Charge:</span>
+                                <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1.5 py-0.2 rounded">1% Fee</span>
+                              </span>
+                              <span className="text-orange-600 font-bold font-mono">+ GH₵ {bookingTransactionFee.toFixed(2)}</span>
                             </div>
                             <div className="h-px bg-border/60 my-1" />
                             <div className="flex justify-between text-sm font-black">
                               <span className="text-foreground">Total Accurate Price:</span>
-                              <span className="text-emerald-600 font-mono">GH₵ {consultationPrice.toFixed(2)}</span>
+                              <span className="text-emerald-600 font-mono font-black">GH₵ {bookingTotalPayable.toFixed(2)}</span>
                             </div>
                           </div>
 
@@ -1773,7 +1813,7 @@ export default function Booking() {
                                     onClick={handleProcessPayment}
                                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
                                   >
-                                    <Lock className="h-3.5 w-3.5" /> Proceed to Paystack Payment (GH₵ {consultationPrice.toFixed(2)})
+                                    <Lock className="h-3.5 w-3.5" /> Proceed to Paystack Payment (GH₵ {bookingTotalPayable.toFixed(2)})
                                   </Button>
                                   {paystackAuthUrl && (
                                     <div className="flex gap-2">

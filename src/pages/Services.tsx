@@ -22,6 +22,7 @@ import {
 } from '@/lib/paystack';
 import PaystackPop from '@paystack/inline-js';
 import { usePaystack } from '@/providers/PaystackProvider';
+import { calculateTransactionCharge } from '@/lib/transactionFees';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
@@ -59,6 +60,13 @@ export default function Services() {
   });
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [intakePrice, setIntakePrice] = useState<number>(50);
+  
+  // 1% Transaction fee calculation (casting intake attracts 1% processing fee)
+  const baseIntakePrice = Math.max(0, Number(intakePrice) || 50);
+  const intakeFeeBreakdown = calculateTransactionCharge(baseIntakePrice, { isSponsorship: false });
+  const intakeTransactionFee = intakeFeeBreakdown.feeAmount;
+  const intakeTotalPayable = intakeFeeBreakdown.totalAmount;
+
   const [priceConfirmed, setPriceConfirmed] = useState<boolean>(false);
   const [paymentProvider, setPaymentProvider] = useState<'mtn' | 'telecel' | 'at' | 'card'>('mtn');
   const [momoNumber, setMomoNumber] = useState('');
@@ -1201,7 +1209,7 @@ export default function Services() {
       try {
         const initResult = await initializePaystackPayment({
           email: formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com',
-          amount: Number(intakePrice),
+          amount: Number(intakeTotalPayable),
           currency: 'GHS',
           reference: refCode,
           metadata: {
@@ -1210,7 +1218,11 @@ export default function Services() {
             contact: formData.contact,
             paymentProvider,
             momoProvider: paymentProvider !== 'card' ? momoProvider : undefined,
-            phone: momoNumber || formData.contact
+            phone: momoNumber || formData.contact,
+            baseAmount: baseIntakePrice,
+            transactionFee: intakeTransactionFee,
+            feePercentage: '1%',
+            totalPayable: intakeTotalPayable,
           },
           channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
         });
@@ -1233,7 +1245,7 @@ export default function Services() {
       const modalResult = await openPaystackModal({
         publicKey: activePublicKey,
         email: formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com',
-        amount: Number(intakePrice),
+        amount: Number(intakeTotalPayable),
         currency: 'GHS',
         reference: refCode,
         access_code: accessCode,
@@ -1244,14 +1256,21 @@ export default function Services() {
           roleType: formData.roleType,
           contact: formData.contact,
           paymentProvider,
-          phone: momoNumber || formData.contact
+          phone: momoNumber || formData.contact,
+          baseAmount: baseIntakePrice,
+          transactionFee: intakeTransactionFee,
+          feePercentage: '1%',
+          totalPayable: intakeTotalPayable,
         },
         onSuccess: async (receiptData: any) => {
           setCurrentPaymentStep(3);
           const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
           await addDoc(collection(db, 'transactions'), {
-            description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
-            amount: Number(intakePrice),
+            description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + 1% Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+            amount: Number(intakeTotalPayable),
+            subtotal: Number(baseIntakePrice),
+            processingFee: Number(intakeTransactionFee),
+            feePercentage: 1,
             type: 'credit',
             category: 'Audition / Casting Fee',
             ref: refCode,
@@ -1265,7 +1284,7 @@ export default function Services() {
           setPriceConfirmed(true);
           setIsPaying(false);
           clearPendingPayment(refCode);
-          toast.success(`Paystack payment of GH₵ ${intakePrice.toFixed(2)} verified successfully!`);
+          toast.success(`Paystack payment of GH₵ ${intakeTotalPayable.toFixed(2)} verified successfully!`);
         },
         onCancel: () => {
           setIsPaying(false);
@@ -1294,8 +1313,11 @@ export default function Services() {
             // Write direct to Firestore Transactions Collection
             const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
             await addDoc(collection(db, 'transactions'), {
-              description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
-              amount: Number(intakePrice),
+              description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + 1% Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+              amount: Number(intakeTotalPayable),
+              subtotal: Number(baseIntakePrice),
+              processingFee: Number(intakeTransactionFee),
+              feePercentage: 1,
               type: 'credit',
               category: 'Audition / Casting Fee',
               ref: refCode,
@@ -1308,7 +1330,7 @@ export default function Services() {
 
             setPriceConfirmed(true);
             setIsPaying(false);
-            toast.success(`Paystack payment of GH₵ ${intakePrice.toFixed(2)} verified successfully!`);
+            toast.success(`Paystack payment of GH₵ ${intakeTotalPayable.toFixed(2)} verified successfully!`);
           }
         } catch (vErr) {
           // ignore transient poll errors
@@ -1330,8 +1352,11 @@ export default function Services() {
       if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
         const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
         await addDoc(collection(db, 'transactions'), {
-          description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'}`,
-          amount: Number(intakePrice),
+          description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + 1% Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+          amount: Number(intakeTotalPayable),
+          subtotal: Number(baseIntakePrice),
+          processingFee: Number(intakeTransactionFee),
+          feePercentage: 1,
           type: 'credit',
           category: 'Audition / Casting Fee',
           ref: paymentRef,
@@ -2582,10 +2607,22 @@ export default function Services() {
                               </div>
                             </div>
 
-                            <div className="border-t border-border/40 pt-4 space-y-4">
+                            <div className="border-t border-border/40 pt-4 space-y-2">
+                              <div className="flex justify-between items-center text-xs font-medium text-muted-foreground">
+                                <span>Registration Base Fee:</span>
+                                <span className="text-foreground font-mono font-bold">GH₵ {baseIntakePrice.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs font-medium text-muted-foreground">
+                                <span className="flex items-center gap-1.5">
+                                  <span>1% Transaction Processing Charge:</span>
+                                  <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1.5 py-0.2 rounded">1% Fee</span>
+                                </span>
+                                <span className="text-orange-600 font-bold font-mono">+ GH₵ {intakeTransactionFee.toFixed(2)}</span>
+                              </div>
+                              <div className="h-px bg-border/60 my-1" />
                               <div className="flex justify-between items-center text-xs font-bold text-foreground">
-                                <span>Total Audition Fee:</span>
-                                <span className="text-emerald-600 font-mono text-sm">GH₵ {intakePrice.toFixed(2)}</span>
+                                <span>Total Accurate Audition Fee:</span>
+                                <span className="text-emerald-600 font-mono text-sm font-black">GH₵ {intakeTotalPayable.toFixed(2)}</span>
                               </div>
 
                               {!priceConfirmed ? (
@@ -2735,7 +2772,7 @@ export default function Services() {
                                         onClick={handleProcessPayment}
                                         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
                                       >
-                                        <LucideIcons.Lock className="h-3.5 w-3.5" /> Proceed to Paystack Payment (GH₵ {intakePrice.toFixed(2)})
+                                        <LucideIcons.Lock className="h-3.5 w-3.5" /> Proceed to Paystack Payment (GH₵ {intakeTotalPayable.toFixed(2)})
                                       </Button>
                                       {paystackAuthUrl && (
                                         <div className="flex gap-2">

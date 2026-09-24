@@ -622,14 +622,14 @@ export default function Layout({ children }: LayoutProps) {
                 <li className="flex flex-col gap-1 text-sm text-muted-foreground mt-1">
                   <div className="flex items-center space-x-2">
                     <MapPin className="h-4 w-4 shrink-0 text-orange-600" />
-                    <span>{settings?.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'}</span>
+                    <span>{settings?.officeAddress || settings?.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'}</span>
                   </div>
                   <div className="flex items-center gap-2 ml-6">
                     <span className="text-[11px] font-medium text-orange-600 dark:text-orange-500 bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 rounded w-max">
-                      GPS Address: AI-0008-9223
+                      GPS Address: {settings?.officeGps || 'AI-0008-9223'}
                     </span>
                     <a
-                      href="https://www.google.com/maps/dir/?api=1&destination=AI-0008-9223,+Nyinahin-Ashanti,+Ashanti+Region,+Ghana"
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent((settings?.officeGps || 'AI-0008-9223') + ', ' + (settings?.officeAddress || settings?.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana'))}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[11px] font-semibold text-orange-600 dark:text-orange-500 hover:underline flex items-center gap-0.5"

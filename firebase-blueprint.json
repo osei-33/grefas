@@ -83,7 +83,22 @@
         "facebook": { "type": "string" },
         "youtube": { "type": "string" },
         "tiktok": { "type": "string" },
-        "logoUrl": { "type": "string", "description": "URL of the website logo" }
+        "logoUrl": { "type": "string", "description": "URL of the website logo" },
+        "bankName": { "type": "string", "description": "Official commercial bank name for wires and remittances" },
+        "bankAccountName": { "type": "string", "description": "Official bank account holder name" },
+        "bankAccountNumber": { "type": "string", "description": "Official bank account number" },
+        "bankBranch": { "type": "string", "description": "Bank branch name" },
+        "bankSwiftCode": { "type": "string", "description": "SWIFT / BIC code for international wire transfers" },
+        "bankInstructions": { "type": "string", "description": "Narration and instructions for wire transfers" },
+        "momoMerchantName": { "type": "string", "description": "Mobile money official merchant or account name" },
+        "momoNumber": { "type": "string", "description": "Mobile money merchant ID or payment telephone number" },
+        "officeAddress": { "type": "string", "description": "Physical headquarters / office street address" },
+        "officeGps": { "type": "string", "description": "GhanaPost / Digital GPS navigation address code" },
+        "officeLandmarks": { "type": "string", "description": "Nearby physical landmarks for easy location navigation" },
+        "officePhone": { "type": "string", "description": "Direct telephone numbers for office inquiries" },
+        "officeEmail": { "type": "string", "description": "Direct email address for office and sponsorship contact" },
+        "officeHours": { "type": "string", "description": "Standard business and walk-in office operating hours" },
+        "officeDropoffNotes": { "type": "string", "description": "Instructions for in-person check and donation drop-offs" }
       }
     },
     "User": {
@@ -380,7 +395,11 @@
       "type": "object",
       "properties": {
         "description": { "type": "string", "description": "Description of the transaction" },
-        "amount": { "type": "number", "description": "Transaction amount in GHS" },
+        "amount": { "type": "number", "description": "Transaction total amount charged in GHS (includes 1% fee for business transactions, 0% for sponsorship)" },
+        "subtotal": { "type": "number", "description": "Base transaction amount before fee in GHS" },
+        "processingFee": { "type": "number", "description": "Calculated 1% transaction processing charge in GHS (0 for sponsorships)" },
+        "feePercentage": { "type": "number", "description": "Transaction charge percentage (1 for standard, 0 for sponsorship)" },
+        "isExempt": { "type": "boolean", "description": "Whether this transaction is exempt from processing charges (true for sponsorships)" },
         "type": { "type": "string", "enum": ["credit", "debit"], "description": "Type of transaction" },
         "category": { "type": "string", "description": "The category of the ledger entry" },
         "ref": { "type": "string", "description": "Payment reference code or ID" },

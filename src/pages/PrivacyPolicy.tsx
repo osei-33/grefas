@@ -277,7 +277,7 @@ export default function PrivacyPolicy() {
               <div className="flex items-center justify-between pb-3 border-b-2 border-orange-600">
                 <div>
                   <h1 className="text-xl font-bold text-black uppercase tracking-wider">GREFAS CONSULT & ENTERTAINMENT</h1>
-                  <p className="text-xs text-gray-700">Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223)</p>
+                  <p className="text-xs text-gray-700">{settings.privacyDeskLocation || 'Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223)'}</p>
                   <p className="text-xs text-gray-500">Official Governance & Legal Policy Document</p>
                 </div>
                 <div className="text-right text-xs text-gray-700">
