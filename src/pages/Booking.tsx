@@ -32,7 +32,7 @@ import {
 import PaystackPop from '@paystack/inline-js';
 import { usePaystack } from '@/providers/PaystackProvider';
 import { useResendPayment } from '@/hooks/useResendPayment';
-import { calculateTransactionCharge } from '@/lib/transactionFees';
+import { calculateTransactionCharge, useTransactionFee } from '@/lib/transactionFees';
 
 const convertAccraTimeToUserTimezone = (accraTimeStr: string, targetTimezone: string) => {
   try {
@@ -103,9 +103,11 @@ export default function Booking() {
   const { isConfigured: isPaystackConfigured, openPaystackPopup } = usePaystack();
   const { sendBookingPaymentConfirmation } = useResendPayment();
 
-  // 1% Transaction fee calculation (bookings attract 1% standard processing fee)
+  const { calculateCharge: calculateFeeCharge } = useTransactionFee();
+
+  // Transaction fee calculation (dynamically controlled by admin settings)
   const baseConsultationPrice = Math.max(0, Number(consultationPrice) || 150);
-  const bookingFeeBreakdown = calculateTransactionCharge(baseConsultationPrice, { isSponsorship: false });
+  const bookingFeeBreakdown = calculateFeeCharge(baseConsultationPrice, false);
   const bookingTransactionFee = bookingFeeBreakdown.feeAmount;
   const bookingTotalPayable = bookingFeeBreakdown.totalAmount;
 
@@ -665,7 +667,7 @@ export default function Booking() {
             phone: momoNumber || formData.userPhone,
             baseAmount: baseConsultationPrice,
             transactionFee: bookingTransactionFee,
-            feePercentage: '1%',
+            feePercentage: bookingFeeBreakdown.feePercentageDisplay,
             totalPayable: bookingTotalPayable,
           },
           channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
@@ -708,7 +710,7 @@ export default function Booking() {
           phone: momoNumber || formData.userPhone,
           baseAmount: baseConsultationPrice,
           transactionFee: bookingTransactionFee,
-          feePercentage: '1%',
+          feePercentage: bookingFeeBreakdown.feePercentageDisplay,
           totalPayable: bookingTotalPayable,
         },
         onSuccess: (receiptData: any) => {
@@ -919,17 +921,17 @@ export default function Booking() {
         price: baseConsultationPrice,
         subtotal: baseConsultationPrice,
         transactionFee: bookingTransactionFee,
-        feePercentage: '1%',
+        feePercentage: bookingFeeBreakdown.feePercentageDisplay,
         createdAt: serverTimestamp()
       });
 
       // Write direct to Firestore Transactions Collection with association to booking
       await addDoc(collection(db, 'transactions'), {
-        description: `Consultation Booking (Paystack): ${formData.serviceTitle || 'General Consult'} (Booking Ref: ${newOrderNumber}) [Base: GH₵ ${baseConsultationPrice.toFixed(2)} + 1% Fee: GH₵ ${bookingTransactionFee.toFixed(2)}]`,
+        description: `Consultation Booking (Paystack): ${formData.serviceTitle || 'General Consult'} (Booking Ref: ${newOrderNumber}) [Base: GH₵ ${baseConsultationPrice.toFixed(2)} + ${bookingFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${bookingTransactionFee.toFixed(2)}]`,
         amount: Number(paystackReceipt.amountInGhs || bookingTotalPayable),
         subtotal: Number(baseConsultationPrice),
         processingFee: Number(bookingTransactionFee),
-        feePercentage: 1,
+        feePercentage: bookingFeeBreakdown.feePercentageDisplay,
         type: 'credit',
         category: 'Consultation Booking',
         ref: paymentRef,
@@ -1654,10 +1656,14 @@ export default function Booking() {
                             </div>
                             <div className="flex justify-between text-xs font-semibold text-muted-foreground">
                               <span className="flex items-center gap-1.5">
-                                <span>1% Transaction Processing Charge:</span>
-                                <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1.5 py-0.2 rounded">1% Fee</span>
+                                <span>{bookingTransactionFee === 0 ? 'Transaction Processing Fee:' : `${bookingFeeBreakdown.feePercentageDisplay} Transaction Processing Charge:`}</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${bookingTransactionFee === 0 ? 'text-emerald-600 bg-emerald-500/10' : 'text-orange-600 bg-orange-500/10'}`}>
+                                  {bookingTransactionFee === 0 ? '0% (Waived)' : bookingFeeBreakdown.feePercentageDisplay}
+                                </span>
                               </span>
-                              <span className="text-orange-600 font-bold font-mono">+ GH₵ {bookingTransactionFee.toFixed(2)}</span>
+                              <span className={`font-bold font-mono ${bookingTransactionFee === 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                {bookingTransactionFee === 0 ? 'GH₵ 0.00 (Waived)' : `+ GH₵ ${bookingTransactionFee.toFixed(2)}`}
+                              </span>
                             </div>
                             <div className="h-px bg-border/60 my-1" />
                             <div className="flex justify-between text-sm font-black">

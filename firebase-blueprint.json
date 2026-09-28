@@ -98,7 +98,11 @@
         "officePhone": { "type": "string", "description": "Direct telephone numbers for office inquiries" },
         "officeEmail": { "type": "string", "description": "Direct email address for office and sponsorship contact" },
         "officeHours": { "type": "string", "description": "Standard business and walk-in office operating hours" },
-        "officeDropoffNotes": { "type": "string", "description": "Instructions for in-person check and donation drop-offs" }
+        "officeDropoffNotes": { "type": "string", "description": "Instructions for in-person check and donation drop-offs" },
+        "transactionFeeEnabled": { "type": "boolean", "description": "Whether platform transaction processing fee is enabled or disabled completely" },
+        "transactionFeeRate": { "type": "number", "description": "The transaction fee rate in percentage, e.g. 1.0 for 1%" },
+        "transactionFeeLabel": { "type": "string", "description": "Display label for the transaction processing charge" },
+        "transactionFeeExemptSponsorship": { "type": "boolean", "description": "Whether sponsorships and donations are strictly 0% fee exempt" }
       }
     },
     "User": {
@@ -434,6 +438,33 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["sponsorType", "sponsorName", "email", "amount", "paymentStatus", "createdAt"]
+    },
+    "Asset": {
+      "title": "Company Asset",
+      "description": "Physical equipment, production cameras, sound systems, vehicles, and assets owned by Grefas.",
+      "type": "object",
+      "properties": {
+        "assetTag": { "type": "string", "description": "Unique asset tracking identifier (e.g., GREFAS-CAM-001)" },
+        "name": { "type": "string", "description": "Asset or equipment name" },
+        "category": { "type": "string", "description": "Asset category (Cinematography, Audio, Lighting, Vehicles, IT, Studio, Office)" },
+        "brand": { "type": "string", "description": "Manufacturer or brand name" },
+        "modelNumber": { "type": "string", "description": "Model identifier" },
+        "serialNumber": { "type": "string", "description": "Hardware serial number" },
+        "purchasePrice": { "type": "number", "description": "Original purchase cost in GH₵" },
+        "currentValue": { "type": "number", "description": "Current assessed value in GH₵" },
+        "purchaseDate": { "type": "string", "format": "date" },
+        "vendorOrSupplier": { "type": "string", "description": "Supplier or vendor where acquired" },
+        "warrantyExpiry": { "type": "string", "format": "date" },
+        "location": { "type": "string", "description": "Physical studio, vault, or office storage location" },
+        "assignedTo": { "type": "string", "description": "Custodian or staff member responsible for the asset" },
+        "condition": { "type": "string", "enum": ["excellent", "good", "fair", "damaged"], "description": "Physical and operational condition" },
+        "status": { "type": "string", "enum": ["active", "in_use", "maintenance", "reserved", "disposed"], "description": "Current deployment status" },
+        "imageUrl": { "type": "string", "description": "Photo of the asset" },
+        "notes": { "type": "string", "description": "Accessories, specifications, and storage notes" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["assetTag", "name", "category"]
     }
   },
   "firestore": {
@@ -536,6 +567,10 @@
     "/sponsorships/{sponsorshipId}": {
       "schema": "Sponsorship",
       "description": "Collection of sponsorships and donations made to Grefas Consult & Entertainment"
+    },
+    "/assets/{assetId}": {
+      "schema": "Asset",
+      "description": "Collection of physical equipment, production cameras, sound systems, vehicles, and assets owned by Grefas"
     }
   }
 }

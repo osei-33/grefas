@@ -310,8 +310,10 @@ export default function PaystackPayment({
               </span>
               {isSponsorship ? (
                 <span className="text-[10px] text-emerald-400 block font-semibold">0% Charge Exempt</span>
+              ) : feeAmount === 0 ? (
+                <span className="text-[10px] text-emerald-400 block font-semibold">0% Fee (Waived)</span>
               ) : (
-                <span className="text-[10px] text-orange-400 block font-semibold">Incl. 1% charge</span>
+                <span className="text-[10px] text-orange-400 block font-semibold">Incl. {feeBreakdown.feePercentageDisplay} fee</span>
               )}
             </div>
           </div>
@@ -454,15 +456,21 @@ export default function PaystackPayment({
                   </div>
                   <div className="flex justify-between text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      {isSponsorship ? 'Sponsorship Exemption:' : '1% Transaction Charge:'}
+                      {isSponsorship 
+                        ? 'Sponsorship Exemption:' 
+                        : feeAmount === 0 
+                        ? 'Transaction Processing Fee:' 
+                        : `${feeBreakdown.feePercentageDisplay} Transaction Charge:`}
                       {isSponsorship ? (
                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-1 py-0.5 rounded">0% Fee</span>
+                      ) : feeAmount === 0 ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-1 py-0.5 rounded">0% (Waived)</span>
                       ) : (
-                        <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1 py-0.5 rounded">1%</span>
+                        <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1 py-0.5 rounded">{feeBreakdown.feePercentageDisplay}</span>
                       )}
                     </span>
-                    <span className={`font-mono font-bold ${isSponsorship ? 'text-emerald-600' : 'text-orange-600'}`}>
-                      {isSponsorship ? 'GH₵ 0.00 (Exempt)' : `+ GH₵ ${feeAmount.toFixed(2)}`}
+                    <span className={`font-mono font-bold ${isSponsorship || feeAmount === 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                      {isSponsorship ? 'GH₵ 0.00 (Exempt)' : feeAmount === 0 ? 'GH₵ 0.00 (Waived)' : `+ GH₵ ${feeAmount.toFixed(2)}`}
                     </span>
                   </div>
                   <div className="h-px bg-border/60 my-1" />

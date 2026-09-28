@@ -22,7 +22,7 @@ import {
 } from '@/lib/paystack';
 import PaystackPop from '@paystack/inline-js';
 import { usePaystack } from '@/providers/PaystackProvider';
-import { calculateTransactionCharge } from '@/lib/transactionFees';
+import { calculateTransactionCharge, useTransactionFee } from '@/lib/transactionFees';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
@@ -61,9 +61,11 @@ export default function Services() {
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [intakePrice, setIntakePrice] = useState<number>(50);
   
-  // 1% Transaction fee calculation (casting intake attracts 1% processing fee)
+  const { calculateCharge: calculateFeeCharge } = useTransactionFee();
+
+  // Transaction fee calculation (dynamically controlled by admin settings)
   const baseIntakePrice = Math.max(0, Number(intakePrice) || 50);
-  const intakeFeeBreakdown = calculateTransactionCharge(baseIntakePrice, { isSponsorship: false });
+  const intakeFeeBreakdown = calculateFeeCharge(baseIntakePrice, false);
   const intakeTransactionFee = intakeFeeBreakdown.feeAmount;
   const intakeTotalPayable = intakeFeeBreakdown.totalAmount;
 
@@ -1221,7 +1223,7 @@ export default function Services() {
             phone: momoNumber || formData.contact,
             baseAmount: baseIntakePrice,
             transactionFee: intakeTransactionFee,
-            feePercentage: '1%',
+            feePercentage: intakeFeeBreakdown.feePercentageDisplay,
             totalPayable: intakeTotalPayable,
           },
           channels: paymentProvider === 'card' ? ['card'] : ['mobile_money']
@@ -1259,18 +1261,18 @@ export default function Services() {
           phone: momoNumber || formData.contact,
           baseAmount: baseIntakePrice,
           transactionFee: intakeTransactionFee,
-          feePercentage: '1%',
+          feePercentage: intakeFeeBreakdown.feePercentageDisplay,
           totalPayable: intakeTotalPayable,
         },
         onSuccess: async (receiptData: any) => {
           setCurrentPaymentStep(3);
           const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
           await addDoc(collection(db, 'transactions'), {
-            description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + 1% Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+            description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
             amount: Number(intakeTotalPayable),
             subtotal: Number(baseIntakePrice),
             processingFee: Number(intakeTransactionFee),
-            feePercentage: 1,
+            feePercentage: intakeFeeBreakdown.feePercentageDisplay,
             type: 'credit',
             category: 'Audition / Casting Fee',
             ref: refCode,
@@ -1313,11 +1315,11 @@ export default function Services() {
             // Write direct to Firestore Transactions Collection
             const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
             await addDoc(collection(db, 'transactions'), {
-              description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + 1% Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+              description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
               amount: Number(intakeTotalPayable),
               subtotal: Number(baseIntakePrice),
               processingFee: Number(intakeTransactionFee),
-              feePercentage: 1,
+              feePercentage: intakeFeeBreakdown.feePercentageDisplay,
               type: 'credit',
               category: 'Audition / Casting Fee',
               ref: refCode,
@@ -1352,11 +1354,11 @@ export default function Services() {
       if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
         const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
         await addDoc(collection(db, 'transactions'), {
-          description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + 1% Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+          description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
           amount: Number(intakeTotalPayable),
           subtotal: Number(baseIntakePrice),
           processingFee: Number(intakeTransactionFee),
-          feePercentage: 1,
+          feePercentage: intakeFeeBreakdown.feePercentageDisplay,
           type: 'credit',
           category: 'Audition / Casting Fee',
           ref: paymentRef,
@@ -2614,10 +2616,14 @@ export default function Services() {
                               </div>
                               <div className="flex justify-between items-center text-xs font-medium text-muted-foreground">
                                 <span className="flex items-center gap-1.5">
-                                  <span>1% Transaction Processing Charge:</span>
-                                  <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1.5 py-0.2 rounded">1% Fee</span>
+                                  <span>{intakeTransactionFee === 0 ? 'Transaction Processing Fee:' : `${intakeFeeBreakdown.feePercentageDisplay} Transaction Processing Charge:`}</span>
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${intakeTransactionFee === 0 ? 'text-emerald-600 bg-emerald-500/10' : 'text-orange-600 bg-orange-500/10'}`}>
+                                    {intakeTransactionFee === 0 ? '0% (Waived)' : intakeFeeBreakdown.feePercentageDisplay}
+                                  </span>
                                 </span>
-                                <span className="text-orange-600 font-bold font-mono">+ GH₵ {intakeTransactionFee.toFixed(2)}</span>
+                                <span className={`font-bold font-mono ${intakeTransactionFee === 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                  {intakeTransactionFee === 0 ? 'GH₵ 0.00 (Waived)' : `+ GH₵ ${intakeTransactionFee.toFixed(2)}`}
+                                </span>
                               </div>
                               <div className="h-px bg-border/60 my-1" />
                               <div className="flex justify-between items-center text-xs font-bold text-foreground">

@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Minus, Percent, Sliders, ToggleLeft, ToggleRight, Sparkles, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt, Package } from 'lucide-react';
+import { setLocalTransactionFeeConfig } from '@/lib/transactionFees';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -43,6 +44,7 @@ import ManageEmployeesPayroll from '@/components/ManageEmployeesPayroll';
 import ManageLegalPolicies from '@/components/ManageLegalPolicies';
 import ManageSitemap from './ManageSitemap';
 import ManageSponsorships from '@/components/admin/ManageSponsorships';
+import ManageCompanyAssets from '@/components/admin/ManageCompanyAssets';
 import SEO from '@/components/SEO';
 import { getPaystackWebhookEvents, simulateTestWebhook } from '@/lib/paystack';
 
@@ -125,9 +127,28 @@ export default function Admin() {
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [menuFilter, setMenuFilter] = useState('');
   const navigate = useSafeNavigate();
   const location = useSafeLocation();
   const hasAdminAccess = role === 'admin' || role === 'editor' || isAdminEmail(user?.email);
+
+  // Auto-redirect if accessed via query param or hash (e.g. /admin?tab=assets or #assets)
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tabParam = searchParams.get('tab') || searchParams.get('view') || searchParams.get('page');
+      if (
+        tabParam === 'assets' || 
+        tabParam === 'company-assets' || 
+        tabParam === 'inventory' || 
+        window.location.hash === '#assets' || 
+        window.location.hash === '#company-assets' || 
+        window.location.hash === '#inventory'
+      ) {
+        navigate('/admin/assets');
+      }
+    } catch (_) {}
+  }, [location, navigate]);
 
   // Session inactivity/expiration management
   const lastActivityRef = useRef<number>(Date.now());
@@ -572,37 +593,73 @@ export default function Admin() {
 
       {/* Sidebar */}
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-64 border-r border-border bg-card p-6 transition-transform duration-300 md:relative md:translate-x-0 md:block
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        fixed inset-y-0 left-0 z-40 w-64 border-r border-border bg-card flex flex-col transition-transform duration-300 md:sticky md:top-0 md:h-screen md:max-h-screen md:translate-x-0 md:flex
+        ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
       `}>
-        <div className="flex flex-col h-full">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Main Navigation</h2>
-              
-              {/* Desktop Notifications Bell */}
-              <div className="relative" ref={dropdownRef}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
-                  className="relative h-8 w-8 text-muted-foreground hover:text-orange-600 hover:bg-muted"
-                >
-                  <Bell className={`h-[18px] w-[18px] ${notifications.some(n => !n.read) ? 'text-orange-600 animate-bounce' : ''}`} />
-                  {notifications.some(n => !n.read) && (
-                    <span className="absolute top-1 right-1 flex h-2 w-2 rounded-full bg-red-600 animate-pulse" />
-                  )}
-                </Button>
-                {renderNotificationsPanel(showNotificationsDropdown, () => setShowNotificationsDropdown(false), false)}
+        {/* Sticky Sidebar Header */}
+        <div className="p-4 border-b border-border/70 flex items-center justify-between shrink-0 bg-card/90 backdrop-blur-xs">
+          <div>
+            <h2 className="text-xs font-black uppercase tracking-wider text-orange-600 flex items-center gap-1.5">
+              <ShieldCheck className="h-4 w-4 text-orange-600" />
+              <span>Admin Portal</span>
+            </h2>
+            <p className="text-[10px] text-muted-foreground font-medium">Grefas Consult & Entertainment</p>
+          </div>
+          
+          {/* Desktop Notifications Bell */}
+          <div className="relative" ref={dropdownRef}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
+              className="relative h-8 w-8 text-muted-foreground hover:text-orange-600 hover:bg-muted"
+            >
+              <Bell className={`h-[18px] w-[18px] ${notifications.some(n => !n.read) ? 'text-orange-600 animate-bounce' : ''}`} />
+              {notifications.some(n => !n.read) && (
+                <span className="absolute top-1 right-1 flex h-2 w-2 rounded-full bg-red-600 animate-pulse" />
+              )}
+            </Button>
+            {renderNotificationsPanel(showNotificationsDropdown, () => setShowNotificationsDropdown(false), false)}
+          </div>
+        </div>
+
+        {/* Quick Search / Menu Filter */}
+        <div className="p-2.5 border-b border-border/50 shrink-0 bg-muted/20">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search menus (Assets, Ledger...)"
+              value={menuFilter}
+              onChange={(e) => setMenuFilter(e.target.value)}
+              className="w-full bg-background border border-border/70 rounded-md pl-8 pr-7 py-1 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-orange-500 font-medium"
+            />
+            {menuFilter && (
+              <button 
+                onClick={() => setMenuFilter('')}
+                className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+                title="Clear filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Scrollable Nav Items */}
+        <nav className="flex-1 overflow-y-auto p-3 space-y-4 text-xs font-medium">
+          {/* 1. OVERVIEW */}
+          {(!menuFilter || 'dashboard'.includes(menuFilter.toLowerCase())) && (
+            <div className="space-y-1">
+              <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground/70">
+                Overview
               </div>
-            </div>
-            <nav className="space-y-1">
               <Link
                 to="/admin"
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
                   isActive('/admin') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
@@ -610,171 +667,42 @@ export default function Admin() {
                 <span>Dashboard</span>
                 {isActive('/admin') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+            </div>
+          )}
+
+          {/* 2. FINANCE & ASSETS */}
+          {(!menuFilter || 
+            'company assets inventory gear equipment camera financial ledger staff payroll sponsorships fees settings'.includes(menuFilter.toLowerCase())) && (
+            <div className="space-y-1">
+              <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-orange-600 flex items-center justify-between">
+                <span>Finance & Assets</span>
+                <span className="text-[9px] font-bold text-muted-foreground">Company Registry</span>
+              </div>
+
+              {/* COMPANY ASSETS - Highlighted Prominently */}
               <Link
-                to="/admin/services"
+                to="/admin/assets"
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/services') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/assets') || isActive('/admin/company-assets') || isActive('/admin/inventory'))
+                    ? 'bg-orange-600 text-white shadow-sm font-bold' 
+                    : 'bg-orange-500/10 text-orange-600 dark:bg-orange-950/30 hover:bg-orange-500/20'
                 }`}
+                id="admin-nav-assets"
               >
-                <Briefcase className={`h-4 w-4 ${isActive('/admin/services') ? 'text-orange-600' : ''}`} />
-                <span>Manage Services</span>
-                {isActive('/admin/services') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                <Package className={`h-4 w-4 ${(isActive('/admin/assets') || isActive('/admin/company-assets') || isActive('/admin/inventory')) ? 'text-white' : 'text-orange-600'}`} />
+                <span className="font-bold">Company Assets</span>
+                <span className={`ml-auto text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider ${(isActive('/admin/assets') || isActive('/admin/company-assets') || isActive('/admin/inventory')) ? 'bg-white/20 text-white' : 'bg-orange-600 text-white'}`}>
+                  Register
+                </span>
               </Link>
-              <Link
-                to="/admin/intakes"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/intakes') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <FileText className={`h-4 w-4 ${isActive('/admin/intakes') ? 'text-orange-600' : ''}`} />
-                <span>Client Intakes</span>
-                {isActive('/admin/intakes') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/careers"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/careers') || isActive('/admin/career-applications')
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <UserCheck className={`h-4 w-4 ${isActive('/admin/careers') || isActive('/admin/career-applications') ? 'text-orange-600' : ''}`} />
-                <span>Career Applications</span>
-                {(isActive('/admin/careers') || isActive('/admin/career-applications')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/gallery"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/gallery') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <ImageIcon className={`h-4 w-4 ${isActive('/admin/gallery') ? 'text-orange-600' : ''}`} />
-                <span>Manage Gallery</span>
-                {isActive('/admin/gallery') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/portfolio"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/portfolio') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <FolderOpen className={`h-4 w-4 ${isActive('/admin/portfolio') ? 'text-orange-600' : ''}`} />
-                <span>Manage Portfolio</span>
-                {isActive('/admin/portfolio') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/blog"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/blog') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <BookOpen className={`h-4 w-4 ${isActive('/admin/blog') ? 'text-orange-600' : ''}`} />
-                <span>Manage Blog</span>
-                {isActive('/admin/blog') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/bookings"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/bookings') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <CalendarIcon className={`h-4 w-4 ${isActive('/admin/bookings') ? 'text-orange-600' : ''}`} />
-                <span>Manage Bookings</span>
-                {isActive('/admin/bookings') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/team"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/team') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <Users className={`h-4 w-4 ${isActive('/admin/team') ? 'text-orange-600' : ''}`} />
-                <span>Manage Team</span>
-                {isActive('/admin/team') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/tasks"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/tasks') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-              >
-                <ListTodo className={`h-4 w-4 ${isActive('/admin/tasks') ? 'text-orange-600' : ''}`} />
-                <span>Internal Tasks</span>
-                {isActive('/admin/tasks') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/newsletter"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/newsletter') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-                id="admin-nav-newsletter"
-              >
-                <Mail className={`h-4 w-4 ${isActive('/admin/newsletter') ? 'text-orange-600' : ''}`} />
-                <span>Mailing List</span>
-                {isActive('/admin/newsletter') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/letters"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/letters') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-                id="admin-nav-letters"
-              >
-                <FileText className={`h-4 w-4 ${isActive('/admin/letters') ? 'text-orange-600' : ''}`} />
-                <span>Official Letters</span>
-                {isActive('/admin/letters') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
-              <Link
-                to="/admin/payroll"
-                onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/payroll') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
-                id="admin-nav-payroll"
-              >
-                <CreditCard className={`h-4 w-4 ${isActive('/admin/payroll') ? 'text-orange-600' : ''}`} />
-                <span>Staff & Payroll</span>
-                {isActive('/admin/payroll') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-              </Link>
+
               <Link
                 to="/admin/transactions"
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
                   isActive('/admin/transactions') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
                 id="admin-nav-transactions"
@@ -783,26 +711,246 @@ export default function Admin() {
                 <span>Financial Ledger</span>
                 {isActive('/admin/transactions') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+
+              <Link
+                to="/admin/payroll"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/payroll') || isActive('/admin/staff') || isActive('/admin/employees'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-payroll"
+              >
+                <CreditCard className={`h-4 w-4 ${(isActive('/admin/payroll') || isActive('/admin/staff') || isActive('/admin/employees')) ? 'text-orange-600' : ''}`} />
+                <span>Staff & Payroll</span>
+                {(isActive('/admin/payroll') || isActive('/admin/staff') || isActive('/admin/employees')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
               <Link
                 to="/admin/sponsorships"
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                  isActive('/admin/sponsorships') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/sponsorships') || isActive('/admin/sponsorship') || isActive('/admin/donations'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
                 id="admin-nav-sponsorships"
               >
-                <HeartHandshake className={`h-4 w-4 ${isActive('/admin/sponsorships') ? 'text-orange-600' : ''}`} />
-                <span>Sponsorships</span>
-                {isActive('/admin/sponsorships') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                <HeartHandshake className={`h-4 w-4 ${(isActive('/admin/sponsorships') || isActive('/admin/sponsorship') || isActive('/admin/donations')) ? 'text-orange-600' : ''}`} />
+                <span>Sponsorships & Donations</span>
+                {(isActive('/admin/sponsorships') || isActive('/admin/sponsorship') || isActive('/admin/donations')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+
+              {hasAdminAccess && (
+                <Link
+                  to="/admin/settings"
+                  onClick={() => setIsSidebarOpen(false)}
+                  className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                    (isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details'))
+                      ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                  id="admin-nav-settings"
+                >
+                  <SettingsIcon className={`h-4 w-4 ${(isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details')) ? 'text-orange-600' : ''}`} />
+                  <span>Fee Control & Bank Setup</span>
+                  {(isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+                </Link>
+              )}
+            </div>
+          )}
+
+          {/* 3. OPERATIONS & BOOKINGS */}
+          {(!menuFilter || 
+            'operations services intakes bookings appointments careers jobs tasks'.includes(menuFilter.toLowerCase())) && (
+            <div className="space-y-1">
+              <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground/70">
+                Operations & Clients
+              </div>
+
+              <Link
+                to="/admin/services"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/services') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Briefcase className={`h-4 w-4 ${isActive('/admin/services') ? 'text-orange-600' : ''}`} />
+                <span>Manage Services</span>
+                {isActive('/admin/services') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/intakes"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/intakes') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <FileText className={`h-4 w-4 ${isActive('/admin/intakes') ? 'text-orange-600' : ''}`} />
+                <span>Client Intakes</span>
+                {isActive('/admin/intakes') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/bookings"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/bookings') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <CalendarIcon className={`h-4 w-4 ${isActive('/admin/bookings') ? 'text-orange-600' : ''}`} />
+                <span>Manage Bookings</span>
+                {isActive('/admin/bookings') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/careers"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/careers') || isActive('/admin/career-applications'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <UserCheck className={`h-4 w-4 ${(isActive('/admin/careers') || isActive('/admin/career-applications')) ? 'text-orange-600' : ''}`} />
+                <span>Career Applications</span>
+                {(isActive('/admin/careers') || isActive('/admin/career-applications')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/tasks"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/tasks') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <ListTodo className={`h-4 w-4 ${isActive('/admin/tasks') ? 'text-orange-600' : ''}`} />
+                <span>Internal Tasks</span>
+                {isActive('/admin/tasks') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+            </div>
+          )}
+
+          {/* 4. CREATIVE & MEDIA */}
+          {(!menuFilter || 
+            'creative media gallery portfolio blog letters team'.includes(menuFilter.toLowerCase())) && (
+            <div className="space-y-1">
+              <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground/70">
+                Creative & Media
+              </div>
+
+              <Link
+                to="/admin/gallery"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/gallery') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <ImageIcon className={`h-4 w-4 ${isActive('/admin/gallery') ? 'text-orange-600' : ''}`} />
+                <span>Manage Gallery</span>
+                {isActive('/admin/gallery') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/portfolio"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/portfolio') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <FolderOpen className={`h-4 w-4 ${isActive('/admin/portfolio') ? 'text-orange-600' : ''}`} />
+                <span>Manage Portfolio</span>
+                {isActive('/admin/portfolio') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/blog"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/blog') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <BookOpen className={`h-4 w-4 ${isActive('/admin/blog') ? 'text-orange-600' : ''}`} />
+                <span>Manage Blog</span>
+                {isActive('/admin/blog') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/letters"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/letters') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-letters"
+              >
+                <FileText className={`h-4 w-4 ${isActive('/admin/letters') ? 'text-orange-600' : ''}`} />
+                <span>Official Letters</span>
+                {isActive('/admin/letters') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/team"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/team') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Users className={`h-4 w-4 ${isActive('/admin/team') ? 'text-orange-600' : ''}`} />
+                <span>Manage Team</span>
+                {isActive('/admin/team') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/newsletter"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/newsletter') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-newsletter"
+              >
+                <Mail className={`h-4 w-4 ${isActive('/admin/newsletter') ? 'text-orange-600' : ''}`} />
+                <span>Mailing List</span>
+                {isActive('/admin/newsletter') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+            </div>
+          )}
+
+          {/* 5. COMMUNICATIONS & AUDIENCE */}
+          {(!menuFilter || 
+            'testimonials visitor alerts profile signature announcements'.includes(menuFilter.toLowerCase())) && (
+            <div className="space-y-1">
+              <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground/70">
+                Audience & Profile
+              </div>
+
               <Link
                 to="/admin/testimonials"
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
                   isActive('/admin/testimonials') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
                 id="admin-nav-testimonials"
@@ -811,12 +959,13 @@ export default function Admin() {
                 <span>Testimonials</span>
                 {isActive('/admin/testimonials') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+
               <Link
                 to="/admin/announcements"
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
                   isActive('/admin/announcements') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
                 id="admin-nav-announcements"
@@ -825,12 +974,13 @@ export default function Admin() {
                 <span>Visitor Alerts</span>
                 {isActive('/admin/announcements') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
+
               <Link
                 to="/admin/profile"
                 onClick={() => setIsSidebarOpen(false)}
-                className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
                   isActive('/admin/profile') 
-                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
                 id="admin-nav-profile"
@@ -839,121 +989,124 @@ export default function Admin() {
                 <span>My Profile & Signature</span>
                 {isActive('/admin/profile') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
-              {hasAdminAccess && (
-                <>
-                  <div className="pt-4 pb-2">
-                    <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3">System Control</h2>
-                  </div>
-                  <Link
-                    to="/admin/activity"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      (isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs'))
-                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <Clock className={`h-4 w-4 ${(isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs')) ? 'text-orange-600' : ''}`} />
-                    <span>System Audit Trail</span>
-                    {(isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-                  </Link>
-                  <Link
-                    to="/admin/users"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      isActive('/admin/users') 
-                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <Users className={`h-4 w-4 ${isActive('/admin/users') ? 'text-orange-600' : ''}`} />
-                    <span>Manage Users</span>
-                    {isActive('/admin/users') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-                  </Link>
-                  <Link
-                    to="/admin/chat"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      isActive('/admin/chat') 
-                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <MessageCircle className={`h-4 w-4 ${isActive('/admin/chat') ? 'text-orange-600' : ''}`} />
-                    <span>Manage Chat</span>
-                    {isActive('/admin/chat') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-                  </Link>
-                  <Link
-                    to="/admin/sms"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      isActive('/admin/sms') 
-                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <MessageCircle className={`h-4 w-4 ${isActive('/admin/sms') ? 'text-orange-600' : ''}`} />
-                    <span>SMS Statistics</span>
-                    {isActive('/admin/sms') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-                  </Link>
-                  <Link
-                    to="/admin/policies"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      isActive('/admin/policies') 
-                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <ShieldCheck className={`h-4 w-4 ${isActive('/admin/policies') ? 'text-orange-600' : ''}`} />
-                    <span>Legal Policies</span>
-                    {isActive('/admin/policies') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-                  </Link>
-                  <Link
-                    to="/admin/sitemap"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      (isActive('/admin/sitemap') || isActive('/admin/seo'))
-                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <Globe className={`h-4 w-4 ${(isActive('/admin/sitemap') || isActive('/admin/seo')) ? 'text-orange-600' : ''}`} />
-                    <span>SEO & Sitemap</span>
-                    {(isActive('/admin/sitemap') || isActive('/admin/seo')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-                  </Link>
-                  <Link
-                    to="/admin/settings"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center space-x-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-                      (isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details'))
-                        ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/10' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                  >
-                    <SettingsIcon className={`h-4 w-4 ${(isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details')) ? 'text-orange-600' : ''}`} />
-                    <span>Settings & Bank Details</span>
-                    {(isActive('/admin/settings') || isActive('/admin/bank') || isActive('/admin/office') || isActive('/admin/bank-details')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
-                  </Link>
-                </>
-              )}
-            </nav>
-          </div>
-          
-          <div className="mt-auto">
-            <div className="mb-4 px-3 py-3 rounded-xl bg-muted/30">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Logged in as</p>
-              <p className="text-xs font-medium text-foreground truncate">{user.email}</p>
             </div>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 h-10"
-              onClick={handleLogout}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Sign Out</span>
-            </Button>
+          )}
+
+          {/* 6. SYSTEM CONTROL */}
+          {hasAdminAccess && (!menuFilter || 
+            'system control audit users chat sms policies sitemap seo settings bank'.includes(menuFilter.toLowerCase())) && (
+            <div className="space-y-1">
+              <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground/70">
+                System Control
+              </div>
+
+              <Link
+                to="/admin/activity"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Clock className={`h-4 w-4 ${(isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs')) ? 'text-orange-600' : ''}`} />
+                <span>System Audit Trail</span>
+                {(isActive('/admin/activity') || isActive('/admin/audit') || isActive('/admin/audit-trail') || isActive('/admin/logs')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/users"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/users') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Users className={`h-4 w-4 ${isActive('/admin/users') ? 'text-orange-600' : ''}`} />
+                <span>Manage Users</span>
+                {isActive('/admin/users') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/chat"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/chat') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <MessageCircle className={`h-4 w-4 ${isActive('/admin/chat') ? 'text-orange-600' : ''}`} />
+                <span>Manage Chat</span>
+                {isActive('/admin/chat') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/sms"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/sms') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <MessageCircle className={`h-4 w-4 ${isActive('/admin/sms') ? 'text-orange-600' : ''}`} />
+                <span>SMS Statistics</span>
+                {isActive('/admin/sms') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/policies"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  isActive('/admin/policies') 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <ShieldCheck className={`h-4 w-4 ${isActive('/admin/policies') ? 'text-orange-600' : ''}`} />
+                <span>Legal Policies</span>
+                {isActive('/admin/policies') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/sitemap"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/sitemap') || isActive('/admin/seo'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Globe className={`h-4 w-4 ${(isActive('/admin/sitemap') || isActive('/admin/seo')) ? 'text-orange-600' : ''}`} />
+                <span>SEO & Sitemap</span>
+                {(isActive('/admin/sitemap') || isActive('/admin/seo')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+            </div>
+          )}
+        </nav>
+
+        {/* Sticky User Footer */}
+        <div className="p-3 border-t border-border shrink-0 bg-card/95">
+          <div className="mb-2 px-2.5 py-2 rounded-lg bg-muted/40 flex items-center justify-between">
+            <div className="min-w-0 pr-1">
+              <p className="text-[9px] font-black text-muted-foreground uppercase tracking-wider">Signed in as</p>
+              <p className="text-xs font-bold text-foreground truncate" title={user.email || ''}>{user.email}</p>
+            </div>
+            <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 border border-orange-500/20 shrink-0">
+              {role || 'admin'}
+            </span>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 h-8 text-xs font-bold"
+            onClick={handleLogout}
+          >
+            <LogOut className="mr-2 h-3.5 w-3.5" />
+            <span>Sign Out</span>
+          </Button>
         </div>
       </aside>
 
@@ -969,6 +1122,11 @@ export default function Admin() {
           <Route path="/portfolio" element={<ManagePortfolio />} />
           <Route path="/bookings" element={<ManageBookings />} />
           <Route path="/transactions" element={<ManageTransactions />} />
+          <Route path="/assets" element={<ManageCompanyAssets />} />
+          <Route path="/company-assets" element={<ManageCompanyAssets />} />
+          <Route path="/inventory" element={<ManageCompanyAssets />} />
+          <Route path="/equipment" element={<ManageCompanyAssets />} />
+          <Route path="/gear" element={<ManageCompanyAssets />} />
           <Route path="/sponsorships" element={<ManageSponsorships />} />
           <Route path="/sponsorship" element={<ManageSponsorships />} />
           <Route path="/donations" element={<ManageSponsorships />} />
@@ -1191,7 +1349,16 @@ function Login() {
 }
 
 function Dashboard() {
-  const [counts, setCounts] = useState({ services: 0, gallery: 0, portfolio: 0, bookings: 0, tasks: 0, totalVisits: 0 });
+  const [counts, setCounts] = useState({ 
+    services: 0, 
+    gallery: 0, 
+    portfolio: 0, 
+    bookings: 0, 
+    tasks: 0, 
+    totalVisits: 0,
+    assets: 0,
+    assetsValue: 0
+  });
   const [bookingTrends, setBookingTrends] = useState<any[]>([]);
   const [visitorTrends, setVisitorTrends] = useState<any[]>([]);
   const [appointmentTrends, setAppointmentTrends] = useState<any[]>([]);
@@ -1280,6 +1447,20 @@ function Dashboard() {
         const tasksSnap = await getDocs(collection(db, 'tasks'));
         const usersSnap = await getDocs(collection(db, 'users'));
         const intakesSnap = await getDocs(collection(db, 'service_intakes'));
+
+        // Retrieve Company Assets & Inventory
+        let assetsCount = 0;
+        let assetsValueSum = 0;
+        try {
+          const assetsSnap = await getDocs(collection(db, 'assets'));
+          assetsCount = assetsSnap.size;
+          assetsSnap.docs.forEach((docSnap) => {
+            const aData = docSnap.data();
+            assetsValueSum += Number(aData.currentValue) || Number(aData.purchasePrice) || 0;
+          });
+        } catch (assetErr) {
+          console.warn("Could not retrieve assets count for dashboard:", assetErr);
+        }
 
         // Generate last 7 days key list in YYYY-MM-DD format
         const last7Days: string[] = [];
@@ -1591,7 +1772,9 @@ function Dashboard() {
           portfolio: portfolioSnap.size,
           bookings: bookingsSnap.size,
           tasks: tasksSnap.size,
-          totalVisits: visitsSum
+          totalVisits: visitsSum,
+          assets: assetsCount,
+          assetsValue: assetsValueSum
         });
 
         setBookingTrends(bTrends);
@@ -1667,14 +1850,169 @@ function Dashboard() {
         </div>
       </div>
       
+      {/* Quick Launchpad & Core Admin Actions */}
+      <div className="bg-card border border-border/80 rounded-2xl p-4 sm:p-5 shadow-xs">
+        <div className="flex items-center justify-between mb-3.5 flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-orange-600/10 text-orange-600 flex items-center justify-center font-bold">
+              <Zap className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-foreground">Management Command Center</h2>
+              <p className="text-[11px] text-muted-foreground">Direct shortcuts to register assets, adjust fees, manage books and review ledger</p>
+            </div>
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-orange-600 bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
+            Quick Actions
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* 1. COMPANY ASSETS - Highlighted Prominently */}
+          <Link
+            to="/admin/assets"
+            className="group p-3 rounded-xl border border-orange-500/40 bg-orange-500/5 hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-8 w-8 rounded-lg bg-orange-600 text-white group-hover:bg-white group-hover:text-orange-600 flex items-center justify-center transition-colors">
+                <Package className="h-4 w-4" />
+              </div>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-600/20 text-orange-700 dark:text-orange-300 group-hover:bg-white/20 group-hover:text-white">
+                Registry
+              </span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Company Assets</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Register gear & property</p>
+            </div>
+          </Link>
+
+          {/* 2. TRANSACTION FEES */}
+          <Link
+            to="/admin/settings"
+            className="group p-3 rounded-xl border border-border bg-card hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-8 w-8 rounded-lg bg-muted group-hover:bg-white group-hover:text-orange-600 text-foreground flex items-center justify-center transition-colors">
+                <Percent className="h-4 w-4" />
+              </div>
+              <span className="text-[9px] font-bold text-muted-foreground group-hover:text-white/80">Fee Control</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Transaction Fees</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Set 0% - 5% or disable</p>
+            </div>
+          </Link>
+
+          {/* 3. FINANCIAL LEDGER */}
+          <Link
+            to="/admin/transactions"
+            className="group p-3 rounded-xl border border-border bg-card hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-8 w-8 rounded-lg bg-muted group-hover:bg-white group-hover:text-orange-600 text-foreground flex items-center justify-center transition-colors">
+                <Wallet className="h-4 w-4" />
+              </div>
+              <span className="text-[9px] font-bold text-muted-foreground group-hover:text-white/80">Ledger</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Financial Ledger</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Income & expenditures</p>
+            </div>
+          </Link>
+
+          {/* 4. STAFF & PAYROLL */}
+          <Link
+            to="/admin/payroll"
+            className="group p-3 rounded-xl border border-border bg-card hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-8 w-8 rounded-lg bg-muted group-hover:bg-white group-hover:text-orange-600 text-foreground flex items-center justify-center transition-colors">
+                <CreditCard className="h-4 w-4" />
+              </div>
+              <span className="text-[9px] font-bold text-muted-foreground group-hover:text-white/80">Salaries</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Staff & Payroll</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Disbursements & slips</p>
+            </div>
+          </Link>
+
+          {/* 5. BOOKINGS */}
+          <Link
+            to="/admin/bookings"
+            className="group p-3 rounded-xl border border-border bg-card hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-8 w-8 rounded-lg bg-muted group-hover:bg-white group-hover:text-orange-600 text-foreground flex items-center justify-center transition-colors">
+                <CalendarIcon className="h-4 w-4" />
+              </div>
+              <span className="text-[9px] font-bold text-muted-foreground group-hover:text-white/80">Sessions</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Bookings</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Client appointments</p>
+            </div>
+          </Link>
+
+          {/* 6. CLIENT INTAKES */}
+          <Link
+            to="/admin/intakes"
+            className="group p-3 rounded-xl border border-border bg-card hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-8 w-8 rounded-lg bg-muted group-hover:bg-white group-hover:text-orange-600 text-foreground flex items-center justify-center transition-colors">
+                <FileText className="h-4 w-4" />
+              </div>
+              <span className="text-[9px] font-bold text-muted-foreground group-hover:text-white/80">Intakes</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Client Intakes</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Plans & submissions</p>
+            </div>
+          </Link>
+        </div>
+      </div>
+
       {/* KPI Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-7">
+        {/* COMPANY ASSETS CARD */}
+        <Card className="bg-gradient-to-br from-orange-500/10 via-card to-card border-orange-500/40 shadow-xs relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-orange-500/10 rounded-bl-full pointer-events-none transition-transform group-hover:scale-110" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-orange-600 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 truncate">
+                <Package className="h-3.5 w-3.5 text-orange-600 shrink-0" />
+                Assets
+              </span>
+              <span className="text-[9px] font-black uppercase text-orange-600 bg-orange-600/10 px-1.5 py-0.5 rounded shrink-0">
+                Gear
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <div className="flex items-baseline justify-between">
+              <div className="text-2xl sm:text-3xl font-extrabold text-foreground">{counts.assets}</div>
+              <span className="text-[10px] font-bold text-muted-foreground font-mono">items</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground truncate font-mono">
+              GH₵ {counts.assetsValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </p>
+            <Link
+              to="/admin/assets"
+              className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 hover:text-orange-700 hover:underline pt-0.5"
+            >
+              Open Register →
+            </Link>
+          </CardContent>
+        </Card>
+
         <Card className="bg-card border-border shadow-xs">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Services</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-extrabold text-foreground">{counts.services}</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-foreground">{counts.services}</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border shadow-xs">
@@ -1682,7 +2020,7 @@ function Dashboard() {
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Gallery Items</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-extrabold text-foreground">{counts.gallery}</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-foreground">{counts.gallery}</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border shadow-xs">
@@ -1690,7 +2028,7 @@ function Dashboard() {
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Portfolio Projects</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-extrabold text-foreground">{counts.portfolio}</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-foreground">{counts.portfolio}</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border shadow-xs">
@@ -1698,7 +2036,7 @@ function Dashboard() {
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Bookings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-extrabold text-foreground">{counts.bookings}</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-foreground">{counts.bookings}</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border shadow-xs">
@@ -1709,7 +2047,7 @@ function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-extrabold text-foreground">{counts.totalVisits}</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-foreground">{counts.totalVisits}</div>
           </CardContent>
         </Card>
         <Card className="bg-card border-border shadow-xs">
@@ -1717,7 +2055,7 @@ function Dashboard() {
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Internal Tasks</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-extrabold text-foreground">{counts.tasks}</div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-foreground">{counts.tasks}</div>
           </CardContent>
         </Card>
       </div>
@@ -5179,12 +5517,17 @@ function ManageTransactions() {
                           </div>
                           {t.processingFee !== undefined && Number(t.processingFee) > 0 ? (
                             <div className="text-[10px] font-semibold text-orange-600 dark:text-orange-400 mt-0.5">
-                              incl. 1% fee (GH₵ {Number(t.processingFee).toFixed(2)})
+                              incl. {t.feePercentage ? (typeof t.feePercentage === 'number' ? `${t.feePercentage}%` : t.feePercentage) : 'fee'} (GH₵ {Number(t.processingFee).toFixed(2)})
                             </div>
                           ) : (t.isExempt || t.category === 'Sponsorship & Donations' || (t.type === 'credit' && t.description?.toLowerCase().includes('sponsorship'))) ? (
                             <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 inline-flex items-center gap-1">
                               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
                               0% Fee (Sponsorship Exempt)
+                            </div>
+                          ) : t.processingFee !== undefined && Number(t.processingFee) === 0 ? (
+                            <div className="text-[10px] font-medium text-muted-foreground mt-0.5 inline-flex items-center gap-1">
+                              <span className="h-1.5 w-1.5 rounded-full bg-zinc-400"></span>
+                              0% Fee (Waived)
                             </div>
                           ) : null}
                         </td>
@@ -7211,9 +7554,87 @@ function ManageSettings() {
     officePhone: '+233 123 456 789 / +233 54 123 4567',
     officeEmail: 'info@grefasconsultandentertainment.com',
     officeHours: 'Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM',
-    officeDropoffNotes: 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.'
+    officeDropoffNotes: 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.',
+    transactionFeeEnabled: true,
+    transactionFeeRate: 1.0,
+    transactionFeeLabel: 'Platform Processing Charge',
+    transactionFeeExemptSponsorship: true
   });
   const [loading, setLoading] = useState(true);
+  const [isSavingFeeOnly, setIsSavingFeeOnly] = useState(false);
+
+  const handleAdjustFeeRate = (delta: number) => {
+    const current = Number(settings.transactionFeeRate !== undefined ? settings.transactionFeeRate : 1.0);
+    const updated = Math.max(0, Math.min(50, Math.round((current + delta) * 10) / 10));
+    setSettings((prev: any) => ({
+      ...prev,
+      transactionFeeRate: updated,
+      transactionFeeEnabled: updated > 0 ? (prev.transactionFeeEnabled !== false) : false
+    }));
+    setLocalTransactionFeeConfig({
+      ratePercent: updated,
+      enabled: updated > 0 ? (settings.transactionFeeEnabled !== false) : false
+    });
+  };
+
+  const handleSetFeePreset = (rate: number) => {
+    const isZero = rate === 0;
+    setSettings((prev: any) => ({
+      ...prev,
+      transactionFeeRate: rate,
+      transactionFeeEnabled: !isZero
+    }));
+    setLocalTransactionFeeConfig({
+      ratePercent: rate,
+      enabled: !isZero
+    });
+    toast.info(`Fee rate set to ${rate.toFixed(1)}%${isZero ? ' (Disabled)' : ''}`);
+  };
+
+  const handleToggleFeeMaster = (enabled: boolean) => {
+    setSettings((prev: any) => ({
+      ...prev,
+      transactionFeeEnabled: enabled
+    }));
+    setLocalTransactionFeeConfig({
+      enabled
+    });
+    if (enabled) {
+      toast.success(`Transaction fee enabled (${Number(settings.transactionFeeRate || 1.0).toFixed(1)}%)`);
+    } else {
+      toast.warning('Transaction fee disabled (0% fee charged across platform)');
+    }
+  };
+
+  const handleQuickSaveFeePolicy = async () => {
+    setIsSavingFeeOnly(true);
+    try {
+      const isFeeActive = settings.transactionFeeEnabled !== false;
+      const rateNum = Number(settings.transactionFeeRate !== undefined ? settings.transactionFeeRate : 1.0);
+      const labelStr = settings.transactionFeeLabel || 'Platform Processing Charge';
+
+      await setDoc(doc(db, 'settings', 'global'), {
+        ...settings,
+        transactionFeeEnabled: isFeeActive,
+        transactionFeeRate: rateNum,
+        transactionFeeLabel: labelStr,
+        transactionFeeExemptSponsorship: settings.transactionFeeExemptSponsorship !== false
+      }, { merge: true });
+
+      setLocalTransactionFeeConfig({
+        enabled: isFeeActive,
+        ratePercent: rateNum,
+        label: labelStr,
+        exemptSponsorship: settings.transactionFeeExemptSponsorship !== false
+      });
+
+      toast.success(`Transaction fee saved! Rate: ${isFeeActive ? `${rateNum.toFixed(1)}%` : 'Disabled (0%)'}`);
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/global');
+    } finally {
+      setIsSavingFeeOnly(false);
+    }
+  };
 
   const [isUploadingCarousel, setIsUploadingCarousel] = useState(false);
   const [carouselUploadProgress, setCarouselUploadProgress] = useState(0);
@@ -7373,7 +7794,11 @@ function ManageSettings() {
           officePhone: data.officePhone || data.phone || '+233 123 456 789 / +233 54 123 4567',
           officeEmail: data.officeEmail || data.email || 'info@grefasconsultandentertainment.com',
           officeHours: data.officeHours || 'Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM',
-          officeDropoffNotes: data.officeDropoffNotes || 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.'
+          officeDropoffNotes: data.officeDropoffNotes || 'Walk-in cash and crossed cheques payable to "Grefas Consult & Entertainment Ltd" are received at our front desk during open hours.',
+          transactionFeeEnabled: data.transactionFeeEnabled !== false,
+          transactionFeeRate: data.transactionFeeRate !== undefined ? Number(data.transactionFeeRate) : 1.0,
+          transactionFeeLabel: data.transactionFeeLabel || 'Platform Processing Charge',
+          transactionFeeExemptSponsorship: data.transactionFeeExemptSponsorship !== false
         });
       }
       setLoading(false);
@@ -7384,7 +7809,25 @@ function ManageSettings() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await setDoc(doc(db, 'settings', 'global'), settings);
+      const isFeeActive = settings.transactionFeeEnabled !== false;
+      const rateNum = Number(settings.transactionFeeRate !== undefined ? settings.transactionFeeRate : 1.0);
+      const labelStr = settings.transactionFeeLabel || 'Platform Processing Charge';
+
+      await setDoc(doc(db, 'settings', 'global'), {
+        ...settings,
+        transactionFeeEnabled: isFeeActive,
+        transactionFeeRate: rateNum,
+        transactionFeeLabel: labelStr,
+        transactionFeeExemptSponsorship: settings.transactionFeeExemptSponsorship !== false
+      });
+
+      setLocalTransactionFeeConfig({
+        enabled: isFeeActive,
+        ratePercent: rateNum,
+        label: labelStr,
+        exemptSponsorship: settings.transactionFeeExemptSponsorship !== false
+      });
+
       toast.success('Settings updated');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'settings/global');
@@ -7721,56 +8164,371 @@ function ManageSettings() {
               </div>
             </div>
 
-            {/* Transaction Charges & Sponsorship Exemption Policy Section */}
-            <div className="border-t border-border pt-6 mt-6 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Transaction Fee Control & Management Center */}
+            <div className="border-t border-border pt-6 mt-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-orange-500/10 via-background to-emerald-500/10 p-4 rounded-2xl border border-border">
                 <div>
-                  <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-                    <ShieldCheck className="h-5 w-5 text-emerald-600" /> Transaction Processing Charges & Exemption Policy
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Live system rule: A standard 1% transaction fee is applied to general commercial operations (Bookings, Audition Intakes, Invoices). Sponsorship and donation pages are strictly 0% fee exempt.
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-extrabold text-xl text-foreground flex items-center gap-2">
+                      <Sliders className="h-5 w-5 text-orange-600" /> Transaction Fee Control Center
+                    </h3>
+                    {settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0 ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Active Fee: {Number(settings.transactionFeeRate || 1.0).toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+                        <span className="h-2 w-2 rounded-full bg-rose-500"></span>
+                        Completely Disabled (0% Fee)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You have total control to increase, decrease, or disable client transaction processing fees across the entire platform. Philanthropy sponsorships remain permanently 0% exempt.
                   </p>
                 </div>
-                <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 w-fit shrink-0">
-                  Enforced Across Platform
-                </span>
+                
+                <Button
+                  type="button"
+                  onClick={handleQuickSaveFeePolicy}
+                  disabled={isSavingFeeOnly}
+                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-4 py-2 h-auto flex items-center gap-2 shrink-0 shadow-sm"
+                >
+                  {isSavingFeeOnly ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Save Fee Settings
+                </Button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-orange-50/40 dark:bg-orange-950/20 border border-orange-200/70 dark:border-orange-900/40 p-4 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-orange-900 dark:text-orange-200 flex items-center gap-1.5">
-                      <CreditCard className="h-4 w-4 text-orange-600" /> Standard Commercial Transactions
-                    </span>
-                    <span className="text-xs font-extrabold font-mono bg-orange-600 text-white px-2 py-0.5 rounded-full">
-                      1.0% Processing Fee
-                    </span>
+              {/* Master Control & Rate Adjuster */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                {/* Left: Master Toggle & Rate Stepper */}
+                <div className="lg:col-span-7 bg-card border border-border p-5 rounded-2xl shadow-xs space-y-5">
+                  {/* Master On/Off Switch */}
+                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <span>Transaction Fee Status:</span>
+                        <span className={settings.transactionFeeEnabled !== false ? 'text-emerald-600 font-extrabold' : 'text-rose-600 font-extrabold'}>
+                          {settings.transactionFeeEnabled !== false ? 'ENABLED' : 'DISABLED'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {settings.transactionFeeEnabled !== false 
+                          ? 'Commercial transactions calculate and add this processing fee to total payable.' 
+                          : 'Transaction fees are completely turned off (0% charge applied to all clients).'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleFeeMaster(settings.transactionFeeEnabled === false)}
+                      className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                        settings.transactionFeeEnabled !== false ? 'bg-orange-600' : 'bg-zinc-300 dark:bg-zinc-700'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          settings.transactionFeeEnabled !== false ? 'translate-x-7' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Applies automatically to Consultation bookings, Casting & Audition profile intake fees, and client project installment milestones. Paystack gateway charges and settlement reconciliation are calculated transparently with itemized line items on checkout screens and receipts.
-                  </p>
-                  <div className="pt-2 flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
-                    <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Active on /booking, /services (auditions), and /my-applications</span>
+
+                  {/* Percentage Rate Adjuster */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <Percent className="h-4 w-4 text-orange-600" /> Transaction Fee Percentage Rate
+                      </label>
+                      <span className="text-xs font-mono font-black text-orange-600 dark:text-orange-400 bg-orange-500/10 px-2.5 py-0.5 rounded-full border border-orange-500/20">
+                        {Number(settings.transactionFeeRate !== undefined ? settings.transactionFeeRate : 1.0).toFixed(1)}%
+                      </span>
+                    </div>
+
+                    {/* Numeric Stepper with Increment/Decrement Buttons */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAdjustFeeRate(-1.0)}
+                        className="h-10 px-2.5 text-xs font-bold border-border hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/20"
+                        title="Decrease by 1.0%"
+                      >
+                        <Minus className="h-3.5 w-3.5 mr-0.5" /> 1.0%
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAdjustFeeRate(-0.5)}
+                        className="h-10 px-2.5 text-xs font-bold border-border hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/20"
+                        title="Decrease by 0.5%"
+                      >
+                        <Minus className="h-3.5 w-3.5 mr-0.5" /> 0.5%
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAdjustFeeRate(-0.1)}
+                        className="h-10 px-2 text-xs font-bold border-border hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/20"
+                        title="Fine decrease by 0.1%"
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </Button>
+
+                      {/* Direct Numeric Input */}
+                      <div className="relative flex-1">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="50"
+                          value={settings.transactionFeeRate !== undefined ? settings.transactionFeeRate : 1.0}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            const updated = isNaN(val) ? 0 : Math.max(0, Math.min(50, val));
+                            setSettings((prev: any) => ({
+                              ...prev,
+                              transactionFeeRate: updated,
+                              transactionFeeEnabled: updated > 0 ? (prev.transactionFeeEnabled !== false) : false
+                            }));
+                            setLocalTransactionFeeConfig({
+                              ratePercent: updated,
+                              enabled: updated > 0 ? (settings.transactionFeeEnabled !== false) : false
+                            });
+                          }}
+                          className="h-10 text-center font-mono font-black text-lg text-foreground pr-8 bg-background border-border"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">%</span>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAdjustFeeRate(0.1)}
+                        className="h-10 px-2 text-xs font-bold border-border hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/20"
+                        title="Fine increase by 0.1%"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAdjustFeeRate(0.5)}
+                        className="h-10 px-2.5 text-xs font-bold border-border hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/20"
+                        title="Increase by 0.5%"
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-0.5" /> 0.5%
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAdjustFeeRate(1.0)}
+                        className="h-10 px-2.5 text-xs font-bold border-border hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/20"
+                        title="Increase by 1.0%"
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-0.5" /> 1.0%
+                      </Button>
+                    </div>
+
+                    {/* Interactive Range Slider */}
+                    <div className="space-y-1 pt-1">
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={Number(settings.transactionFeeRate !== undefined ? settings.transactionFeeRate : 1.0)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setSettings((prev: any) => ({
+                            ...prev,
+                            transactionFeeRate: val,
+                            transactionFeeEnabled: val > 0 ? (prev.transactionFeeEnabled !== false) : false
+                          }));
+                          setLocalTransactionFeeConfig({
+                            ratePercent: val,
+                            enabled: val > 0 ? (settings.transactionFeeEnabled !== false) : false
+                          });
+                        }}
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-orange-600"
+                      />
+                      <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+                        <span>0% (Disabled)</span>
+                        <span>1% (Standard)</span>
+                        <span>2%</span>
+                        <span>3%</span>
+                        <span>5%</span>
+                        <span>10% (Max Slider)</span>
+                      </div>
+                    </div>
+
+                    {/* Quick Preset Buttons */}
+                    <div className="pt-2">
+                      <span className="text-[11px] font-bold text-muted-foreground block mb-1.5">
+                        Quick Preset Rates:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: '0.0% (Disable)', rate: 0.0, isZero: true },
+                          { label: '0.5%', rate: 0.5 },
+                          { label: '1.0% (Default)', rate: 1.0 },
+                          { label: '1.5%', rate: 1.5 },
+                          { label: '2.0%', rate: 2.0 },
+                          { label: '2.5%', rate: 2.5 },
+                          { label: '3.0%', rate: 3.0 },
+                          { label: '5.0%', rate: 5.0 }
+                        ].map((preset) => {
+                          const currentRate = Number(settings.transactionFeeRate !== undefined ? settings.transactionFeeRate : 1.0);
+                          const isSelected = preset.isZero 
+                            ? (settings.transactionFeeEnabled === false || currentRate === 0)
+                            : (settings.transactionFeeEnabled !== false && currentRate === preset.rate);
+
+                          return (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => handleSetFeePreset(preset.rate)}
+                              className={`text-xs px-2.5 py-1 rounded-lg border font-mono font-bold transition-all ${
+                                isSelected
+                                  ? preset.isZero 
+                                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                    : 'bg-orange-600 text-white border-orange-600 shadow-xs'
+                                  : 'bg-card text-muted-foreground hover:text-foreground border-border hover:bg-muted/60'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Fee Label / Receipt Description */}
+                  <div className="space-y-1.5 pt-2 border-t border-border/50">
+                    <label className="text-xs font-bold text-foreground">
+                      Fee Line Item Description (Shown on Checkout & Invoices)
+                    </label>
+                    <Input
+                      value={settings.transactionFeeLabel || ''}
+                      placeholder="e.g. Platform Processing Charge"
+                      onChange={(e) => setSettings({ ...settings, transactionFeeLabel: e.target.value })}
+                      className="h-9 text-xs bg-background border-border"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      This title appears next to the fee breakdown on client payment forms and gateway receipts.
+                    </p>
                   </div>
                 </div>
 
-                <div className="bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-900/40 p-4 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
-                      <Heart className="h-4 w-4 text-emerald-600 fill-emerald-600/20" /> Sponsorship & Donation Pages
-                    </span>
-                    <span className="text-xs font-extrabold font-mono bg-emerald-600 text-white px-2 py-0.5 rounded-full">
-                      0.0% Fee Exempt (Guaranteed)
-                    </span>
+                {/* Right: Live Simulator & Exemption Guarantee */}
+                <div className="lg:col-span-5 space-y-4">
+                  {/* Real-time Calculation Simulator */}
+                  <div className="bg-muted/30 border border-border p-4 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                      <span className="text-xs font-extrabold text-foreground flex items-center gap-1.5">
+                        <Receipt className="h-4 w-4 text-orange-600" /> Live Simulation Preview
+                      </span>
+                      <span className="text-[10px] font-bold text-muted-foreground">
+                        {settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0
+                          ? `At ${Number(settings.transactionFeeRate || 1.0).toFixed(1)}% Rate`
+                          : 'At 0% Rate (Disabled)'}
+                      </span>
+                    </div>
+
+                    {/* Example Calculations */}
+                    <div className="space-y-2.5 text-xs">
+                      {/* 1. Consultation */}
+                      {(() => {
+                        const base = 150;
+                        const isEnabled = settings.transactionFeeEnabled !== false;
+                        const rate = isEnabled ? Number(settings.transactionFeeRate || 1.0) / 100 : 0;
+                        const fee = Math.round(base * rate * 100) / 100;
+                        const total = base + fee;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-1">
+                            <div className="flex justify-between font-semibold text-foreground">
+                              <span>Consultation Booking</span>
+                              <span className="font-mono text-emerald-600 font-extrabold">GH₵ {total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-[11px] text-muted-foreground font-mono">
+                              <span>Base: GH₵ {base.toFixed(2)}</span>
+                              <span className={fee > 0 ? 'text-orange-600 font-bold' : 'text-emerald-600 font-bold'}>
+                                Fee: {fee > 0 ? `+ GH₵ ${fee.toFixed(2)}` : 'GH₵ 0.00 (Waived)'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 2. Audition Intake */}
+                      {(() => {
+                        const base = Number(settings.intakePrice) || 50;
+                        const isEnabled = settings.transactionFeeEnabled !== false;
+                        const rate = isEnabled ? Number(settings.transactionFeeRate || 1.0) / 100 : 0;
+                        const fee = Math.round(base * rate * 100) / 100;
+                        const total = base + fee;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-1">
+                            <div className="flex justify-between font-semibold text-foreground">
+                              <span>Casting Profile Intake</span>
+                              <span className="font-mono text-emerald-600 font-extrabold">GH₵ {total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-[11px] text-muted-foreground font-mono">
+                              <span>Base: GH₵ {base.toFixed(2)}</span>
+                              <span className={fee > 0 ? 'text-orange-600 font-bold' : 'text-emerald-600 font-bold'}>
+                                Fee: {fee > 0 ? `+ GH₵ ${fee.toFixed(2)}` : 'GH₵ 0.00 (Waived)'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* 3. Milestone Installment */}
+                      {(() => {
+                        const base = 1000;
+                        const isEnabled = settings.transactionFeeEnabled !== false;
+                        const rate = isEnabled ? Number(settings.transactionFeeRate || 1.0) / 100 : 0;
+                        const fee = Math.round(base * rate * 100) / 100;
+                        const total = base + fee;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-card border border-border/60 space-y-1">
+                            <div className="flex justify-between font-semibold text-foreground">
+                              <span>Project Milestone / Invoice</span>
+                              <span className="font-mono text-emerald-600 font-extrabold">GH₵ {total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-[11px] text-muted-foreground font-mono">
+                              <span>Base: GH₵ {base.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                              <span className={fee > 0 ? 'text-orange-600 font-bold' : 'text-emerald-600 font-bold'}>
+                                Fee: {fee > 0 ? `+ GH₵ ${fee.toFixed(2)}` : 'GH₵ 0.00 (Waived)'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Sponsorships and philanthropic donations MUST NOT attract any 1% charges. 100% of contributed funds go directly to youth talent development, casting equipment, and community movie projects without deduction.
-                  </p>
-                  <div className="pt-2 flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <span>Enforced permanently on /sponsorship page and donation modals</span>
+
+                  {/* Guaranteed Sponsorship 0% Exemption Card */}
+                  <div className="bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-900/40 p-4 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                        <Heart className="h-4 w-4 text-emerald-600 fill-emerald-600/20" /> Sponsorship Exemption Rule
+                      </span>
+                      <span className="text-[10px] font-extrabold font-mono bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                        0.0% Fee Guaranteed
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Sponsorships and philanthropic donations on <code>/sponsorship</code> are strictly exempt from commercial fees. 100% of contributed donor funds go directly to creative talents without deduction, regardless of the commercial fee rate.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -8417,26 +9175,53 @@ function ManageSettings() {
                 </div>
               </div>
 
-              {/* Transaction Processing Charges & Exemption Rules Policy */}
+              {/* Dynamic Transaction Processing Summary Policy */}
               <div className="pt-6 border-t border-border/60">
-                <h3 className="text-base font-bold text-foreground flex items-center gap-2 mb-2">
-                  <Receipt className="h-4 w-4 text-orange-600" /> Transaction Charges Policy & Exemption Rules
-                </h3>
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Receipt className="h-4 w-4 text-orange-600" /> Platform Transaction Fee Summary
+                  </h3>
+                  <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                    settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                      : 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30'
+                  }`}>
+                    {settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0
+                      ? `Fee Active: ${Number(settings.transactionFeeRate || 1.0).toFixed(1)}%`
+                      : 'Fee Disabled (0%)'}
+                  </span>
+                </div>
                 <p className="text-xs text-muted-foreground mb-4">
-                  Global platform rule enforcing 1% charges on commercial transactions while strictly exempting sponsorships.
+                  Current platform rule dynamically enforces {settings.transactionFeeEnabled !== false ? `${Number(settings.transactionFeeRate || 1.0).toFixed(1)}%` : '0%'} charges on commercial transactions while strictly exempting sponsorships.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl border border-orange-500/20 bg-orange-500/5 space-y-2">
+                  <div className={`p-4 rounded-xl border space-y-2 ${
+                    settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0
+                      ? 'border-orange-500/20 bg-orange-500/5'
+                      : 'border-zinc-500/20 bg-zinc-500/5'
+                  }`}>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-foreground">Standard Commercial Transactions</span>
-                      <span className="text-xs font-extrabold font-mono bg-orange-600 text-white px-2 py-0.5 rounded-full">1.0% Charge Active</span>
+                      <span className="text-xs font-bold text-foreground">Commercial Transactions</span>
+                      <span className={`text-xs font-extrabold font-mono px-2 py-0.5 rounded-full ${
+                        settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-zinc-600 text-white'
+                      }`}>
+                        {settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0
+                          ? `${Number(settings.transactionFeeRate || 1.0).toFixed(1)}% Charge Active`
+                          : '0.0% (Fee Disabled)'}
+                      </span>
                     </div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      A 1% fee is automatically calculated and added to consultation bookings, audition & casting intakes, and candidate installment payments.
+                      {settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0
+                        ? `A ${Number(settings.transactionFeeRate || 1.0).toFixed(1)}% processing fee is automatically calculated and itemized on consultation bookings, audition & casting intakes, and candidate installments.`
+                        : 'Transaction processing fee is currently turned off completely. Clients are charged 0% additional processing fees.'}
                     </p>
-                    <div className="text-[11px] text-orange-950 dark:text-orange-200 font-mono pt-1">
-                      Formula: Total Payable = Base Amount + (Base Amount × 0.01)
+                    <div className="text-[11px] text-foreground font-mono pt-1">
+                      Formula: {settings.transactionFeeEnabled !== false && Number(settings.transactionFeeRate || 1.0) > 0
+                        ? `Total Payable = Base Amount + (Base Amount × ${(Number(settings.transactionFeeRate || 1.0) / 100).toFixed(4)})`
+                        : 'Total Payable = Base Amount (0% Fee Charge)'}
                     </div>
                   </div>
 
@@ -8446,7 +9231,7 @@ function ManageSettings() {
                       <span className="text-xs font-extrabold font-mono bg-emerald-600 text-white px-2 py-0.5 rounded-full">0.0% Fee (Strictly Protected)</span>
                     </div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      All sponsorship contributions and donations on <code>/sponsorship</code> are strictly exempt and do not attract any 1% charges, ensuring 100% of donor funding goes directly to creative talent.
+                      All sponsorship contributions and donations on <code>/sponsorship</code> are strictly exempt from commercial fees, ensuring 100% of donor funding goes directly to creative talent without platform deductions.
                     </p>
                     <div className="text-[11px] text-emerald-900 dark:text-emerald-200 font-mono pt-1">
                       Formula: Total Charged = Contribution (0% Transaction Charge)

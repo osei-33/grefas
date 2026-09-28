@@ -395,5 +395,10 @@ service cloud.firestore {
                     request.resource.data.amount is number && request.resource.data.amount > 0;
       allow update, delete: if isStaff();
     }
+
+    match /assets/{assetId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
   }
 }

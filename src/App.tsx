@@ -106,6 +106,9 @@ function AnimatedRoutes() {
             <Route path="/legal" element={<Navigate to="/privacy-policy" replace />} />
 
             <Route path="/admin/*" element={<Admin />} />
+            <Route path="/assets" element={<Navigate to="/admin/assets" replace />} />
+            <Route path="/company-assets" element={<Navigate to="/admin/assets" replace />} />
+            <Route path="/inventory" element={<Navigate to="/admin/assets" replace />} />
             <Route path="/login" element={<Navigate to="/admin" replace />} />
             <Route path="/admin-login" element={<Navigate to="/admin" replace />} />
 

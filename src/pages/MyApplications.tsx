@@ -625,7 +625,7 @@ export default function MyApplications() {
           phone: momoNumber || activePaymentApp.contact,
           baseAmount: baseInstAmount,
           transactionFee: instTransactionFee,
-          feePercentage: '1%',
+          feePercentage: instFeeBreakdown.feePercentageDisplay,
           totalPayable: instTotalPayable
         },
         channels: paymentMode === 'momo' ? ['mobile_money'] : ['card']
@@ -682,13 +682,13 @@ export default function MyApplications() {
         }
       }, { merge: true });
 
-      // Add to main ledger with 1% fee itemization
+      // Add to main ledger with dynamic fee itemization
       await addDoc(collection(db, 'transactions'), {
-        description: `Installment Payment (Paystack): ${activePaymentInstallment.name} - ${activePaymentApp.fullName} [Base: GH₵ ${baseInstAmount.toFixed(2)} + 1% Fee: GH₵ ${instTransactionFee.toFixed(2)}]`,
+        description: `Installment Payment (Paystack): ${activePaymentInstallment.name} - ${activePaymentApp.fullName} [Base: GH₵ ${baseInstAmount.toFixed(2)} + ${instFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${instTransactionFee.toFixed(2)}]`,
         amount: Number(instTotalPayable),
         subtotal: Number(baseInstAmount),
         processingFee: Number(instTransactionFee),
-        feePercentage: 1,
+        feePercentage: instFeeBreakdown.feePercentageDisplay,
         type: 'credit',
         category: 'Installment Payment',
         ref: txnId,
@@ -1396,10 +1396,14 @@ export default function MyApplications() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground font-medium flex items-center gap-1.5">
-                            <span>1% Transaction Processing Charge:</span>
-                            <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1.5 py-0.2 rounded">1% Fee</span>
+                            <span>{instFee === 0 ? 'Transaction Processing Fee:' : `${feeBreakdown.feePercentageDisplay} Transaction Processing Charge:`}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${instFee === 0 ? 'text-emerald-600 bg-emerald-500/10' : 'text-orange-600 bg-orange-500/10'}`}>
+                              {instFee === 0 ? '0% (Waived)' : feeBreakdown.feePercentageDisplay}
+                            </span>
                           </span>
-                          <span className="text-orange-600 font-bold font-mono">+ GH₵ {instFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className={`font-mono font-bold ${instFee === 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                            {instFee === 0 ? 'GH₵ 0.00 (Waived)' : `+ GH₵ ${instFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </span>
                         </div>
                         <div className="h-px bg-border/60 my-1" />
                         <div className="flex justify-between items-center font-bold">
