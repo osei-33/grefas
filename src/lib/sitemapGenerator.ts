@@ -43,9 +43,10 @@ export async function generateDynamicSitemap(overrideBaseUrl?: string): Promise<
     { url: '/gallery', priority: '0.7', changefreq: 'weekly' },
     { url: '/team', priority: '0.7', changefreq: 'monthly' },
     { url: '/booking', priority: '0.9', changefreq: 'daily' },
-    { url: '/work-with-us', priority: '0.7', changefreq: 'weekly' },
     { url: '/contact', priority: '0.8', changefreq: 'monthly' },
     { url: '/sponsorship', priority: '0.8', changefreq: 'weekly' },
+    { url: '/work-with-us', priority: '0.7', changefreq: 'weekly' },
+    { url: '/my-applications', priority: '0.7', changefreq: 'weekly' },
     { url: '/privacy-policy', priority: '0.5', changefreq: 'monthly' },
   ];
 

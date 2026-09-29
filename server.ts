@@ -392,9 +392,28 @@ async function startServer() {
     
     res.send(`User-agent: *
 Allow: /
+Allow: /about
+Allow: /services
+Allow: /portfolio
+Allow: /gallery
+Allow: /team
+Allow: /booking
+Allow: /contact
+Allow: /sponsorship
+Allow: /work-with-us
+Allow: /my-applications
+Allow: /privacy-policy
+Allow: /privacy
+Allow: /terms
+Allow: /terms-of-service
+Allow: /refund
+Allow: /refund-policy
+
+# Internal Admin & API endpoints
 Disallow: /admin/
 Disallow: /api/
 
+# Sitemap location
 Sitemap: ${domain}/sitemap.xml`);
   });
 
