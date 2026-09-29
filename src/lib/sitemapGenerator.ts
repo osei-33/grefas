@@ -12,8 +12,17 @@ export interface SitemapResult {
   lastGeneratedAt: string;
 }
 
+export const DEFAULT_CANONICAL_DOMAIN = 'https://grefasconsultandentertainment.com';
+
 export async function generateDynamicSitemap(overrideBaseUrl?: string): Promise<SitemapResult> {
-  let baseUrl = overrideBaseUrl || process.env.APP_URL || 'https://grefasconsultandentertainment.com';
+  // Determine clean base URL
+  let baseUrl = (overrideBaseUrl || '').trim();
+  
+  // If no base URL or if base URL is an internal AI Studio dev URL or localhost, use canonical production domain
+  if (!baseUrl || baseUrl.includes('ais-dev-') || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+    baseUrl = process.env.CANONICAL_DOMAIN || DEFAULT_CANONICAL_DOMAIN;
+  }
+  
   // Strip trailing slashes
   baseUrl = baseUrl.replace(/\/+$/, '');
   const today = new Date().toISOString().split('T')[0];
@@ -151,13 +160,18 @@ ${urlNodes}
 
   // Update physical sitemap.xml on disk
   try {
+    // For static disk fallback files, ensure we NEVER write an ephemeral ais-dev- or localhost URL.
+    const diskXml = baseUrl.includes('ais-dev-') || baseUrl.includes('localhost')
+      ? xml.split(baseUrl).join(DEFAULT_CANONICAL_DOMAIN)
+      : xml;
+
     const publicSitemapPath = path.resolve(process.cwd(), 'public', 'sitemap.xml');
-    fs.writeFileSync(publicSitemapPath, xml, 'utf-8');
+    fs.writeFileSync(publicSitemapPath, diskXml, 'utf-8');
 
     const distPath = path.resolve(process.cwd(), 'dist');
     const distSitemapPath = path.resolve(distPath, 'sitemap.xml');
     if (fs.existsSync(distPath)) {
-      fs.writeFileSync(distSitemapPath, xml, 'utf-8');
+      fs.writeFileSync(distSitemapPath, diskXml, 'utf-8');
     }
     console.log(
       `[Sitemap Generator] Successfully updated sitemap.xml (${allEntries.length} total URLs, ${serviceCount} services, ${blogCount} blogs)`

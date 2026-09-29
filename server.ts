@@ -362,11 +362,37 @@ async function startServer() {
   });
 
   // SEO: Dynamic robots.txt for search engines
+  // Helper to determine the canonical public URL for sitemaps and SEO
+  const resolveRequestOrigin = (req: express.Request, explicitBaseUrl?: string): string => {
+    // 1. Explicit domain passed in query or body (e.g. ?domain=https://grefasconsultandentertainment.com)
+    const candidate = explicitBaseUrl || (req.query?.domain as string) || (req.query?.baseUrl as string);
+    if (candidate && typeof candidate === 'string' && candidate.trim().startsWith('http')) {
+      const cleanCandidate = candidate.trim().replace(/\/+$/, '');
+      if (!cleanCandidate.includes('ais-dev-') && !cleanCandidate.includes('localhost')) {
+        return cleanCandidate;
+      }
+    }
+
+    // 2. Incoming request host (supports reverse proxies, Cloud Run, custom domains)
+    const rawForwardedHost = (req.headers['x-forwarded-host'] as string) || '';
+    const forwardedHost = rawForwardedHost.split(',')[0].trim();
+    const host = forwardedHost || req.get('host') || (req.headers['host'] as string) || '';
+
+    const rawForwardedProto = (req.headers['x-forwarded-proto'] as string) || '';
+    const protocol = rawForwardedProto.split(',')[0].trim() || req.protocol || 'https';
+
+    // If request host is a real public domain and NOT an internal dev Cloud Run instance (ais-dev-) or localhost
+    if (host && !host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('ais-dev-')) {
+      return `${protocol}://${host}`.replace(/\/+$/, '');
+    }
+
+    // 3. Fallback to official canonical production domain
+    return (process.env.CANONICAL_DOMAIN || 'https://grefasconsultandentertainment.com').replace(/\/+$/, '');
+  };
+
   app.get("/robots.txt", (req, res) => {
     res.type("text/plain");
-    const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-    const host = req.get('host') || 'grefasconsultandentertainment.com';
-    const domain = process.env.APP_URL || `${protocol}://${host}`;
+    const domain = resolveRequestOrigin(req);
     
     res.send(`User-agent: *
 Allow: /
@@ -379,9 +405,7 @@ Sitemap: ${domain}/sitemap.xml`);
   // SEO: Dynamic sitemap.xml for Google indexing - automatically queries active services and content pages from Firestore
   app.get("/sitemap.xml", async (req, res) => {
     try {
-      const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-      const host = req.get('host') || 'grefasconsultandentertainment.com';
-      const currentBaseUrl = process.env.APP_URL || `${protocol}://${host}`;
+      const currentBaseUrl = resolveRequestOrigin(req);
 
       const sitemapResult = await generateDynamicSitemap(currentBaseUrl);
       res.type("application/xml");
@@ -396,14 +420,13 @@ Sitemap: ${domain}/sitemap.xml`);
   // API endpoint: Rebuild sitemap manually or via webhook
   app.post("/api/sitemap/generate", async (req, res) => {
     try {
-      const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-      const host = req.get('host') || 'grefasconsultandentertainment.com';
-      const currentBaseUrl = req.body?.baseUrl || process.env.APP_URL || `${protocol}://${host}`;
+      const currentBaseUrl = resolveRequestOrigin(req, req.body?.baseUrl);
 
       const sitemapResult = await generateDynamicSitemap(currentBaseUrl);
       res.json({
         status: "ok",
         message: "Dynamic sitemap generated and written to sitemap.xml on disk",
+        baseUrl: currentBaseUrl,
         serviceCount: sitemapResult.serviceCount,
         blogCount: sitemapResult.blogCount,
         portfolioCount: sitemapResult.portfolioCount,
@@ -419,13 +442,12 @@ Sitemap: ${domain}/sitemap.xml`);
   // API endpoint: Get sitemap status info
   app.get("/api/sitemap/status", async (req, res) => {
     try {
-      const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
-      const host = req.get('host') || 'grefasconsultandentertainment.com';
-      const currentBaseUrl = process.env.APP_URL || `${protocol}://${host}`;
+      const currentBaseUrl = resolveRequestOrigin(req);
 
       const sitemapResult = await generateDynamicSitemap(currentBaseUrl);
       res.json({
         status: "ok",
+        baseUrl: currentBaseUrl,
         serviceCount: sitemapResult.serviceCount,
         blogCount: sitemapResult.blogCount,
         portfolioCount: sitemapResult.portfolioCount,

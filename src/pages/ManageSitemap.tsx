@@ -28,6 +28,8 @@ import SEO from '@/components/SEO';
 export default function ManageSitemap() {
   const [loading, setLoading] = useState(true);
   const [rebuilding, setRebuilding] = useState(false);
+  const [targetDomain, setTargetDomain] = useState<string>('https://grefasconsultandentertainment.com');
+  const [isCustomDomain, setIsCustomDomain] = useState(false);
   const [sitemapData, setSitemapData] = useState<{
     serviceCount: number;
     blogCount: number;
@@ -40,18 +42,18 @@ export default function ManageSitemap() {
   const [searchFilter, setSearchFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'urls' | 'xml' | 'guide'>('overview');
 
-  const fetchSitemapInfo = async () => {
+  const fetchSitemapInfo = async (domainToFetch = targetDomain) => {
     setLoading(true);
     try {
       // 1. Fetch JSON status
-      const res = await fetch('/api/sitemap/status');
+      const res = await fetch(`/api/sitemap/status?domain=${encodeURIComponent(domainToFetch)}`);
       if (res.ok) {
         const data = await res.json();
         setSitemapData(data);
       }
 
       // 2. Fetch raw XML preview
-      const xmlRes = await fetch('/sitemap.xml?t=' + Date.now());
+      const xmlRes = await fetch(`/sitemap.xml?domain=${encodeURIComponent(domainToFetch)}&t=${Date.now()}`);
       if (xmlRes.ok) {
         const xmlText = await xmlRes.text();
         setXmlContent(xmlText);
@@ -65,17 +67,17 @@ export default function ManageSitemap() {
   };
 
   useEffect(() => {
-    fetchSitemapInfo();
-  }, []);
+    fetchSitemapInfo(targetDomain);
+  }, [targetDomain]);
 
-  const handleRebuildSitemap = async () => {
+  const handleRebuildSitemap = async (domainToUse = targetDomain) => {
     setRebuilding(true);
     try {
       const res = await fetch('/api/sitemap/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          baseUrl: window.location.origin
+          baseUrl: domainToUse
         })
       });
 
@@ -84,10 +86,10 @@ export default function ManageSitemap() {
       }
 
       const data = await res.json();
-      toast.success(`Dynamic sitemap successfully rebuilt! (${data.totalUrls} URLs, ${data.serviceCount} active services synced)`);
+      toast.success(`Dynamic sitemap successfully rebuilt! (${data.totalUrls} URLs, ${data.serviceCount} active services synced for ${domainToUse})`);
       
       // Refresh preview
-      await fetchSitemapInfo();
+      await fetchSitemapInfo(domainToUse);
     } catch (err: any) {
       console.error('Error rebuilding sitemap:', err);
       toast.error(err.message || 'Failed to rebuild sitemap');
@@ -166,7 +168,7 @@ export default function ManageSitemap() {
 
         <div className="flex items-center gap-2">
           <Button
-            onClick={handleRebuildSitemap}
+            onClick={() => handleRebuildSitemap(targetDomain)}
             disabled={rebuilding}
             className="bg-orange-600 hover:bg-orange-700 text-white shadow-sm"
           >
@@ -178,11 +180,104 @@ export default function ManageSitemap() {
             variant="outline"
             asChild
           >
-            <a href="/sitemap.xml" target="_blank" rel="noopener noreferrer">
+            <a href={`/sitemap.xml?domain=${encodeURIComponent(targetDomain)}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 h-4 w-4" />
               View sitemap.xml
             </a>
           </Button>
+        </div>
+      </div>
+
+      {/* Target Domain Selector & Host Mismatch Prevention */}
+      <div className="bg-card border border-border/80 rounded-xl p-4 sm:p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/50 pb-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Globe className="h-4 w-4 text-orange-600" />
+              Sitemap Target Domain & Search Console Compatibility
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Google Search Console requires all URLs inside a sitemap to match the verified property domain.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+              Host Mismatch Protected
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs font-semibold text-foreground mr-1">Active Target Domain:</span>
+            <Button
+              type="button"
+              size="sm"
+              variant={targetDomain === 'https://grefasconsultandentertainment.com' && !isCustomDomain ? 'default' : 'outline'}
+              onClick={() => {
+                setTargetDomain('https://grefasconsultandentertainment.com');
+                setIsCustomDomain(false);
+              }}
+              className="text-xs h-7 font-bold"
+            >
+              https://grefasconsultandentertainment.com (Production)
+            </Button>
+
+            {window.location.origin && !window.location.origin.includes('ais-dev-') && (
+              <Button
+                type="button"
+                size="sm"
+                variant={targetDomain === window.location.origin && !isCustomDomain ? 'default' : 'outline'}
+                onClick={() => {
+                  setTargetDomain(window.location.origin);
+                  setIsCustomDomain(false);
+                }}
+                className="text-xs h-7 font-bold"
+              >
+                Current Host ({window.location.host})
+              </Button>
+            )}
+
+            <Button
+              type="button"
+              size="sm"
+              variant={isCustomDomain ? 'default' : 'outline'}
+              onClick={() => setIsCustomDomain(true)}
+              className="text-xs h-7 font-bold"
+            >
+              Custom Domain...
+            </Button>
+          </div>
+
+          {isCustomDomain && (
+            <div className="flex items-center gap-2 max-w-md pt-1">
+              <input
+                type="url"
+                value={targetDomain}
+                onChange={(e) => setTargetDomain(e.target.value)}
+                placeholder="https://yourdomain.com"
+                className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-orange-500"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => handleRebuildSitemap(targetDomain)}
+                className="bg-orange-600 hover:bg-orange-700 text-white text-xs h-8 font-bold"
+              >
+                Sync
+              </Button>
+            </div>
+          )}
+
+          <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1.5 text-muted-foreground border border-border/40">
+            <div className="flex items-center gap-2 text-foreground font-semibold">
+              <Info className="h-4 w-4 text-orange-600 shrink-0" />
+              <span>Resolved: "This URL is not allowed for a Sitemap at this location"</span>
+            </div>
+            <p className="leading-relaxed">
+              Google Search Console displays this error when a sitemap served on your domain contains URLs pointing to another domain (such as internal dev Cloud Run URLs <code className="text-orange-600 font-mono bg-background px-1 py-0.5 rounded">ais-dev-...run.app</code>). The engine now dynamically resolves the sitemap to your clean production domain (<code className="text-orange-600 font-mono bg-background px-1 py-0.5 rounded">{targetDomain}</code>), guaranteeing 100% compliance with Google Search Console and Bing.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -365,7 +460,7 @@ export default function ManageSitemap() {
               <div className="flex items-center justify-between pt-2 border-t text-xs text-muted-foreground">
                 <span>robots.txt declaration:</span>
                 <code className="font-mono bg-muted px-2 py-1 rounded text-foreground">
-                  Sitemap: {window.location.origin}/sitemap.xml
+                  Sitemap: {targetDomain}/sitemap.xml
                 </code>
               </div>
             </CardContent>
@@ -598,7 +693,7 @@ export default function ManageSitemap() {
                   <li>Log in to <a href="https://www.bing.com/webmasters" target="_blank" rel="noopener noreferrer" className="text-orange-600 underline">Bing Webmaster Tools</a>.</li>
                   <li>Select your website or import from Google Search Console.</li>
                   <li>Navigate to <strong className="text-foreground">Sitemaps</strong>.</li>
-                  <li>Click <strong className="text-foreground">Submit Sitemap</strong> and provide: <code className="bg-muted px-1.5 py-0.5 rounded text-orange-600 font-mono">{window.location.origin}/sitemap.xml</code></li>
+                  <li>Click <strong className="text-foreground">Submit Sitemap</strong> and provide: <code className="bg-muted px-1.5 py-0.5 rounded text-orange-600 font-mono">{targetDomain}/sitemap.xml</code></li>
                   <li>Click <strong className="text-foreground">Submit</strong>.</li>
                 </ol>
               </div>
