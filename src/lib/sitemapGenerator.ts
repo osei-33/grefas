@@ -15,11 +15,17 @@ export interface SitemapResult {
 export const DEFAULT_CANONICAL_DOMAIN = 'https://grefasconsultandentertainment.com';
 
 export async function generateDynamicSitemap(overrideBaseUrl?: string): Promise<SitemapResult> {
-  // Determine clean base URL
+  // Always enforce the production canonical domain for sitemap URLs
   let baseUrl = (overrideBaseUrl || '').trim();
   
-  // If no base URL or if base URL is an internal AI Studio dev URL or localhost, use canonical production domain
-  if (!baseUrl || baseUrl.includes('ais-dev-') || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+  if (
+    !baseUrl || 
+    baseUrl.includes('ais-dev-') || 
+    baseUrl.includes('run.app') || 
+    baseUrl.includes('localhost') || 
+    baseUrl.includes('127.0.0.1') ||
+    baseUrl.includes('googleusercontent')
+  ) {
     baseUrl = process.env.CANONICAL_DOMAIN || DEFAULT_CANONICAL_DOMAIN;
   }
   
@@ -39,7 +45,8 @@ export async function generateDynamicSitemap(overrideBaseUrl?: string): Promise<
     { url: '/booking', priority: '0.9', changefreq: 'daily' },
     { url: '/work-with-us', priority: '0.7', changefreq: 'weekly' },
     { url: '/contact', priority: '0.8', changefreq: 'monthly' },
-    { url: '/privacy-policy', priority: '0.3', changefreq: 'monthly' },
+    { url: '/sponsorship', priority: '0.8', changefreq: 'weekly' },
+    { url: '/privacy-policy', priority: '0.5', changefreq: 'monthly' },
   ];
 
   let dynamicEntries: { url: string; lastmod: string; priority: string; changefreq: string }[] = [];
@@ -141,9 +148,34 @@ export async function generateDynamicSitemap(overrideBaseUrl?: string): Promise<
     ...dynamicEntries,
   ];
 
+  const sanitizeSitemapLoc = (entryPathOrUrl: string): string => {
+    let clean = entryPathOrUrl.trim();
+    if (clean.startsWith('http')) {
+      try {
+        const parsed = new URL(clean);
+        if (
+          parsed.hostname.includes('run.app') || 
+          parsed.hostname.includes('ais-dev-') || 
+          parsed.hostname.includes('localhost') || 
+          parsed.hostname.includes('127.0.0.1')
+        ) {
+          clean = parsed.pathname + parsed.hash;
+        } else {
+          return clean;
+        }
+      } catch {
+        clean = '/';
+      }
+    }
+    if (!clean.startsWith('/')) {
+      clean = `/${clean}`;
+    }
+    return `${DEFAULT_CANONICAL_DOMAIN}${clean}`;
+  };
+
   const urlNodes = allEntries
     .map((entry) => {
-      const fullUrl = entry.url.startsWith('http') ? entry.url : `${baseUrl}${entry.url}`;
+      const fullUrl = sanitizeSitemapLoc(entry.url);
       return `  <url>
     <loc>${fullUrl}</loc>
     <lastmod>${entry.lastmod}</lastmod>
@@ -160,18 +192,13 @@ ${urlNodes}
 
   // Update physical sitemap.xml on disk
   try {
-    // For static disk fallback files, ensure we NEVER write an ephemeral ais-dev- or localhost URL.
-    const diskXml = baseUrl.includes('ais-dev-') || baseUrl.includes('localhost')
-      ? xml.split(baseUrl).join(DEFAULT_CANONICAL_DOMAIN)
-      : xml;
-
     const publicSitemapPath = path.resolve(process.cwd(), 'public', 'sitemap.xml');
-    fs.writeFileSync(publicSitemapPath, diskXml, 'utf-8');
+    fs.writeFileSync(publicSitemapPath, xml, 'utf-8');
 
     const distPath = path.resolve(process.cwd(), 'dist');
     const distSitemapPath = path.resolve(distPath, 'sitemap.xml');
     if (fs.existsSync(distPath)) {
-      fs.writeFileSync(distSitemapPath, diskXml, 'utf-8');
+      fs.writeFileSync(distSitemapPath, xml, 'utf-8');
     }
     console.log(
       `[Sitemap Generator] Successfully updated sitemap.xml (${allEntries.length} total URLs, ${serviceCount} services, ${blogCount} blogs)`

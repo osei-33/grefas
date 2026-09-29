@@ -12,6 +12,7 @@ export default function NotFound() {
         title="Page Not Found (404)" 
         description="The page you requested on Grefas Consult & Entertainment could not be found. Explore our consulting services, event gallery, booking portal, or contact our team in Nyinahin-Ashanti, Ghana."
         keywords="Grefas 404, page not found, Grefas navigation, Nyinahin consulting website"
+        noIndex={true}
       />
 
       <div className="min-h-[80vh] flex items-center justify-center py-16 px-4 sm:px-6 lg:px-8">

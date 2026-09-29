@@ -97,13 +97,13 @@ function AnimatedRoutes() {
             <Route path="/applications" element={<Navigate to="/my-applications" replace />} />
             <Route path="/my-apps" element={<Navigate to="/my-applications" replace />} />
 
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            <Route path="/privacy" element={<Navigate to="/privacy-policy?tab=privacy" replace />} />
-            <Route path="/terms-of-service" element={<Navigate to="/privacy-policy?tab=terms" replace />} />
-            <Route path="/terms" element={<Navigate to="/privacy-policy?tab=terms" replace />} />
-            <Route path="/refund-policy" element={<Navigate to="/privacy-policy?tab=refund" replace />} />
-            <Route path="/refund" element={<Navigate to="/privacy-policy?tab=refund" replace />} />
-            <Route path="/legal" element={<Navigate to="/privacy-policy" replace />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy defaultTab="privacy" />} />
+            <Route path="/privacy" element={<PrivacyPolicy defaultTab="privacy" />} />
+            <Route path="/terms-of-service" element={<PrivacyPolicy defaultTab="terms" />} />
+            <Route path="/terms" element={<PrivacyPolicy defaultTab="terms" />} />
+            <Route path="/refund-policy" element={<PrivacyPolicy defaultTab="refund" />} />
+            <Route path="/refund" element={<PrivacyPolicy defaultTab="refund" />} />
+            <Route path="/legal" element={<PrivacyPolicy defaultTab="privacy" />} />
 
             <Route path="/admin/*" element={<Admin />} />
             <Route path="/assets" element={<Navigate to="/admin/assets" replace />} />
@@ -112,7 +112,7 @@ function AnimatedRoutes() {
             <Route path="/login" element={<Navigate to="/admin" replace />} />
             <Route path="/admin-login" element={<Navigate to="/admin" replace />} />
 
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </motion.div>
       </AnimatePresence>

@@ -21,9 +21,13 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export default function PrivacyPolicy() {
+interface PrivacyPolicyProps {
+  defaultTab?: 'privacy' | 'terms' | 'refund';
+}
+
+export default function PrivacyPolicy({ defaultTab }: PrivacyPolicyProps = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = searchParams.get('tab') || 'privacy';
+  const initialTab = defaultTab || searchParams.get('tab') || 'privacy';
   const [activeTab, setActiveTab] = useState<'privacy' | 'terms' | 'refund'>(
     initialTab === 'terms' || initialTab === 'refund' ? initialTab : 'privacy'
   );
@@ -153,6 +157,7 @@ export default function PrivacyPolicy() {
         }
         description={`Read the official ${activeTab === 'privacy' ? 'Privacy Policy' : activeTab === 'terms' ? 'Terms of Service' : 'Refund Policy'} of Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region, Ghana. Clear standards governing data protection, service terms, and refund guarantees.`}
         keywords={`Grefas ${activeTab}, legal policy Ghana, privacy policy Nyinahin, terms of service Ashanti Region, refund policy Grefas`}
+        canonical="/privacy-policy"
       />
 
       {/* Hero Header */}

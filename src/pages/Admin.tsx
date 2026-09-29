@@ -555,6 +555,7 @@ export default function Admin() {
       <SEO 
         title="Admin Portal" 
         description="Secure management portal for Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana." 
+        noIndex={true}
       />
       {/* Mobile Sidebar Toggle */}
       <div className="md:hidden flex items-center p-4 border-b border-border bg-card justify-between sticky top-0 z-30">

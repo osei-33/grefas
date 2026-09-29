@@ -362,32 +362,28 @@ async function startServer() {
   });
 
   // SEO: Dynamic robots.txt for search engines
-  // Helper to determine the canonical public URL for sitemaps and SEO
-  const resolveRequestOrigin = (req: express.Request, explicitBaseUrl?: string): string => {
-    // 1. Explicit domain passed in query or body (e.g. ?domain=https://grefasconsultandentertainment.com)
-    const candidate = explicitBaseUrl || (req.query?.domain as string) || (req.query?.baseUrl as string);
-    if (candidate && typeof candidate === 'string' && candidate.trim().startsWith('http')) {
+  // Canonical production domain for sitemaps and SEO
+  const CANONICAL_PRODUCTION_DOMAIN = 'https://grefasconsultandentertainment.com';
+
+  const resolveRequestOrigin = (req?: express.Request, explicitBaseUrl?: string): string => {
+    // 1. Explicit domain passed in query or body if it is an approved external custom domain
+    const candidate = explicitBaseUrl || (req?.query?.domain as string) || (req?.query?.baseUrl as string);
+    if (candidate && typeof candidate === 'string') {
       const cleanCandidate = candidate.trim().replace(/\/+$/, '');
-      if (!cleanCandidate.includes('ais-dev-') && !cleanCandidate.includes('localhost')) {
+      if (
+        cleanCandidate.startsWith('http') && 
+        !cleanCandidate.includes('ais-dev-') && 
+        !cleanCandidate.includes('run.app') && 
+        !cleanCandidate.includes('localhost') && 
+        !cleanCandidate.includes('127.0.0.1') &&
+        !cleanCandidate.includes('googleusercontent')
+      ) {
         return cleanCandidate;
       }
     }
 
-    // 2. Incoming request host (supports reverse proxies, Cloud Run, custom domains)
-    const rawForwardedHost = (req.headers['x-forwarded-host'] as string) || '';
-    const forwardedHost = rawForwardedHost.split(',')[0].trim();
-    const host = forwardedHost || req.get('host') || (req.headers['host'] as string) || '';
-
-    const rawForwardedProto = (req.headers['x-forwarded-proto'] as string) || '';
-    const protocol = rawForwardedProto.split(',')[0].trim() || req.protocol || 'https';
-
-    // If request host is a real public domain and NOT an internal dev Cloud Run instance (ais-dev-) or localhost
-    if (host && !host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('ais-dev-')) {
-      return `${protocol}://${host}`.replace(/\/+$/, '');
-    }
-
-    // 3. Fallback to official canonical production domain
-    return (process.env.CANONICAL_DOMAIN || 'https://grefasconsultandentertainment.com').replace(/\/+$/, '');
+    // Always strictly return canonical production domain for all sitemaps, robots, and SEO metadata
+    return (process.env.CANONICAL_DOMAIN || CANONICAL_PRODUCTION_DOMAIN).replace(/\/+$/, '');
   };
 
   app.get("/robots.txt", (req, res) => {
@@ -2787,6 +2783,136 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
     }
   });
 
+  // SEO Metadata Map for Server-Side Meta Injection
+  const ROUTE_SEO_MAP: Record<string, { title: string; description: string; canonical: string; noIndex?: boolean }> = {
+    "/": {
+      title: "Grefas Consult & Entertainment | Nyinahin-Ashanti, Ghana",
+      description: "Grefas Consult & Entertainment is your premier partner for professional business consulting, corporate advisory, movie & skit production, event management, and talent recruitment in Nyinahin-Ashanti, Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/",
+    },
+    "/about": {
+      title: "About Us & Company History | Grefas Consult & Entertainment",
+      description: "Learn about Grefas Consult & Entertainment, our history in Nyinahin-Ashanti, our executive leadership, values, and community impact across the Ashanti Region.",
+      canonical: "https://grefasconsultandentertainment.com/about",
+    },
+    "/services": {
+      title: "Our Services - Business Advisory & Entertainment | Grefas Consult & Entertainment",
+      description: "Explore Grefas Consult & Entertainment's comprehensive service offerings: corporate advisory, movie production, event management, and talent recruitment in Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/services",
+    },
+    "/portfolio": {
+      title: "Portfolio & Creative Productions | Grefas Consult & Entertainment",
+      description: "Browse completed advisory cases, films, media campaigns, and cultural productions by Grefas Consult & Entertainment in Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/portfolio",
+    },
+    "/gallery": {
+      title: "Photo & Video Gallery | Grefas Consult & Entertainment",
+      description: "Experience our high-energy corporate galas, behind-the-scenes film sets, and community cultural events in Nyinahin-Ashanti, Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/gallery",
+    },
+    "/team": {
+      title: "Our Expert Team & Advisors | Grefas Consult & Entertainment",
+      description: "Meet the experienced team of business strategists, casting directors, video producers, and event coordinators at Grefas Consult & Entertainment in Nyinahin-Ashanti, led by founder Dr. Linda Serwaah.",
+      canonical: "https://grefasconsultandentertainment.com/team",
+    },
+    "/booking": {
+      title: "Book an Appointment or Consultation | Grefas Consult & Entertainment",
+      description: "Schedule an appointment with Grefas Consult & Entertainment experts in Nyinahin-Ashanti. Instant booking with automated confirmation order numbers.",
+      canonical: "https://grefasconsultandentertainment.com/booking",
+    },
+    "/contact": {
+      title: "Contact Us & Nyinahin Office Location | Grefas Consult & Entertainment",
+      description: "Contact Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223). Reach our consulting and production team via call, WhatsApp, or instant messaging.",
+      canonical: "https://grefasconsultandentertainment.com/contact",
+    },
+    "/sponsorship": {
+      title: "Sponsor Us & Donate - Youth & Creative Arts | Grefas Consult & Entertainment",
+      description: "Support budding young African actors, filmmakers, and creative innovators in Ghana. Sponsor Grefas Consult & Entertainment with any contribution amount via Paystack.",
+      canonical: "https://grefasconsultandentertainment.com/sponsorship",
+    },
+    "/work-with-us": {
+      title: "Work With Us - Careers & Auditions | Grefas Consult & Entertainment",
+      description: "Join Grefas Consult & Entertainment. Explore current career opportunities, audition calls for upcoming movie & skit productions, and internships in Nyinahin-Ashanti.",
+      canonical: "https://grefasconsultandentertainment.com/work-with-us",
+    },
+    "/my-applications": {
+      title: "My Applications - Track Status | Grefas Consult & Entertainment",
+      description: "Check the review status of your job, audition, or talent recruitment application with Grefas Consult & Entertainment.",
+      canonical: "https://grefasconsultandentertainment.com/my-applications",
+      noIndex: true,
+    },
+    "/privacy-policy": {
+      title: "Privacy Policy, Terms of Service & Refund Guarantees | Grefas Consult & Entertainment",
+      description: "Read the official Privacy Policy, Terms of Service, and Refund Guarantee of Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/privacy-policy",
+    },
+    "/privacy": {
+      title: "Privacy Policy | Grefas Consult & Entertainment",
+      description: "Read the official Privacy Policy of Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/privacy-policy",
+    },
+    "/terms": {
+      title: "Terms of Service | Grefas Consult & Entertainment",
+      description: "Read the official Terms of Service of Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/privacy-policy",
+    },
+    "/terms-of-service": {
+      title: "Terms of Service | Grefas Consult & Entertainment",
+      description: "Read the official Terms of Service of Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/privacy-policy",
+    },
+    "/refund": {
+      title: "Refund Policy | Grefas Consult & Entertainment",
+      description: "Read the official Refund Policy and consumer guarantee terms of Grefas Consult & Entertainment in Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/privacy-policy",
+    },
+    "/refund-policy": {
+      title: "Refund Policy | Grefas Consult & Entertainment",
+      description: "Read the official Refund Policy and consumer guarantee terms of Grefas Consult & Entertainment in Ghana.",
+      canonical: "https://grefasconsultandentertainment.com/privacy-policy",
+    },
+  };
+
+  const injectSeoIntoHtml = (html: string, reqPath: string): string => {
+    let cleanPath = (reqPath.split('?')[0] || '/').trim();
+    if (cleanPath.length > 1 && cleanPath.endsWith('/')) {
+      cleanPath = cleanPath.slice(0, -1);
+    }
+
+    const meta = ROUTE_SEO_MAP[cleanPath];
+    if (!meta) {
+      if (cleanPath.startsWith('/services/')) {
+        const canonical = `https://grefasconsultandentertainment.com${cleanPath}`;
+        return html
+          .replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${canonical}"`)
+          .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${canonical}"`);
+      }
+      if (cleanPath.startsWith('/admin')) {
+        return html.replace(
+          /<meta name="robots" content="[^"]*"/,
+          '<meta name="robots" content="noindex, nofollow"'
+        );
+      }
+      return html;
+    }
+
+    let out = html;
+    out = out.replace(/<title>.*?<\/title>/i, `<title>${meta.title}</title>`);
+    out = out.replace(/<meta\s+name="description"\s+content=".*?"/i, `<meta name="description" content="${meta.description}"`);
+    out = out.replace(/<link\s+rel="canonical"\s+href=".*?"/i, `<link rel="canonical" href="${meta.canonical}"`);
+    out = out.replace(/<meta\s+property="og:title"\s+content=".*?"/i, `<meta property="og:title" content="${meta.title}"`);
+    out = out.replace(/<meta\s+property="og:description"\s+content=".*?"/i, `<meta property="og:description" content="${meta.description}"`);
+    out = out.replace(/<meta\s+property="og:url"\s+content=".*?"/i, `<meta property="og:url" content="${meta.canonical}"`);
+    out = out.replace(/<meta\s+name="twitter:title"\s+content=".*?"/i, `<meta name="twitter:title" content="${meta.title}"`);
+    out = out.replace(/<meta\s+name="twitter:description"\s+content=".*?"/i, `<meta name="twitter:description" content="${meta.description}"`);
+
+    if (meta.noIndex) {
+      out = out.replace(/<meta\s+name="robots"\s+content=".*?"/i, '<meta name="robots" content="noindex, nofollow"');
+    }
+
+    return out;
+  };
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -2803,9 +2929,22 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
       }));
       
       app.get("*", (req, res) => {
+        // Skip API routes that were unhandled
+        if (req.path.startsWith('/api/')) {
+          res.status(404).json({ error: "API endpoint not found" });
+          return;
+        }
+
         const indexPath = path.join(distPath, "index.html");
         if (fs.existsSync(indexPath)) {
-          res.sendFile(indexPath);
+          try {
+            const rawHtml = fs.readFileSync(indexPath, "utf-8");
+            const renderedHtml = injectSeoIntoHtml(rawHtml, req.path);
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+            res.send(renderedHtml);
+          } catch (readErr) {
+            res.sendFile(indexPath);
+          }
         } else {
           res.status(404).send("Production build (index.html) not found. Please run 'npm run build'.");
         }

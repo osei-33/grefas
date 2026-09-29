@@ -35,7 +35,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { db } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
-import { Helmet } from 'react-helmet-async';
+import SEO from '@/components/SEO';
 import { openPaystackModal, generatePaystackReference } from '@/lib/paystack';
 import { Link } from 'react-router-dom';
 
@@ -457,15 +457,12 @@ export default function Sponsorship() {
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20">
-      <Helmet>
-        <title>Sponsor Us & Donate | Grefas Consult & Entertainment</title>
-        <meta 
-          name="description" 
-          content="Support budding young African actors, filmmakers, and creative innovators in Ghana. Sponsor Grefas Consult & Entertainment with any contribution amount." 
-        />
-        <meta property="og:title" content="Sponsor Us & Donate | Grefas Consult & Entertainment" />
-        <meta property="og:description" content="Empowering the next generation of creative talents, film productions, and youth empowerment in Ghana." />
-      </Helmet>
+      <SEO 
+        title="Sponsor Us & Donate - Youth & Creative Arts"
+        description="Support budding young African actors, filmmakers, and creative innovators in Ghana. Sponsor Grefas Consult & Entertainment with any contribution amount via Paystack."
+        keywords="sponsor Grefas, donate Ghana youth arts, creative arts sponsorship Nyinahin, African film funding"
+        canonical="/sponsorship"
+      />
 
       {/* Hero Header */}
       <section className="relative overflow-hidden bg-gradient-to-b from-card to-background border-b border-border/40 py-16 lg:py-24">
