@@ -8,10 +8,15 @@ import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot, collection, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useLanguage } from '@/lib/LanguageContext';
 import SEO from '@/components/SEO';
-import BlogSection from '@/components/BlogSection';
-import InteractiveGuide from '@/components/InteractiveGuide';
-
+import Breadcrumbs from '@/components/Breadcrumbs';
 import { AdSense } from '@/components/AdSense';
+import heroCorporate from '@/assets/images/hero_corporate_consulting_1790949711989.jpg';
+import heroProduction from '@/assets/images/hero_movie_production_1790949723470.jpg';
+import heroEntertainment from '@/assets/images/hero_cultural_entertainment_1790949735555.jpg';
+
+// Code-split below-the-fold content blocks for fast First Contentful Paint (FCP)
+const BlogSection = React.lazy(() => import('@/components/BlogSection'));
+const InteractiveGuide = React.lazy(() => import('@/components/InteractiveGuide'));
 
 export default function Home() {
   const { t, language } = useLanguage();
@@ -184,10 +189,9 @@ export default function Home() {
   const [customCarouselImages, setCustomCarouselImages] = useState<string[]>([]);
 
   const defaultSlides = [
-    "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=1920",
-    "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=1920",
-    "https://images.unsplash.com/photo-1515187029135-18ee286d815b?auto=format&fit=crop&q=80&w=1920",
-    "https://images.unsplash.com/photo-1505236858219-8359eb29e329?auto=format&fit=crop&q=80&w=1920"
+    heroCorporate,
+    heroProduction,
+    heroEntertainment
   ];
 
   const slides = customCarouselImages.length > 0 ? customCarouselImages : defaultSlides;
@@ -255,6 +259,7 @@ export default function Home() {
         description="Welcome to Grefas Consult & Entertainment in Nyinahin-Ashanti, Ashanti Region, Ghana. Leading agency for strategic corporate advisory, movie and skit production, talent casting, artiste management, and visa interview preparation."
         keywords="Grefas Consult, Grefas Entertainment, Nyinahin-Ashanti consulting, Ashanti Region corporate advisory, movie casting Ghana, artiste management Ghana, visa interview prep Nyinahin, event video production Ghana"
       />
+      <Breadcrumbs />
 
       {/* Vacancy Alert Banner */}
       {vacancyActive && (
@@ -308,22 +313,15 @@ export default function Home() {
             <img
               src={slides[currentSlide]}
               alt={`Grefas Consult & Entertainment - Business & Production Showcase Slide ${currentSlide + 1}`}
-              className="h-full w-full object-cover opacity-50"
+              className="h-full w-full object-cover opacity-55 transition-transform duration-700"
+              loading={currentSlide === 0 ? "eager" : "lazy"}
+              decoding="async"
               referrerPolicy="no-referrer"
             />
-            {/* Tech Dot Matrix Grid Overlay */}
-            <div className="absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
-            
-            {/* Watermark */}
-            <div className="pointer-events-none absolute bottom-8 left-8 z-10 select-none opacity-10">
-              <p className="text-sm font-bold tracking-[0.2em] text-white">
-                GREFAS CONSULT AND ENTERTAINMENT
-              </p>
-            </div>
+            {/* Subtle atmospheric vignette */}
+            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-black/70 pointer-events-none" />
           </motion.div>
         </AnimatePresence>
-
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-zinc-900" />
 
         <div className="relative mx-auto flex h-full max-w-7xl flex-col justify-center px-4 sm:px-6 lg:px-8 z-10">
           <motion.div
@@ -331,23 +329,24 @@ export default function Home() {
             className="max-w-4xl"
           >
             <motion.div
-              initial={{ opacity: 0, x: -50 }}
+              initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8, delay: 0.2 }}
+              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-orange-400"
             >
-              <span className="inline-block rounded-full bg-orange-600/20 px-4 py-1 text-sm font-semibold text-orange-500 backdrop-blur-sm border border-orange-500/20">
-                {t('hero.badge')}
-              </span>
+              <span>{t('hero.badge')}</span>
+              <span aria-hidden="true" className="text-orange-500/60">·</span>
+              <span className="text-zinc-400 font-normal">Nyinahin-Ashanti, Ghana</span>
             </motion.div>
 
             {/* Static Title */}
-            <div className="relative mt-6 py-4">
+            <div className="relative mt-5 py-2">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.3 }}
               >
-                <h1 className="text-5xl font-black tracking-tighter text-white sm:text-8xl uppercase shadow-orange-600/20 drop-shadow-2xl">
+                <h1 className="text-4xl font-black tracking-tight text-white sm:text-7xl lg:text-8xl uppercase drop-shadow-2xl text-balance">
                   Grefas Consult <span className="text-orange-600">&</span> Entertainment
                 </h1>
               </motion.div>
@@ -684,12 +683,16 @@ export default function Home() {
       {/* Interactive Guide Video Animation simulation */}
       <section className="bg-zinc-950 py-24 border-t border-zinc-900">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <InteractiveGuide />
+          <React.Suspense fallback={<div className="min-h-[300px] flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-600" /></div>}>
+            <InteractiveGuide />
+          </React.Suspense>
         </div>
       </section>
 
       {/* Blog Section at the bottom of the page */}
-      <BlogSection />
+      <React.Suspense fallback={<div className="min-h-[300px] flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-600" /></div>}>
+        <BlogSection />
+      </React.Suspense>
 
       {/* Testimonials Carousel Section */}
       <section className="bg-zinc-900 py-24 border-t border-zinc-800 text-white relative overflow-hidden">

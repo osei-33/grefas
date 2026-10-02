@@ -17,9 +17,12 @@ import { toast } from 'sonner';
 import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer, ShieldCheck, Smartphone, CreditCard, Lock, CheckCircle } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 import { showBrowserNotification } from '@/lib/utils';
-import AppointmentCountdown from '@/components/AppointmentCountdown';
-import AuthDialog from '@/components/AuthDialog';
+
+// Code-split auxiliary components to lighten booking flow initialization
+const AppointmentCountdown = React.lazy(() => import('@/components/AppointmentCountdown'));
+const AuthDialog = React.lazy(() => import('@/components/AuthDialog'));
 import { 
   generatePaystackReference, 
   initializePaystackPayment, 
@@ -1190,6 +1193,7 @@ export default function Booking() {
         keywords="book Grefas, schedule consultation Nyinahin, event booking Ghana, Mobile Money appointment, Grefas booking pass"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <Breadcrumbs />
         <div className="text-center mb-16">
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
@@ -2205,12 +2209,14 @@ export default function Booking() {
                       {/* Dynamic Appointment Countdown */}
                       {statusSearchResult.status !== 'cancelled' && statusSearchResult.date && statusSearchResult.time && (
                         <div className="px-6 pt-6 bg-card">
-                          <AppointmentCountdown 
-                            dateStr={statusSearchResult.date} 
-                            timeStr={statusSearchResult.time} 
-                            title="Time remaining until scheduled appointment"
-                            theme="orange"
-                          />
+                          <React.Suspense fallback={null}>
+                            <AppointmentCountdown 
+                              dateStr={statusSearchResult.date} 
+                              timeStr={statusSearchResult.time} 
+                              title="Time remaining until scheduled appointment"
+                              theme="orange"
+                            />
+                          </React.Suspense>
                         </div>
                       )}
 
@@ -2442,12 +2448,14 @@ export default function Booking() {
 
             {lastCreatedBooking && lastCreatedBooking.date && lastCreatedBooking.time && (
               <div className="w-full space-y-4">
-                <AppointmentCountdown 
-                  dateStr={lastCreatedBooking.date}
-                  timeStr={lastCreatedBooking.time}
-                  title="Time remaining until appointment"
-                  theme="light"
-                />
+                <React.Suspense fallback={null}>
+                  <AppointmentCountdown 
+                    dateStr={lastCreatedBooking.date}
+                    timeStr={lastCreatedBooking.time}
+                    title="Time remaining until appointment"
+                    theme="light"
+                  />
+                </React.Suspense>
 
                 <Button
                   type="button"
@@ -2615,11 +2623,15 @@ export default function Booking() {
         </div>
       </div>
 
-      <AuthDialog 
-        isOpen={bookingAuthOpen} 
-        onClose={() => setBookingAuthOpen(false)} 
-        defaultMode={bookingAuthDefaultMode} 
-      />
+      {bookingAuthOpen && (
+        <React.Suspense fallback={null}>
+          <AuthDialog 
+            isOpen={bookingAuthOpen} 
+            onClose={() => setBookingAuthOpen(false)} 
+            defaultMode={bookingAuthDefaultMode} 
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 }

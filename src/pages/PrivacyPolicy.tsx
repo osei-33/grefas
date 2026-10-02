@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { 
@@ -163,6 +164,17 @@ export default function PrivacyPolicy({ defaultTab }: PrivacyPolicyProps = {}) {
       {/* Hero Header */}
       <section id="privacy-hero-banner" className="relative overflow-hidden bg-gradient-to-b from-orange-500/10 via-background to-background py-12 border-b border-border/50 no-print">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <div className="text-left mb-6">
+            <Breadcrumbs 
+              customLabels={{
+                'privacy-policy': activeTab === 'privacy' 
+                  ? 'Privacy Policy' 
+                  : activeTab === 'terms' 
+                  ? 'Terms of Service' 
+                  : 'Refund Policy'
+              }}
+            />
+          </div>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

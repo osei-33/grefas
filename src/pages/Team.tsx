@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Loader2, Briefcase, Award, Star, Mail, ArrowRight, Filter, Sparkles, Check, CheckCircle, Flame, Calendar, MessageSquare, Send, ArrowLeft, MessageCircle } from 'lucide-react';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 interface TeamMember {
   id: string;
@@ -270,6 +271,7 @@ export default function Team() {
         keywords="Grefas team, Dr Linda Serwaah, Ghana corporate advisors, casting directors Nyinahin, event producers Ashanti Region, Grefas staff"
       />
       <div className="mx-auto max-w-7xl">
+        <Breadcrumbs />
         
         {/* Header Block */}
         <div className="text-center mb-16 max-w-3xl mx-auto">

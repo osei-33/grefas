@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2, ArrowLeft, Calendar, Star, Trash2, ShieldCheck, MessageSquare } from 'lucide-react';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 import AuthDialog from '@/components/AuthDialog';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -211,7 +212,10 @@ export default function ServiceDetail() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 pt-12 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-5xl px-4 pt-8 sm:px-6 lg:px-8">
+        <Breadcrumbs 
+          customLabels={{ [id || '']: service.title || 'Service Details' }} 
+        />
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <motion.section

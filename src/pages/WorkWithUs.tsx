@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 export default function WorkWithUs() {
   const [user, setUser] = useState<any>(null);
@@ -620,6 +621,7 @@ export default function WorkWithUs() {
       />
 
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+        <Breadcrumbs />
         
         {/* Page Banner Header */}
         <div className="text-center space-y-4 mb-12">

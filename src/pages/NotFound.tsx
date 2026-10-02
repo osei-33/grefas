@@ -4,6 +4,7 @@ import { motion } from 'motion/react';
 import { ArrowLeft, Home, Calendar, Briefcase, Phone, HelpCircle, Compass, Film, Users, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 export default function NotFound() {
   return (
@@ -17,6 +18,14 @@ export default function NotFound() {
 
       <div className="min-h-[80vh] flex items-center justify-center py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl w-full text-center space-y-8">
+          <div className="flex justify-center">
+            <Breadcrumbs 
+              items={[
+                { name: 'Home', path: '/' },
+                { name: 'Page Not Found (404)', path: '/404' }
+              ]} 
+            />
+          </div>
           
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}

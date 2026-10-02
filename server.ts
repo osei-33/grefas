@@ -2855,10 +2855,9 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
       canonical: "https://grefasconsultandentertainment.com/work-with-us",
     },
     "/my-applications": {
-      title: "My Applications - Track Status | Grefas Consult & Entertainment",
-      description: "Check the review status of your job, audition, or talent recruitment application with Grefas Consult & Entertainment.",
+      title: "My Applications & Talent Portal | Grefas Consult & Entertainment",
+      description: "Check the review status of your job, audition, or talent recruitment application with Grefas Consult & Entertainment in Nyinahin-Ashanti, Ghana.",
       canonical: "https://grefasconsultandentertainment.com/my-applications",
-      noIndex: true,
     },
     "/privacy-policy": {
       title: "Privacy Policy, Terms of Service & Refund Guarantees | Grefas Consult & Entertainment",
@@ -2906,6 +2905,13 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
           .replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${canonical}"`)
           .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${canonical}"`);
       }
+      if (cleanPath.startsWith('/blog/')) {
+        const canonical = `https://grefasconsultandentertainment.com${cleanPath}`;
+        return html
+          .replace(/<title>.*?<\/title>/i, `<title>Grefas Insights & News | Grefas Consult & Entertainment</title>`)
+          .replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${canonical}"`)
+          .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${canonical}"`);
+      }
       if (cleanPath.startsWith('/admin')) {
         return html.replace(
           /<meta name="robots" content="[^"]*"/,
@@ -2929,6 +2935,38 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
       out = out.replace(/<meta\s+name="robots"\s+content=".*?"/i, '<meta name="robots" content="noindex, nofollow"');
     }
 
+    // Generate server-side Schema.org BreadcrumbList JSON-LD for instant crawler indexing
+    try {
+      const pathSegments = cleanPath.split('/').filter(Boolean);
+      const breadcrumbItems: Array<{ '@type': string; position: number; name: string; item: string }> = [
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Home',
+          item: 'https://grefasconsultandentertainment.com/'
+        }
+      ];
+
+      let runningPath = '';
+      pathSegments.forEach((segment, i) => {
+        runningPath += `/${segment}`;
+        const segmentMeta = ROUTE_SEO_MAP[runningPath];
+        const rawLabel = segment.replace(/[-_]+/g, ' ');
+        const segmentName = segmentMeta?.title ? segmentMeta.title.split('|')[0].trim() : (rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1));
+        breadcrumbItems.push({
+          '@type': 'ListItem',
+          position: i + 2,
+          name: segmentName,
+          item: `https://grefasconsultandentertainment.com${runningPath}`
+        });
+      });
+
+      const breadcrumbScript = `<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":${JSON.stringify(breadcrumbItems)}}</script>`;
+      out = out.replace('</head>', `  ${breadcrumbScript}\n  </head>`);
+    } catch (e) {
+      // Graceful fallback without breaking page delivery
+    }
+
     return out;
   };
 
@@ -2942,8 +2980,15 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
     console.log("Running in development mode (Vite middleware enabled)");
   } else {
     if (fs.existsSync(distPath)) {
+      // Long-term immutable caching for hashed production assets
+      app.use('/assets', express.static(path.join(distPath, 'assets'), {
+        maxAge: '1y',
+        immutable: true,
+      }));
+
+      // Standard caching for root static assets (favicons, manifest, robots, sitemap, og-image)
       app.use(express.static(distPath, {
-        maxAge: '1d',
+        maxAge: '1h',
         index: false // We handle index.html manually below for SPA fallback
       }));
       

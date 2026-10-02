@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 import AuthDialog from '@/components/AuthDialog';
 import { jsPDF } from 'jspdf';
 import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
@@ -937,9 +938,11 @@ export default function MyApplications() {
         title="My Talent & Application Portal"
         description="Track and manage your audition submissions, career application status, interview schedules, and service passes securely with Grefas Consult & Entertainment."
         keywords="Grefas portal, application status Ghana, audition tracker Nyinahin, Grefas career dashboard"
+        canonical="/my-applications"
       />
 
       <div className="max-w-4xl mx-auto">
+        <Breadcrumbs />
         {/* Banner Section */}
         <div className="text-center mb-8">
           <motion.div

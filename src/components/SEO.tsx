@@ -69,7 +69,7 @@ export default function SEO({
   // Compute canonical URL strictly anchored to canonical production domain
   const canonicalUrl = getCleanCanonicalUrl(canonical);
 
-  const defaultOgImage = 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=80';
+  const defaultOgImage = 'https://grefasconsultandentertainment.com/og-image.jpg';
   const displayOgImage = ogImage || defaultOgImage;
 
   return (
@@ -79,7 +79,8 @@ export default function SEO({
       <meta name="description" content={displayDescription} />
       <meta name="keywords" content={displayKeywords} />
       <meta name="author" content="Grefas Consult & Entertainment" />
-      <meta name="robots" content={noIndex ? 'noindex, nofollow' : 'index, follow'} />
+      <meta name="robots" content={noIndex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'} />
+      <meta name="googlebot" content={noIndex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'} />
       <link rel="canonical" href={canonicalUrl} />
 
       {/* Language Alternates */}
@@ -90,6 +91,9 @@ export default function SEO({
       <meta property="og:title" content={displayTitle} />
       <meta property="og:description" content={displayDescription} />
       <meta property="og:image" content={displayOgImage} />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:alt" content={displayTitle} />
       <meta property="og:url" content={canonicalUrl} />
       <meta property="og:site_name" content={brandName} />
 

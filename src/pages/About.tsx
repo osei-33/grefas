@@ -5,6 +5,8 @@ import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
+import aboutHeadquarters from '@/assets/images/about_grefas_headquarters_1790949746176.jpg';
 
 export default function About() {
   const [settings, setSettings] = useState<any>(null);
@@ -41,6 +43,7 @@ export default function About() {
         keywords="About Grefas Consult, Dr Linda Serwaah, Grefas leadership, Nyinahin business history, Ghana entertainment agency, corporate consulting Ashanti Region"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <Breadcrumbs />
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -76,19 +79,15 @@ export default function About() {
             animate={{ opacity: 1, x: 0 }}
             className="relative"
           >
-            <div className="aspect-[4/5] overflow-hidden rounded-3xl bg-muted shadow-xl relative">
+            <div className="aspect-[4/3] sm:aspect-[4/5] overflow-hidden rounded-3xl bg-muted shadow-xl relative border border-border/60">
               <img
-                src={settings?.aboutImageUrl || "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=800"}
+                src={settings?.aboutImageUrl || aboutHeadquarters}
                 alt="About Grefas Consult & Entertainment - Corporate Office & Creative Operations in Nyinahin, Ghana"
                 className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
               />
-              {/* Watermark */}
-              <div className="pointer-events-none absolute bottom-4 left-4 z-10 select-none opacity-20">
-                <p className="text-xs font-bold tracking-widest text-white drop-shadow-lg">
-                  GREFAS CONSULT AND ENTERTAINMENT
-                </p>
-              </div>
             </div>
             <div className="absolute -bottom-6 -left-6 h-32 w-32 rounded-full bg-orange-600/10 blur-3xl" />
           </motion.div>

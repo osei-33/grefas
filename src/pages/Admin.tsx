@@ -37,15 +37,19 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import ManageBlog from './ManageBlog';
-import SmsDashboard from '@/components/SmsDashboard';
-import ManageLetters from '@/components/ManageLetters';
-import ManageEmployeesPayroll from '@/components/ManageEmployeesPayroll';
-import ManageLegalPolicies from '@/components/ManageLegalPolicies';
-import ManageSitemap from './ManageSitemap';
-import ManageSponsorships from '@/components/admin/ManageSponsorships';
-import ManageCompanyAssets from '@/components/admin/ManageCompanyAssets';
+
+// Code-split heavy admin sub-sections to minimize bundle footprint
+const ManageBlog = React.lazy(() => import('./ManageBlog'));
+const SmsDashboard = React.lazy(() => import('@/components/SmsDashboard'));
+const ManageLetters = React.lazy(() => import('@/components/ManageLetters'));
+const ManageEmployeesPayroll = React.lazy(() => import('@/components/ManageEmployeesPayroll'));
+const ManageLegalPolicies = React.lazy(() => import('@/components/ManageLegalPolicies'));
+const ManageSitemap = React.lazy(() => import('./ManageSitemap'));
+const ManageSponsorships = React.lazy(() => import('@/components/admin/ManageSponsorships'));
+const ManageCompanyAssets = React.lazy(() => import('@/components/admin/ManageCompanyAssets'));
+
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 import { getPaystackWebhookEvents, simulateTestWebhook } from '@/lib/paystack';
 
 const isAdminEmail = (email: string | null | undefined) => {
@@ -1113,55 +1117,63 @@ export default function Admin() {
 
       {/* Main Content */}
       <main className="flex-1 p-8 bg-background">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/services" element={<ManageServices />} />
-          <Route path="/intakes" element={<AdminServiceRequests />} />
-          <Route path="/careers" element={<ManageCareerApplications />} />
-          <Route path="/career-applications" element={<ManageCareerApplications />} />
-          <Route path="/gallery" element={<ManageGallery />} />
-          <Route path="/portfolio" element={<ManagePortfolio />} />
-          <Route path="/bookings" element={<ManageBookings />} />
-          <Route path="/transactions" element={<ManageTransactions />} />
-          <Route path="/assets" element={<ManageCompanyAssets />} />
-          <Route path="/company-assets" element={<ManageCompanyAssets />} />
-          <Route path="/inventory" element={<ManageCompanyAssets />} />
-          <Route path="/equipment" element={<ManageCompanyAssets />} />
-          <Route path="/gear" element={<ManageCompanyAssets />} />
-          <Route path="/sponsorships" element={<ManageSponsorships />} />
-          <Route path="/sponsorship" element={<ManageSponsorships />} />
-          <Route path="/donations" element={<ManageSponsorships />} />
-          <Route path="/team" element={<ManageTeam />} />
-          <Route path="/tasks" element={<ManageTasks />} />
-          <Route path="/blog" element={<ManageBlog />} />
-          <Route path="/newsletter" element={<ManageNewsletter />} />
-          <Route path="/letters" element={<ManageLetters />} />
-          <Route path="/payroll" element={<ManageEmployeesPayroll />} />
-          <Route path="/staff" element={<ManageEmployeesPayroll />} />
-          <Route path="/employees" element={<ManageEmployeesPayroll />} />
-          <Route path="/testimonials" element={<ManageTestimonials />} />
-          <Route path="/announcements" element={<ManageVisitorAlerts />} />
-          <Route path="/policies" element={<ManageLegalPolicies />} />
-          <Route path="/sitemap" element={<ManageSitemap />} />
-          <Route path="/seo" element={<ManageSitemap />} />
-          <Route path="/profile" element={<AdminProfile />} />
-          <Route path="/activity" element={<ManageActivityLog />} />
-          <Route path="/audit" element={<ManageActivityLog />} />
-          <Route path="/audit-trail" element={<ManageActivityLog />} />
-          <Route path="/logs" element={<ManageActivityLog />} />
-          {hasAdminAccess && (
-            <>
-              <Route path="/users" element={<ManageUsers />} />
-              <Route path="/chat" element={<ManageChat />} />
-              <Route path="/sms" element={<SmsDashboard />} />
-              <Route path="/settings" element={<ManageSettings />} />
-              <Route path="/bank-details" element={<ManageSettings />} />
-              <Route path="/bank" element={<ManageSettings />} />
-              <Route path="/office" element={<ManageSettings />} />
-            </>
-          )}
-          <Route path="*" element={<Navigate to="/admin" replace />} />
-        </Routes>
+        <Breadcrumbs className="mb-6" />
+        <React.Suspense fallback={
+          <div className="min-h-[400px] flex flex-col items-center justify-center p-8 gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Loading dashboard section...</p>
+          </div>
+        }>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/services" element={<ManageServices />} />
+            <Route path="/intakes" element={<AdminServiceRequests />} />
+            <Route path="/careers" element={<ManageCareerApplications />} />
+            <Route path="/career-applications" element={<ManageCareerApplications />} />
+            <Route path="/gallery" element={<ManageGallery />} />
+            <Route path="/portfolio" element={<ManagePortfolio />} />
+            <Route path="/bookings" element={<ManageBookings />} />
+            <Route path="/transactions" element={<ManageTransactions />} />
+            <Route path="/assets" element={<ManageCompanyAssets />} />
+            <Route path="/company-assets" element={<ManageCompanyAssets />} />
+            <Route path="/inventory" element={<ManageCompanyAssets />} />
+            <Route path="/equipment" element={<ManageCompanyAssets />} />
+            <Route path="/gear" element={<ManageCompanyAssets />} />
+            <Route path="/sponsorships" element={<ManageSponsorships />} />
+            <Route path="/sponsorship" element={<ManageSponsorships />} />
+            <Route path="/donations" element={<ManageSponsorships />} />
+            <Route path="/team" element={<ManageTeam />} />
+            <Route path="/tasks" element={<ManageTasks />} />
+            <Route path="/blog" element={<ManageBlog />} />
+            <Route path="/newsletter" element={<ManageNewsletter />} />
+            <Route path="/letters" element={<ManageLetters />} />
+            <Route path="/payroll" element={<ManageEmployeesPayroll />} />
+            <Route path="/staff" element={<ManageEmployeesPayroll />} />
+            <Route path="/employees" element={<ManageEmployeesPayroll />} />
+            <Route path="/testimonials" element={<ManageTestimonials />} />
+            <Route path="/announcements" element={<ManageVisitorAlerts />} />
+            <Route path="/policies" element={<ManageLegalPolicies />} />
+            <Route path="/sitemap" element={<ManageSitemap />} />
+            <Route path="/seo" element={<ManageSitemap />} />
+            <Route path="/profile" element={<AdminProfile />} />
+            <Route path="/activity" element={<ManageActivityLog />} />
+            <Route path="/audit" element={<ManageActivityLog />} />
+            <Route path="/audit-trail" element={<ManageActivityLog />} />
+            <Route path="/logs" element={<ManageActivityLog />} />
+            {hasAdminAccess && (
+              <>
+                <Route path="/users" element={<ManageUsers />} />
+                <Route path="/chat" element={<ManageChat />} />
+                <Route path="/sms" element={<SmsDashboard />} />
+                <Route path="/settings" element={<ManageSettings />} />
+                <Route path="/bank-details" element={<ManageSettings />} />
+                <Route path="/bank" element={<ManageSettings />} />
+                <Route path="/office" element={<ManageSettings />} />
+              </>
+            )}
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Routes>
+        </React.Suspense>
       </main>
 
       {/* Security Session Expiry Warning Modal */}

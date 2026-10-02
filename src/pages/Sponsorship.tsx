@@ -36,6 +36,7 @@ import { db } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 import { openPaystackModal, generatePaystackReference } from '@/lib/paystack';
 import { Link } from 'react-router-dom';
 
@@ -471,6 +472,7 @@ export default function Sponsorship() {
         <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <Breadcrumbs />
           <div className="max-w-3xl mx-auto text-center space-y-4">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-600 dark:text-orange-400 text-xs font-bold tracking-wide uppercase">
               <HeartHandshake className="h-4 w-4" />

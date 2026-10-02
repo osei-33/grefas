@@ -1,16 +1,32 @@
+import * as React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, ChevronRight } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
+import { CANONICAL_DOMAIN } from '@/components/SEO';
 
-interface BreadcrumbsProps {
-  customLabels?: Record<string, string>;
-  className?: string;
+export interface BreadcrumbItem {
+  name: string;
+  path?: string;
 }
 
-export default function Breadcrumbs({ customLabels = {}, className = "" }: BreadcrumbsProps) {
-  const location = useLocation();
-  const pathnames = location.pathname.split('/').filter((x) => x);
+interface BreadcrumbsProps {
+  items?: BreadcrumbItem[];
+  customLabels?: Record<string, string>;
+  className?: string;
+  showOnHome?: boolean;
+}
 
-  // Common label overrides
+export default function Breadcrumbs({ 
+  items, 
+  customLabels = {}, 
+  className = "",
+  showOnHome = false 
+}: BreadcrumbsProps) {
+  const location = useLocation();
+  const pathnames = location.pathname.split('/').filter(Boolean);
+  const isHome = location.pathname === '/';
+
+  // Comprehensive label overrides for all public & portal routes
   const defaultLabels: Record<string, string> = {
     services: 'Our Services',
     portfolio: 'Agency Portfolio',
@@ -18,57 +34,134 @@ export default function Breadcrumbs({ customLabels = {}, className = "" }: Bread
     booking: 'Elite Scheduling',
     admin: 'Command Panel',
     team: 'Expert Consultants',
-    about: 'Corporate Bio',
-    contact: 'Contact Desk',
-    apps: 'My Applications',
+    about: 'About Us',
+    'about-us': 'About Us',
+    contact: 'Contact Us',
+    'contact-us': 'Contact Us',
+    sponsorship: 'Sponsor Us & Donate',
+    sponsor: 'Sponsor Us & Donate',
+    donate: 'Sponsor Us & Donate',
+    'work-with-us': 'Careers & Auditions',
+    workwithus: 'Careers & Auditions',
+    careers: 'Careers & Auditions',
+    auditions: 'Careers & Auditions',
+    'my-applications': 'My Applications',
+    applications: 'My Applications',
+    'privacy-policy': 'Legal & Policies',
+    privacy: 'Privacy Policy',
+    terms: 'Terms of Service',
+    'terms-of-service': 'Terms of Service',
+    refund: 'Refund Policy',
+    'refund-policy': 'Refund Policy',
+    legal: 'Legal & Policies',
+    assets: 'Company Assets',
+    payroll: 'Payroll & Staff',
+    letters: 'Official Letters',
+    sms: 'SMS Dashboard',
+    sitemap: 'Sitemap & Indexing',
     ...customLabels,
   };
 
+  // Build breadcrumb items list
+  const breadcrumbList: BreadcrumbItem[] = items || [
+    { name: 'Home', path: '/' },
+    ...pathnames.map((segment, index) => {
+      const path = `/${pathnames.slice(0, index + 1).join('/')}`;
+      const raw = segment.replace(/[-_]+/g, ' ');
+      const label = defaultLabels[segment.toLowerCase()] || 
+        raw.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      return { name: label, path };
+    })
+  ];
+
+  // Generate Google-compliant Schema.org BreadcrumbList JSON-LD
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbList.map((crumb, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      name: crumb.name,
+      item: crumb.path 
+        ? (crumb.path.startsWith('http') ? crumb.path : `${CANONICAL_DOMAIN}${crumb.path === '/' ? '' : crumb.path}`)
+        : `${CANONICAL_DOMAIN}${location.pathname}`
+    }))
+  };
+
+  // If on homepage and visual display isn't requested, render JSON-LD only
+  if (isHome && !showOnHome) {
+    return (
+      <Helmet>
+        <script type="application/ld+json">
+          {JSON.stringify(breadcrumbJsonLd)}
+        </script>
+      </Helmet>
+    );
+  }
+
   return (
-    <nav 
-      aria-label="Breadcrumb" 
-      className={`flex items-center space-x-1.5 text-xs font-medium text-muted-foreground mb-8 select-none ${className}`}
-      id="navigation-breadcrumbs"
-    >
-      <Link
-        to="/"
-        className="flex items-center gap-1 hover:text-orange-600 transition-colors duration-200"
-        title="Go view home desk"
+    <>
+      {/* Schema.org BreadcrumbList JSON-LD for Google & Search Engine Indexing */}
+      <Helmet>
+        <script type="application/ld+json">
+          {JSON.stringify(breadcrumbJsonLd)}
+        </script>
+      </Helmet>
+
+      {/* Visual Semantic Breadcrumb Navigation with HTML Microdata */}
+      <nav 
+        aria-label="Breadcrumb" 
+        className={`flex items-center space-x-1.5 text-xs font-medium text-muted-foreground mb-6 select-none ${className}`}
+        id="navigation-breadcrumbs"
+        itemScope
+        itemType="https://schema.org/BreadcrumbList"
       >
-        <Home className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Home</span>
-      </Link>
+        <ol className="flex flex-wrap items-center gap-1.5">
+          {breadcrumbList.map((crumb, index) => {
+            const isLast = index === breadcrumbList.length - 1;
+            const absoluteUrl = crumb.path 
+              ? (crumb.path.startsWith('http') ? crumb.path : `${CANONICAL_DOMAIN}${crumb.path === '/' ? '' : crumb.path}`)
+              : `${CANONICAL_DOMAIN}${location.pathname}`;
 
-      {pathnames.map((value, index) => {
-        const last = index === pathnames.length - 1;
-        const to = `/${pathnames.slice(0, index + 1).join('/')}`;
-        const rawLabel = value.replace(/[-_]+/g, ' ');
-        const overrideLabel = defaultLabels[value.toLowerCase()];
-        
-        // Capitalize words if no custom override
-        const displayLabel = overrideLabel || rawLabel.split(' ').map(
-          word => word.charAt(0).toUpperCase() + word.slice(1)
-        ).join(' ');
-
-        return (
-          <div key={to} className="flex items-center space-x-1.5">
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/45 shrink-0" />
-            {last ? (
-              <span className="font-semibold text-foreground/90 truncate max-w-[160px] sm:max-w-[240px]">
-                {displayLabel}
-              </span>
-            ) : (
-              <Link
-                to={to}
-                className="hover:text-orange-600 transition-colors duration-200 truncate max-w-[120px] sm:max-w-[200px]"
-                title={`Back to ${displayLabel}`}
+            return (
+              <li 
+                key={`${crumb.name}-${index}`}
+                className="flex items-center space-x-1.5"
+                itemProp="itemListElement"
+                itemScope
+                itemType="https://schema.org/ListItem"
               >
-                {displayLabel}
-              </Link>
-            )}
-          </div>
-        );
-      })}
-    </nav>
+                {index > 0 && (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" aria-hidden="true" />
+                )}
+
+                {isLast ? (
+                  <span 
+                    className="font-semibold text-foreground truncate max-w-[180px] sm:max-w-[320px]"
+                    itemProp="name"
+                    aria-current="page"
+                  >
+                    {crumb.name}
+                  </span>
+                ) : (
+                  <Link
+                    to={crumb.path || '/'}
+                    className="flex items-center gap-1 hover:text-orange-600 transition-colors duration-200 truncate max-w-[140px] sm:max-w-[220px]"
+                    title={`Navigate to ${crumb.name}`}
+                    itemProp="item"
+                  >
+                    {index === 0 && <Home className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+                    <span itemProp="name">{crumb.name}</span>
+                  </Link>
+                )}
+
+                <meta itemProp="position" content={String(index + 1)} />
+                <link itemProp="item" href={absoluteUrl} />
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+    </>
   );
 }

@@ -10,6 +10,7 @@ import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { showBrowserNotification } from '@/lib/utils';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 export default function Contact() {
   const [settings, setSettings] = useState<any>(null);
@@ -443,6 +444,7 @@ export default function Contact() {
         keywords="Contact Grefas, Nyinahin office address, Grefas phone number, Ashanti Region consulting contact, GPS AI-0008-9223"
       />
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <Breadcrumbs />
         <div className="text-center">
           <motion.h1
             initial={{ opacity: 0, y: 20 }}

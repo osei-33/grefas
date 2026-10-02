@@ -67,6 +67,18 @@ export default defineConfig(({mode}) => {
     },
     build: {
       target: 'es2022',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router', 'react-router-dom', 'react-helmet-async'],
+            'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+            'vendor-icons': ['lucide-react'],
+            'vendor-motion': ['motion/react'],
+            'vendor-charts': ['recharts'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 1500,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

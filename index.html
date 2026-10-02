@@ -7,7 +7,8 @@
     <meta name="description" content="Grefas Consult & Entertainment is your premier partner for professional business consulting, corporate advisory, movie & skit production, event management, and talent recruitment in Nyinahin-Ashanti, Ghana." />
     <meta name="keywords" content="Grefas Consult, Entertainment Nyinahin, Ashanti Region Consulting, Ghana business advisory, movie casting Ghana, event planners Nyinahin" />
     <meta name="author" content="Grefas Consult & Entertainment" />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
     
     <!-- Canonical Tag -->
     <link rel="canonical" href="https://grefasconsultandentertainment.com/" />
@@ -15,16 +16,19 @@
     <!-- Open Graph / Facebook Social Share Cards -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Grefas Consult & Entertainment | Nyinahin-Ashanti, Ghana" />
-    <meta property="og:description" content="Premier professional consulting and world-class entertainment services based in Nyinahin-Ashanti, Ashanti Region, Ghana." />
+    <meta property="og:description" content="Premier professional corporate consulting, movie and skit production, event management, and talent recruitment based in Nyinahin-Ashanti, Ghana." />
     <meta property="og:url" content="https://grefasconsultandentertainment.com/" />
     <meta property="og:site_name" content="Grefas Consult & Entertainment" />
-    <meta property="og:image" content="https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=80" />
+    <meta property="og:image" content="https://grefasconsultandentertainment.com/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Grefas Consult & Entertainment Official Showcase" />
 
     <!-- Twitter / X Cards -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Grefas Consult & Entertainment | Nyinahin-Ashanti, Ghana" />
-    <meta name="twitter:description" content="Premier professional consulting and world-class entertainment services based in Nyinahin-Ashanti, Ashanti Region, Ghana." />
-    <meta name="twitter:image" content="https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=80" />
+    <meta name="twitter:description" content="Premier professional corporate consulting, movie and skit production, event management, and talent recruitment based in Nyinahin-Ashanti, Ghana." />
+    <meta name="twitter:image" content="https://grefasconsultandentertainment.com/og-image.jpg" />
 
     <!-- Geo Locational Tags -->
     <meta name="geo.region" content="GH-AH" />
@@ -32,32 +36,97 @@
     <meta name="geo.position" content="6.6178;-2.0944" />
     <meta name="ICBM" content="6.6178, -2.0944" />
 
-    <!-- Schema.org JSON-LD Structured Data -->
+    <!-- Schema.org JSON-LD Structured Data for Google Rich Snippets -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": ["LocalBusiness", "EntertainmentBusiness", "ProfessionalService"],
-      "name": "Grefas Consult & Entertainment",
-      "alternateName": "Grefas Consult",
-      "url": "https://grefasconsultandentertainment.com/",
-      "logo": "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=80",
-      "image": "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=80",
-      "description": "Premier professional consulting and world-class entertainment services based in Nyinahin-Ashanti, Ashanti Region, Ghana.",
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "GPS Address AI-0008-9223",
-        "addressLocality": "Nyinahin",
-        "addressRegion": "Ashanti Region",
-        "addressCountry": "GH"
-      },
-      "geo": {
-        "@type": "GeoCoordinates",
-        "latitude": 6.6178,
-        "longitude": -2.0944
-      },
-      "telephone": "+233541234567",
-      "email": "info@grefasconsultandentertainment.com",
-      "priceRange": "$$"
+      "@graph": [
+        {
+          "@type": ["LocalBusiness", "EntertainmentBusiness", "ProfessionalService"],
+          "@id": "https://grefasconsultandentertainment.com/#organization",
+          "name": "Grefas Consult & Entertainment",
+          "alternateName": ["Grefas Consult", "Grefas Entertainment", "Grefas Group"],
+          "url": "https://grefasconsultandentertainment.com/",
+          "logo": "https://grefasconsultandentertainment.com/og-image.jpg",
+          "image": "https://grefasconsultandentertainment.com/og-image.jpg",
+          "description": "Premier professional business consulting, corporate advisory, movie & skit production, event management, talent recruitment, and visa preparation in Nyinahin-Ashanti, Ashanti Region, Ghana.",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "GPS Address AI-0008-9223",
+            "addressLocality": "Nyinahin",
+            "addressRegion": "Ashanti Region",
+            "addressCountry": "GH"
+          },
+          "geo": {
+            "@type": "GeoCoordinates",
+            "latitude": 6.6178,
+            "longitude": -2.0944
+          },
+          "telephone": "+233541234567",
+          "email": "info@grefasconsultandentertainment.com",
+          "priceRange": "$$",
+          "openingHoursSpecification": [
+            {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+              "opens": "08:00",
+              "closes": "18:00"
+            }
+          ],
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "Corporate & Entertainment Services",
+            "itemListElement": [
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Strategic Corporate & Business Consulting",
+                  "description": "Enterprise advisory, business plan formulation, compliance, and growth consulting in Ghana."
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Film, Skit & Media Production",
+                  "description": "Full-lifecycle film making, comedy and educational skit creation, location shooting, and post-production."
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Artiste & Talent Management",
+                  "description": "Casting calls, auditions, brand endorsements, and career representation for African creative talents."
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Executive Visa Interview Preparation",
+                  "description": "Corporate mock interviews, documentation reviews, and international travel readiness coaching."
+                }
+              }
+            ]
+          }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://grefasconsultandentertainment.com/#website",
+          "url": "https://grefasconsultandentertainment.com/",
+          "name": "Grefas Consult & Entertainment",
+          "publisher": {
+            "@id": "https://grefasconsultandentertainment.com/#organization"
+          },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://grefasconsultandentertainment.com/services?search={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        }
+      ]
     }
     </script>
 

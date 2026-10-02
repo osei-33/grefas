@@ -14,6 +14,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { AdSense } from '@/components/AdSense';
 import { safeGetLocalStorage, safeSetLocalStorage } from '@/lib/utils';
 import SEO from '@/components/SEO';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 const ImageWithLoading = ({ src, alt, className, onClick }: { src: string; alt: string; className?: string; onClick?: () => void }) => {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -751,6 +752,7 @@ export default function Gallery() {
       <div className="relative overflow-hidden pt-24 pb-16 bg-muted/10">
         <div className="absolute inset-0 z-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)', backgroundSize: '32px 32px' }}></div>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 relative z-10">
+          <Breadcrumbs />
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
