@@ -6752,12 +6752,20 @@ function ManageGallery() {
         body: JSON.stringify({ prompt: generationPrompt })
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Server returned ${response.status}`);
+      const rawText = await response.text();
+      let data: any = null;
+      if (rawText && !rawText.trimStart().startsWith('<')) {
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = null;
+        }
       }
 
-      const data = await response.json();
+      if (!response.ok || !data) {
+        throw new Error(data?.error || `Server returned ${response.status}`);
+      }
+
       if (data.success && data.url) {
         setNewItem({ ...newItem, url: data.url, title: generationPrompt });
         toast.success('Image generated successfully!');

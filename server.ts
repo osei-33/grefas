@@ -2469,14 +2469,38 @@ Sitemap: ${domain}/sitemap.xml`);
   });
 
   app.post("/api/letters/generate", async (req, res) => {
-    const { recipientName, recipientType, recipientAddress, subject, additionalContext, tone } = req.body;
+    const { recipientName, recipientType, recipientAddress, subject, additionalContext, tone } = req.body || {};
     
     if (!recipientName || !subject) {
       return res.status(400).json({ error: "Missing required fields: recipientName or subject" });
     }
 
+    const buildTailoredLetterFallback = () => {
+      const cleanRecipient = String(recipientName).trim();
+      const cleanSubject = String(subject).trim();
+      const cleanContext = additionalContext ? String(additionalContext).trim() : "";
+      const selectedTone = String(tone || "Professional").toLowerCase();
+
+      let openingParagraph = `We are writing to formally address ${cleanRecipient} on behalf of Grefas Entertainment & Consult regarding ${cleanSubject}. Our management board values our professional relationship and wishes to communicate the key details and strategic expectations surrounding this matter.`;
+      if (selectedTone.includes("friendly") || selectedTone.includes("warm")) {
+        openingParagraph = `It is a pleasure to reach out to ${cleanRecipient} on behalf of the entire team at Grefas Entertainment & Consult regarding ${cleanSubject}. We truly appreciate our ongoing connection and are delighted to share the following updates and opportunities with you.`;
+      } else if (selectedTone.includes("urgent") || selectedTone.includes("strict")) {
+        openingParagraph = `This official correspondence is directed to ${cleanRecipient} from Grefas Entertainment & Consult requiring prompt attention regarding ${cleanSubject}. Please review the operational directives and timeline requirements outlined below.`;
+      } else if (selectedTone.includes("celebratory") || selectedTone.includes("congrat")) {
+        openingParagraph = `On behalf of the leadership and creative board at Grefas Entertainment & Consult, we are thrilled to write to ${cleanRecipient} regarding ${cleanSubject}. It gives us immense pride to recognize this milestone and formally outline the details below.`;
+      }
+
+      const bodyParagraph = cleanContext
+        ? `Specifically, in relation to ${cleanContext}, our executive and operations divisions have thoroughly reviewed all relevant requirements to ensure seamless execution. We remain committed to upholding the highest standards of corporate governance, creative excellence, and mutual accountability throughout every phase of this engagement.`
+        : `Our executive and operations divisions have thoroughly reviewed the scope and objectives associated with ${cleanSubject}. We remain committed to upholding the highest standards of corporate governance, creative excellence, and mutual accountability throughout every phase of this engagement.`;
+
+      const closingParagraph = `To ensure a smooth and timely progression, we kindly request that you review these details and confirm your alignment or availability at your earliest convenience. Should you require any additional clarification or supporting documentation, please contact our administrative desk directly so we may assist you promptly.`;
+
+      return `${openingParagraph}\n\n${bodyParagraph}\n\n${closingParagraph}`;
+    };
+
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY environment variable is not configured." });
+      return res.json({ text: buildTailoredLetterFallback(), isFallback: true });
     }
 
     try {
@@ -2500,14 +2524,14 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
 
       let responseText = "";
       try {
-        console.log("Attempting letter generation with gemini-3.6-flash...");
+        console.log("Attempting letter generation with gemini-3.8-flash...");
         const response = await ai.models.generateContent({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.8-flash",
           contents: prompt,
         });
         responseText = response.text || "";
       } catch (firstErr: any) {
-        console.log("Primary model gemini-3.6-flash unavailable/quota limited. Trying fallback gemini-flash-latest...", firstErr.message || firstErr);
+        console.log("Primary model gemini-3.8-flash unavailable/quota limited. Trying fallback gemini-flash-latest...", firstErr.message || firstErr);
         try {
           const response = await ai.models.generateContent({
             model: "gemini-flash-latest",
@@ -2516,26 +2540,14 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
           responseText = response.text || "";
         } catch (secondErr: any) {
           console.log("All remote Gemini models quota limited or offline. Invoking local text generator...", secondErr.message || secondErr);
-          // Bulletproof local fallback generator
-          const contextText = additionalContext ? `In regard to ${additionalContext}, we want to reiterate our commitment to excellence.` : "We are writing to officially outline our terms and look forward to a highly successful cooperation.";
-          responseText = `We are pleased to write to you on behalf of Grefas Entertainment & Productions concerning our ongoing discussions and mutual interests in the creative industry. As we move forward with our strategic plans, we want to express our sincere appreciation for your interest and proposed engagement with our organization.
-
-${contextText} Our team is fully dedicated to ensuring that all aspects of this undertaking are executed with the highest standards of professionalism and artistic integrity. We believe that this collaboration will yield exceptional results and create outstanding value for both parties.
-
-To facilitate the next steps, we propose that we schedule a formal review session to finalize the details and establish a clear timeline for our upcoming projects. Please review the attached contract guidelines, and let us know your availability at your earliest convenience so we can proceed accordingly.`;
+          responseText = buildTailoredLetterFallback();
         }
       }
 
-      res.json({ text: responseText });
+      res.json({ text: responseText || buildTailoredLetterFallback() });
     } catch (err: any) {
       console.log("Gemini letter generation fallback triggered:", err?.message || err);
-      const contextText = additionalContext ? `In regard to ${additionalContext}, we want to reiterate our commitment to excellence.` : "We are writing to officially outline our terms and look forward to a highly successful cooperation.";
-      const responseText = `We are pleased to write to you on behalf of Grefas Entertainment & Productions concerning our ongoing discussions and mutual interests in the creative industry. As we move forward with our strategic plans, we want to express our sincere appreciation for your interest and proposed engagement with our organization.
-
-${contextText} Our team is fully dedicated to ensuring that all aspects of this undertaking are executed with the highest standards of professionalism and artistic integrity. We believe that this collaboration will yield exceptional results and create outstanding value for both parties.
-
-To facilitate the next steps, we propose that we schedule a formal review session to finalize the details and establish a clear timeline for our upcoming projects. Please review the attached contract guidelines, and let us know your availability at your earliest convenience so we can proceed accordingly.`;
-      res.json({ text: responseText, isFallback: true });
+      res.json({ text: buildTailoredLetterFallback(), isFallback: true });
     }
   });
 
@@ -2969,6 +2981,11 @@ To facilitate the next steps, we propose that we schedule a formal review sessio
 
     return out;
   };
+
+  // Ensure unhandled /api/* routes always return JSON instead of falling through to SPA HTML
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.path}` });
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
