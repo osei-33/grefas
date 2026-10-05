@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { 
   Globe, 
@@ -125,19 +126,29 @@ export default function ManageSitemap() {
     const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
     const urlElements = Array.from(xmlDoc.getElementsByTagName('url'));
 
-    return urlElements.map((el) => {
-      const loc = el.getElementsByTagName('loc')[0]?.textContent || '';
-      const lastmod = el.getElementsByTagName('lastmod')[0]?.textContent || '';
-      const changefreq = el.getElementsByTagName('changefreq')[0]?.textContent || '';
-      const priority = el.getElementsByTagName('priority')[0]?.textContent || '';
+    return urlElements
+      .map((el) => {
+        const loc = el.getElementsByTagName('loc')[0]?.textContent || '';
+        const lastmod = el.getElementsByTagName('lastmod')[0]?.textContent || '';
+        const changefreq = el.getElementsByTagName('changefreq')[0]?.textContent || '';
+        const priority = el.getElementsByTagName('priority')[0]?.textContent || '';
 
-      let type: 'service' | 'blog' | 'portfolio' | 'page' = 'page';
-      if (loc.includes('/services/')) type = 'service';
-      else if (loc.includes('/blog/')) type = 'blog';
-      else if (loc.includes('/portfolio')) type = 'portfolio';
+        let localPath = '/';
+        try {
+          const parsed = new URL(loc);
+          localPath = parsed.pathname + parsed.hash;
+        } catch {
+          localPath = loc.startsWith('/') ? loc : '/';
+        }
 
-      return { loc, lastmod, changefreq, priority, type };
-    });
+        let type: 'service' | 'blog' | 'portfolio' | 'page' = 'page';
+        if (loc.includes('/services/')) type = 'service';
+        else if (loc.includes('/blog/')) type = 'blog';
+        else if (loc.includes('/portfolio')) type = 'portfolio';
+
+        return { loc, localPath, lastmod, changefreq, priority, type };
+      })
+      .filter((item) => !item.localPath.startsWith('/blog/'));
   }, [xmlContent]);
 
   const filteredUrls = parsedUrls.filter((item) =>
@@ -609,14 +620,12 @@ export default function ManageSitemap() {
                       </td>
 
                       <td className="px-4 py-3 text-right">
-                        <a
-                          href={item.loc}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <Link
+                          to={item.localPath}
                           className="inline-flex items-center text-xs font-medium text-orange-600 hover:text-orange-700 hover:underline"
                         >
                           Visit <ArrowRight className="ml-1 h-3 w-3" />
-                        </a>
+                        </Link>
                       </td>
                     </tr>
                   ))

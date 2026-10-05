@@ -1,4 +1,4 @@
-const CACHE_NAME = 'grefas-pwa-v1';
+const CACHE_NAME = 'grefas-pwa-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -35,14 +35,20 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - Cache-first with network fallback for assets; Network-first for navigation & APIs
+// Fetch event - Never cache Vite dev modules or node_modules chunks
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET requests, extension schemes, or third-party/API endpoints
+  // Skip non-GET requests, Vite dev server modules, node_modules, or API endpoints
   if (
     event.request.method !== 'GET' ||
     url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.endsWith('.tsx') ||
+    url.pathname.endsWith('.ts') ||
+    url.search.includes('v=') ||
     url.hostname.includes('firestore.googleapis.com') ||
     url.hostname.includes('firebase') ||
     url.hostname.includes('google') ||

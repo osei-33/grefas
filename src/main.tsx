@@ -46,16 +46,24 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
-// Register PWA service worker for offline support and mobile installation
+// Register PWA service worker in production only; unregister in dev to prevent module cache conflicts
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        console.log('Grefas PWA Service Worker registered:', registration.scope);
-      })
-      .catch((error) => {
-        console.warn('Grefas PWA Service Worker registration failed:', error);
-      });
-  });
+  if ((import.meta as any).env?.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((registration) => {
+          console.log('Grefas PWA Service Worker registered:', registration.scope);
+        })
+        .catch((error) => {
+          console.warn('Grefas PWA Service Worker registration failed:', error);
+        });
+    });
+  } else {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister();
+      }
+    });
+  }
 }

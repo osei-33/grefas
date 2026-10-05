@@ -9,14 +9,12 @@ import { doc, onSnapshot, collection, query, where, addDoc, serverTimestamp } fr
 import { useLanguage } from '@/lib/LanguageContext';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import BlogSection from '@/components/BlogSection';
+import InteractiveGuide from '@/components/InteractiveGuide';
 import { AdSense } from '@/components/AdSense';
 import heroCorporate from '@/assets/images/hero_corporate_consulting_1790949711989.jpg';
 import heroProduction from '@/assets/images/hero_movie_production_1790949723470.jpg';
 import heroEntertainment from '@/assets/images/hero_cultural_entertainment_1790949735555.jpg';
-
-// Code-split below-the-fold content blocks for fast First Contentful Paint (FCP)
-const BlogSection = React.lazy(() => import('@/components/BlogSection'));
-const InteractiveGuide = React.lazy(() => import('@/components/InteractiveGuide'));
 
 export default function Home() {
   const { t, language } = useLanguage();
@@ -227,7 +225,14 @@ export default function Home() {
         setAdvertDescription(data.advertDescription || 'Explore our latest premium entertainment and casting showcases from Nyinahin-Ashanti.');
         setAdvertImageUrl(data.advertImageUrl || 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2Zic3VzbjRraHBhYTRqYWZ1cnpsbHVpZXB0czdrY3I2dnpqdjU1NSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7TKUM3Y5MgX9sLYs/giphy.gif');
         setAdvertVideoUrl(data.advertVideoUrl || 'https://www.w3schools.com/html/mov_bbb.mp4');
-        setAdvertLink(data.advertLink || '/services');
+        const rawAdvertLink = (data.advertLink || '/services').trim();
+        const normalizedAdvertLink =
+          !rawAdvertLink || rawAdvertLink === '#'
+            ? '/services'
+            : rawAdvertLink.startsWith('/') || rawAdvertLink.startsWith('http://') || rawAdvertLink.startsWith('https://')
+            ? rawAdvertLink
+            : `https://${rawAdvertLink}`;
+        setAdvertLink(normalizedAdvertLink);
 
         if (data.homeCarouselImages && Array.isArray(data.homeCarouselImages) && data.homeCarouselImages.length > 0) {
           setCustomCarouselImages(data.homeCarouselImages);
@@ -565,9 +570,15 @@ export default function Home() {
 
               {advertLink && (
                 <Button asChild variant="outline" className="border-orange-500/20 hover:bg-orange-500/5 hover:text-orange-600 rounded-xl h-10 px-5 text-xs font-bold uppercase tracking-wider shrink-0">
-                  <a href={advertLink} target="_blank" rel="noopener noreferrer">
-                    Explore Promotion <ArrowRight className="ml-2 h-4 w-4" />
-                  </a>
+                  {advertLink.startsWith('/') ? (
+                    <Link to={advertLink}>
+                      Explore Promotion <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  ) : (
+                    <a href={advertLink} target="_blank" rel="noopener noreferrer">
+                      Explore Promotion <ArrowRight className="ml-2 h-4 w-4" />
+                    </a>
+                  )}
                 </Button>
               )}
             </div>
@@ -611,15 +622,25 @@ export default function Home() {
                   </p>
                   {advertLink && (
                     <div className="pt-2">
-                      <a 
-                        href={advertLink} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center text-xs font-bold text-orange-500 hover:text-orange-400 group/link"
-                      >
-                        Visit sponsor campaign
-                        <ArrowRight className="ml-1 h-3.5 w-3.5 transition-transform group-hover/link:translate-x-1" />
-                      </a>
+                      {advertLink.startsWith('/') ? (
+                        <Link 
+                          to={advertLink}
+                          className="inline-flex items-center text-xs font-bold text-orange-500 hover:text-orange-400 group/link"
+                        >
+                          Visit sponsor campaign
+                          <ArrowRight className="ml-1 h-3.5 w-3.5 transition-transform group-hover/link:translate-x-1" />
+                        </Link>
+                      ) : (
+                        <a 
+                          href={advertLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-xs font-bold text-orange-500 hover:text-orange-400 group/link"
+                        >
+                          Visit sponsor campaign
+                          <ArrowRight className="ml-1 h-3.5 w-3.5 transition-transform group-hover/link:translate-x-1" />
+                        </a>
+                      )}
                     </div>
                   )}
                 </div>
@@ -683,16 +704,12 @@ export default function Home() {
       {/* Interactive Guide Video Animation simulation */}
       <section className="bg-zinc-950 py-24 border-t border-zinc-900">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <React.Suspense fallback={<div className="min-h-[300px] flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-600" /></div>}>
-            <InteractiveGuide />
-          </React.Suspense>
+          <InteractiveGuide />
         </div>
       </section>
 
       {/* Blog Section at the bottom of the page */}
-      <React.Suspense fallback={<div className="min-h-[300px] flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-600" /></div>}>
-        <BlogSection />
-      </React.Suspense>
+      <BlogSection />
 
       {/* Testimonials Carousel Section */}
       <section className="bg-zinc-900 py-24 border-t border-zinc-800 text-white relative overflow-hidden">

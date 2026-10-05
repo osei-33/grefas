@@ -83,7 +83,7 @@ export async function generateDynamicSitemap(overrideBaseUrl?: string): Promise<
     console.error('Sitemap Generator - Error fetching services from Firestore:', err);
   }
 
-  // 2. Fetch active blogs from Firestore
+  // 2. Count active blogs from Firestore (rendered on homepage BlogSection, no standalone /blog/:slug route)
   try {
     const blogsSnap = await getDocs(collection(db, 'blogs'));
     blogsSnap.docs.forEach((docSnap) => {
@@ -92,20 +92,6 @@ export async function generateDynamicSitemap(overrideBaseUrl?: string): Promise<
         return;
       }
       blogCount++;
-      let lastmod = today;
-      if (data.updatedAt?.seconds) {
-        lastmod = new Date(data.updatedAt.seconds * 1000).toISOString().split('T')[0];
-      } else if (data.createdAt?.seconds) {
-        lastmod = new Date(data.createdAt.seconds * 1000).toISOString().split('T')[0];
-      }
-
-      const slug = data.slug || docSnap.id;
-      dynamicEntries.push({
-        url: `/blog/${slug}`,
-        lastmod,
-        priority: '0.7',
-        changefreq: 'weekly',
-      });
     });
   } catch (err) {
     // collection might not exist yet

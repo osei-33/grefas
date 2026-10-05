@@ -29,14 +29,14 @@ export default defineConfig(({mode}) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
-        'react': path.resolve(__dirname, './node_modules/react'),
-        'react-dom': path.resolve(__dirname, './node_modules/react-dom'),
       },
       dedupe: [
         'react',
         'react-dom',
         'react-router',
         'react-router-dom',
+        'react-helmet-async',
+        'motion',
         'firebase',
         '@firebase/app',
         '@firebase/auth',
@@ -52,14 +52,28 @@ export default defineConfig(({mode}) => {
       include: [
         'react',
         'react-dom',
+        'react-dom/client',
         'react/jsx-runtime',
+        'react/jsx-dev-runtime',
         'react-router',
         'react-router-dom',
         'react-helmet-async',
         'firebase/app',
         'firebase/auth',
         'firebase/firestore',
-        'firebase/storage'
+        'firebase/storage',
+        '@paystack/inline-js',
+        'class-variance-authority',
+        'clsx',
+        'date-fns',
+        'jspdf',
+        'lucide-react',
+        'motion/react',
+        'next-themes',
+        'react-day-picker',
+        'recharts',
+        'sonner',
+        'tailwind-merge'
       ],
       esbuildOptions: {
         target: 'es2022',

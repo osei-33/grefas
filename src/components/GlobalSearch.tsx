@@ -37,7 +37,11 @@ export default function GlobalSearch() {
     { id: 'p-gallery', title: 'Media & Production Gallery', description: 'Watch music videos, comedy skits, film clips, client projects, and promotional media files.', category: 'Navigation', type: 'page', url: '/gallery' },
     { id: 'p-team', title: 'Meet Our Experts Team', description: 'Connect with our specialized advisory, business leaders, legal experts, event producers, and creators.', category: 'Navigation', type: 'page', url: '/team' },
     { id: 'p-booking', title: 'Book a Legal/Business Session', description: 'Schedule strategic sessions, physical and remote bookings, and legal contract setups with the Grefas board.', category: 'Navigation', type: 'page', url: '/booking' },
-    { id: 'p-contact', title: 'Contact Grefas Consultants', description: 'Reach our helpline, get GPS directions, drop direct feedback messages, or visit Nyinahin office.', category: 'Navigation', type: 'page', url: '/contact' }
+    { id: 'p-contact', title: 'Contact Grefas Consultants', description: 'Reach our helpline, get GPS directions, drop direct feedback messages, or visit Nyinahin office.', category: 'Navigation', type: 'page', url: '/contact' },
+    { id: 'p-sponsorship', title: 'Sponsor Us & Donate', description: 'Support Grefas Consult & Entertainment initiatives, youth empowerment, and creative productions.', category: 'Navigation', type: 'page', url: '/sponsorship' },
+    { id: 'p-careers', title: 'Work With Us / Careers & Auditions', description: 'Apply for open job vacancies, film auditions, and talent casting calls.', category: 'Navigation', type: 'page', url: '/work-with-us' },
+    { id: 'p-applications', title: 'My Applications Portal', description: 'Track your submitted service requests, casting applications, and payment receipts.', category: 'Navigation', type: 'page', url: '/my-applications' },
+    { id: 'p-privacy', title: 'Privacy Policy, Terms & Refund Policy', description: 'Official governance, privacy protection, terms of service, and refund policies.', category: 'Navigation', type: 'page', url: '/privacy-policy' }
   ];
 
   // Fetch searchable assets once from Firestore
@@ -96,7 +100,7 @@ export default function GlobalSearch() {
             description: data.summary || data.content || '',
             category: data.category || 'Advisory News',
             type: 'blog',
-            url: '/services', // Blogs are typically shown inside or linked to services-blogs modules
+            url: '/',
             imageUrl: data.image || ''
           });
         });

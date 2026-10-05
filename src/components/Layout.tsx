@@ -1,9 +1,13 @@
-import { ReactNode, useEffect, useState, lazy, Suspense } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown, ExternalLink, Navigation, Wrench, Clock, ShieldAlert, Search, Bell } from 'lucide-react';
+import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown, ExternalLink, Navigation, Wrench, Clock, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { safeGetLocalStorage, safeSetLocalStorage, safeGetSessionStorage, safeSetSessionStorage } from '@/lib/utils';
+import Chat from './Chat';
+import NotificationCenter from './NotificationCenter';
+import GlobalSearch from './GlobalSearch';
+import WhatsAppButton from './WhatsAppButton';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot, getDoc, setDoc, increment, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -11,14 +15,8 @@ import { useLanguage, LANGUAGES } from '@/lib/LanguageContext';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Send } from 'lucide-react';
-
-// Code-split auxiliary and floating components to drastically reduce initial DOM blocking
-const Chat = lazy(() => import('./Chat'));
-const NotificationCenter = lazy(() => import('./NotificationCenter'));
-const GlobalSearch = lazy(() => import('./GlobalSearch'));
-const WhatsAppButton = lazy(() => import('./WhatsAppButton'));
-const AuthDialog = lazy(() => import('./AuthDialog'));
-const PwaInstallPrompt = lazy(() => import('./PwaInstallPrompt'));
+import AuthDialog from './AuthDialog';
+import PwaInstallPrompt from './PwaInstallPrompt';
 
 interface LayoutProps {
   children: ReactNode;
@@ -361,9 +359,7 @@ export default function Layout({ children }: LayoutProps) {
               )}
             </Link>
             <div className="hidden lg:block">
-              <Suspense fallback={<div className="h-9 w-44 rounded-xl bg-muted/20 animate-pulse hidden lg:block" />}>
-                <GlobalSearch />
-              </Suspense>
+              <GlobalSearch />
             </div>
           </div>
 
@@ -418,9 +414,7 @@ export default function Layout({ children }: LayoutProps) {
               )}
             </div>
 
-            <Suspense fallback={<div className="h-9 w-9 rounded-xl flex items-center justify-center text-muted-foreground"><Bell className="h-4 w-4 opacity-60" /></div>}>
-              <NotificationCenter />
-            </Suspense>
+            <NotificationCenter />
             <Button
               variant="ghost"
               size="icon"
@@ -456,9 +450,7 @@ export default function Layout({ children }: LayoutProps) {
 
           {/* Mobile Menu Button */}
           <div className="flex items-center space-x-3 md:hidden">
-            <Suspense fallback={<div className="h-9 w-9 rounded-xl flex items-center justify-center text-muted-foreground"><Search className="h-4 w-4 opacity-60" /></div>}>
-              <GlobalSearch />
-            </Suspense>
+            <GlobalSearch />
             <Button
               variant="ghost"
               size="icon"
@@ -467,9 +459,7 @@ export default function Layout({ children }: LayoutProps) {
             >
               {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </Button>
-            <Suspense fallback={<div className="h-9 w-9 rounded-xl flex items-center justify-center text-muted-foreground"><Bell className="h-4 w-4 opacity-60" /></div>}>
-              <NotificationCenter />
-            </Suspense>
+            <NotificationCenter />
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="text-foreground shrink-0"
@@ -567,15 +557,9 @@ export default function Layout({ children }: LayoutProps) {
         {children}
       </main>
 
-      <Suspense fallback={null}>
-        <Chat />
-      </Suspense>
-      <Suspense fallback={null}>
-        <WhatsAppButton phone={settings?.phone} />
-      </Suspense>
-      <Suspense fallback={null}>
-        <PwaInstallPrompt />
-      </Suspense>
+      <Chat />
+      <WhatsAppButton phone={settings?.phone} />
+      <PwaInstallPrompt />
 
       {/* Footer */}
       <footer className="border-t border-border bg-card py-12">
@@ -595,21 +579,26 @@ export default function Layout({ children }: LayoutProps) {
                 {t('footer.description')}
               </p>
               <div className="mt-6 flex space-x-4">
-                <a href={settings?.facebook || "https://facebook.com"} target="_blank" rel="noopener noreferrer" title="Facebook">
-                  <Facebook className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
-                </a>
-                <a href={settings?.instagram || "https://instagram.com"} target="_blank" rel="noopener noreferrer" title="Instagram">
-                  <Instagram className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
-                </a>
-                <a href={settings?.youtube || "https://youtube.com"} target="_blank" rel="noopener noreferrer" title="YouTube">
-                  <Youtube className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
-                </a>
-                <a href={settings?.tiktok || "https://tiktok.com"} target="_blank" rel="noopener noreferrer" title="TikTok">
-                  <Music2 className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
-                </a>
-                <a href={settings?.twitter || "https://x.com"} target="_blank" rel="noopener noreferrer" title="Twitter / X">
-                  <Twitter className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
-                </a>
+                {[
+                  { raw: settings?.facebook, fallback: 'https://facebook.com', title: 'Facebook', Icon: Facebook },
+                  { raw: settings?.instagram, fallback: 'https://instagram.com', title: 'Instagram', Icon: Instagram },
+                  { raw: settings?.youtube, fallback: 'https://youtube.com', title: 'YouTube', Icon: Youtube },
+                  { raw: settings?.tiktok, fallback: 'https://tiktok.com', title: 'TikTok', Icon: Music2 },
+                  { raw: settings?.twitter, fallback: 'https://x.com', title: 'Twitter / X', Icon: Twitter },
+                ].map(({ raw, fallback, title, Icon }) => {
+                  const trimmed = (raw || '').trim();
+                  const href =
+                    !trimmed || trimmed === '#'
+                      ? fallback
+                      : trimmed.startsWith('http://') || trimmed.startsWith('https://')
+                      ? trimmed
+                      : `https://${trimmed.replace(/^\/+/, '')}`;
+                  return (
+                    <a key={title} href={href} target="_blank" rel="noopener noreferrer" title={title}>
+                      <Icon className="h-5 w-5 cursor-pointer text-muted-foreground hover:text-orange-600 transition-colors" />
+                    </a>
+                  );
+                })}
               </div>
             </div>
             <div>
@@ -722,22 +711,15 @@ export default function Layout({ children }: LayoutProps) {
           </div>
           <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
             <p>© {new Date().getFullYear()} Grefas Consult & Entertainment. {t('footer.copyright')}</p>
-            <p className="mt-2 text-xs opacity-70">
-              Grefas Consult & Entertainment was generated using <a href="https://ai.studio" target="_blank" rel="noopener noreferrer" className="hover:text-orange-600 underline decoration-orange-600/30">Google AI Studio</a>
-            </p>
           </div>
         </div>
       </footer>
 
-      {authDialogOpen && (
-        <Suspense fallback={null}>
-          <AuthDialog 
-            isOpen={authDialogOpen} 
-            onClose={() => setAuthDialogOpen(false)} 
-            defaultMode={authDialogDefaultMode} 
-          />
-        </Suspense>
-      )}
+      <AuthDialog 
+        isOpen={authDialogOpen} 
+        onClose={() => setAuthDialogOpen(false)} 
+        defaultMode={authDialogDefaultMode} 
+      />
     </div>
   );
 }

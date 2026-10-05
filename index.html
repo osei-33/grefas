@@ -140,6 +140,59 @@
     <link rel="icon" type="image/svg+xml" href="/pwa-192x192.svg" />
     <link rel="apple-touch-icon" href="/pwa-192x192.svg" />
     <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+
+    <script>
+      (function () {
+        try {
+          var SW_CLEANUP_KEY = 'grefas_sw_cleanup_v4';
+          var tasks = [];
+          if ('caches' in window) {
+            tasks.push(
+              caches.keys().then(function (names) {
+                var stale = names.filter(function (name) {
+                  return name !== 'grefas-pwa-v4';
+                });
+                if (stale.length > 0) {
+                  return Promise.all(
+                    stale.map(function (name) {
+                      return caches.delete(name);
+                    })
+                  ).then(function () {
+                    return true;
+                  });
+                }
+                return false;
+              })
+            );
+          }
+          if ('serviceWorker' in navigator && !sessionStorage.getItem(SW_CLEANUP_KEY)) {
+            tasks.push(
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                if (regs.length > 0) {
+                  return Promise.all(
+                    regs.map(function (reg) {
+                      return reg.unregister();
+                    })
+                  ).then(function () {
+                    return true;
+                  });
+                }
+                return false;
+              })
+            );
+          }
+          if (tasks.length > 0) {
+            Promise.all(tasks).then(function (results) {
+              var cleaned = results.some(Boolean);
+              if (cleaned && !sessionStorage.getItem(SW_CLEANUP_KEY)) {
+                sessionStorage.setItem(SW_CLEANUP_KEY, '1');
+                window.location.reload();
+              }
+            });
+          }
+        } catch (e) {}
+      })();
+    </script>
     
     <script src="https://js.paystack.co/v1/inline.js" async></script>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8193654467459416"
