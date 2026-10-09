@@ -17,10 +17,11 @@ import {
   initializePaystackPayment, 
   verifyPaystackPayment, 
   savePendingPayment, 
+  getPendingPayment,
   clearPendingPayment,
   openPaystackModal
 } from '@/lib/paystack';
-import PaystackPop from '@paystack/inline-js';
+import PaystackPayment from '@/components/PaystackPayment';
 import { usePaystack } from '@/providers/PaystackProvider';
 import { calculateTransactionCharge, useTransactionFee } from '@/lib/transactionFees';
 import { mergeServicesWithDefaults, getServicePricing } from '@/lib/servicePricing';
@@ -75,7 +76,15 @@ export default function Services() {
   const castingPricing = React.useMemo(() => getServicePricing(castingServiceDoc), [castingServiceDoc]);
 
   // Transaction fee calculation (dynamically controlled by admin settings & service discount)
-  const baseIntakePrice = Math.max(0, castingPricing.effectivePrice || Number(intakePrice) || 50);
+  const listedIntakePrice = Math.max(0, castingPricing.effectivePrice || Number(intakePrice) || 50);
+  const isNegotiatingIntakePrice = Boolean(
+    castingPricing.isNegotiable &&
+    intakePricingMode === 'negotiate' &&
+    Number(intakeProposedPrice) > 0
+  );
+  const baseIntakePrice = isNegotiatingIntakePrice
+    ? Math.max(1, Number(intakeProposedPrice))
+    : listedIntakePrice;
   const intakeFeeBreakdown = calculateFeeCharge(baseIntakePrice, false);
   const intakeTransactionFee = intakeFeeBreakdown.feeAmount;
   const intakeTotalPayable = intakeFeeBreakdown.totalAmount;
@@ -89,11 +98,14 @@ export default function Services() {
   const [cardCvv, setCardCvv] = useState('');
   const [cardName, setCardName] = useState('');
   const [isPaying, setIsPaying] = useState(false);
+  const [showPaystackGatewayModal, setShowPaystackGatewayModal] = useState(false);
+  const [autoSubmitAfterPaystack, setAutoSubmitAfterPaystack] = useState(false);
   const [paystackAuthUrl, setPaystackAuthUrl] = useState<string | null>(null);
   const [isVerifyingDirect, setIsVerifyingDirect] = useState(false);
   const [paymentSteps, setPaymentSteps] = useState<string[]>([]);
   const [currentPaymentStep, setCurrentPaymentStep] = useState(0);
   const [paymentRef, setPaymentRef] = useState('');
+  const [paymentChannelUsed, setPaymentChannelUsed] = useState<string>('paystack');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [printableData, setPrintableData] = useState<any | null>(null);
   const [lastSubmittedSnapshot, setLastSubmittedSnapshot] = useState<any | null>(null);
@@ -1170,31 +1182,15 @@ export default function Services() {
   };
 
   const handleProcessPayment = async () => {
-    // Basic fields validation
+    // Validate mobile money phone number if Mobile Money channel is selected
     if (paymentProvider !== 'card') {
-      if (!momoNumber.trim()) {
+      const targetPhone = (momoNumber || formData.contact || '').replace(/[\s-]/g, '');
+      if (!targetPhone) {
         toast.error("Please enter your Mobile Money phone number");
         return;
       }
-      if (!/^0[235][0-9]{8}$/.test(momoNumber.trim())) {
-        toast.error("Please enter a valid 10-digit Ghanaian mobile money number starting with 0");
-        return;
-      }
-    } else {
-      if (!cardName.trim()) {
-        toast.error("Please enter the cardholder's name");
-        return;
-      }
-      if (!cardNumber.trim()) {
-        toast.error("Please enter your card number");
-        return;
-      }
-      if (!cardExpiry.trim()) {
-        toast.error("Please enter your card expiry date");
-        return;
-      }
-      if (!cardCvv.trim()) {
-        toast.error("Please enter your card CVV");
+      if (!/^(\+?233|0)[235][0-9]{8}$/.test(targetPhone)) {
+        toast.error("Please enter a valid Ghanaian mobile money number (e.g. 024XXXXXXX)");
         return;
       }
     }
@@ -1203,17 +1199,31 @@ export default function Services() {
     setCurrentPaymentStep(0);
     const steps = [
       "Initializing Paystack payment gateway...",
-      `Connecting to Paystack ${paymentProvider === 'card' ? 'Card Engine' : (momoProvider + ' Central MoMo Node')}...`,
+      `Connecting to Paystack ${paymentProvider === 'card' ? 'Card Checkout' : (momoProvider + ' Mobile Money Gateway')}...`,
       paymentProvider === 'card' 
-        ? "Processing 3D-Secure authentication..." 
-        : `Sending USSD authorization prompt to ${momoNumber}...`,
+        ? "Launching Paystack 3D-Secure card authorization..." 
+        : `Sending Paystack authorization prompt to ${momoNumber || formData.contact}...`,
       "Verifying transaction settlement with Paystack..."
     ];
     setPaymentSteps(steps);
 
     try {
-      const refCode = generatePaystackReference('GREFAS-CASTING');
+      const refCode = generatePaystackReference('GREFAS-SKIT');
       setPaymentRef(refCode);
+
+      savePendingPayment(refCode, {
+        type: 'skit_intake',
+        formData,
+        baseIntakePrice,
+        intakeTransactionFee,
+        intakeTotalPayable,
+        intakePricingMode,
+        intakeProposedPrice,
+        intakeNegotiationNote,
+        paymentProvider,
+        momoProvider,
+        momoNumber: momoNumber || formData.contact,
+      });
       
       // Attempt to initialize with Paystack server proxy
       let authUrl: string | undefined;
@@ -1226,6 +1236,7 @@ export default function Services() {
           currency: 'GHS',
           reference: refCode,
           metadata: {
+            formType: 'Movie & Skit Making Form',
             fullName: formData.fullName,
             roleType: formData.roleType,
             contact: formData.contact,
@@ -1255,7 +1266,7 @@ export default function Services() {
                               '';
 
       // Open Paystack popup modal with full parameter injection
-      const modalResult = await openPaystackModal({
+      await openPaystackModal({
         publicKey: activePublicKey,
         email: formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com',
         amount: Number(intakeTotalPayable),
@@ -1265,6 +1276,7 @@ export default function Services() {
         authorization_url: authUrl,
         channels: paymentProvider === 'card' ? ['card'] : ['mobile_money'],
         metadata: {
+          formType: 'Movie & Skit Making Form',
           fullName: formData.fullName,
           roleType: formData.roleType,
           contact: formData.contact,
@@ -1276,31 +1288,37 @@ export default function Services() {
           totalPayable: intakeTotalPayable,
         },
         onSuccess: async (receiptData: any) => {
+          const verifiedRef = receiptData?.reference || refCode;
+          const channelStr = paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`;
           setCurrentPaymentStep(3);
           const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
           await addDoc(collection(db, 'transactions'), {
-            description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+            description: `Movie & Skit Form Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
             amount: Number(intakeTotalPayable),
             subtotal: Number(baseIntakePrice),
             processingFee: Number(intakeTransactionFee),
             feePercentage: intakeFeeBreakdown.feePercentageDisplay,
             type: 'credit',
             category: 'Audition / Casting Fee',
-            ref: refCode,
+            ref: verifiedRef,
             gateway: 'Paystack',
-            channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+            channel: channelStr,
             recordedBy: recordedByEmail,
             createdAt: new Date(),
             transactionDate: new Date().toISOString()
           });
 
+          setPaymentRef(verifiedRef);
+          setPaymentChannelUsed(channelStr);
           setPriceConfirmed(true);
           setIsPaying(false);
           clearPendingPayment(refCode);
-          toast.success(`Paystack payment of GH₵ ${intakeTotalPayable.toFixed(2)} verified successfully!`);
+          toast.success(`Paystack payment of GH₵ ${intakeTotalPayable.toFixed(2)} verified! Submitting your Skit Making Form...`);
+          await submitSkitFormToFirestore(verifiedRef, channelStr, Number(intakeTotalPayable));
         },
         onCancel: () => {
           setIsPaying(false);
+          toast.info('Paystack checkout closed. Payment via Paystack is required to submit the Skit Making Form.');
         }
       });
 
@@ -1322,11 +1340,12 @@ export default function Services() {
           if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
             clearInterval(intervalId);
             setCurrentPaymentStep(3);
+            const channelStr = paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`;
 
             // Write direct to Firestore Transactions Collection
             const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
             await addDoc(collection(db, 'transactions'), {
-              description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+              description: `Movie & Skit Form Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
               amount: Number(intakeTotalPayable),
               subtotal: Number(baseIntakePrice),
               processingFee: Number(intakeTransactionFee),
@@ -1335,14 +1354,17 @@ export default function Services() {
               category: 'Audition / Casting Fee',
               ref: refCode,
               gateway: 'Paystack',
-              channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+              channel: channelStr,
               recordedBy: recordedByEmail,
               createdAt: new Date(),
               transactionDate: new Date().toISOString()
             });
 
+            setPaymentRef(refCode);
+            setPaymentChannelUsed(channelStr);
             setPriceConfirmed(true);
             setIsPaying(false);
+            clearPendingPayment(refCode);
             toast.success(`Paystack payment of GH₵ ${intakeTotalPayable.toFixed(2)} verified successfully!`);
           }
         } catch (vErr) {
@@ -1363,9 +1385,10 @@ export default function Services() {
     try {
       const verifyRes = await verifyPaystackPayment(paymentRef);
       if (verifyRes.status && (verifyRes.data?.status === 'success' || verifyRes.isDemo)) {
+        const channelStr = paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`;
         const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
         await addDoc(collection(db, 'transactions'), {
-          description: `Audition / Casting Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+          description: `Movie & Skit Form Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
           amount: Number(intakeTotalPayable),
           subtotal: Number(baseIntakePrice),
           processingFee: Number(intakeTransactionFee),
@@ -1374,14 +1397,16 @@ export default function Services() {
           category: 'Audition / Casting Fee',
           ref: paymentRef,
           gateway: 'Paystack',
-          channel: paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`,
+          channel: channelStr,
           recordedBy: recordedByEmail,
           createdAt: new Date(),
           transactionDate: new Date().toISOString()
         });
 
+        setPaymentChannelUsed(channelStr);
         setPriceConfirmed(true);
         setIsPaying(false);
+        clearPendingPayment(paymentRef);
         toast.success(`Paystack payment verified and confirmed successfully!`);
       } else {
         toast.info(verifyRes.message || "Payment has not yet been confirmed by Paystack. Please complete authorization.");
@@ -1393,10 +1418,7 @@ export default function Services() {
     }
   };
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Comprehensive client-side validations
+  const validateAllIntakeFields = (): boolean => {
     const newErrors: Record<string, string> = {};
     const keys = ['fullName', 'dateOfBirth', 'contact', 'whatsappNumber', 'emailAddress', 'address'];
     let hasErrors = false;
@@ -1412,20 +1434,33 @@ export default function Services() {
     if (hasErrors) {
       setErrors(newErrors);
       toast.error('Form contains validation errors. Please fix highlighted fields.');
+      return false;
+    }
+
+    if (castingPricing.isNegotiable && intakePricingMode === 'negotiate') {
+      const numProposedIntake = Number(intakeProposedPrice);
+      if (!numProposedIntake || numProposedIntake <= 0) {
+        toast.error('Please enter a valid proposed casting fee greater than GH₵ 0.');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const submitSkitFormToFirestore = async (
+    verifiedPaystackRef: string,
+    verifiedChannel: string = paymentChannelUsed || 'paystack',
+    paidTotalGhs: number = Number(intakeTotalPayable)
+  ) => {
+    if (!verifiedPaystackRef) {
+      toast.error('Paystack payment verification is strictly required before submitting the Movie & Skit Making Form.');
+      setShowPaystackGatewayModal(true);
       return;
     }
 
-    const isNegotiatingIntake = castingPricing.isNegotiable && intakePricingMode === 'negotiate';
+    const isNegotiatingIntake = castingPricing.isNegotiable && intakePricingMode === 'negotiate' && Number(intakeProposedPrice) > 0;
     const numProposedIntake = Number(intakeProposedPrice);
-    if (isNegotiatingIntake) {
-      if (!numProposedIntake || numProposedIntake <= 0) {
-        toast.error('Please enter a valid proposed casting fee greater than GH₵ 0.');
-        return;
-      }
-    } else if (!priceConfirmed) {
-      toast.error('Please confirm and agree to the registration fee of GH₵ ' + baseIntakePrice + ' before submitting.');
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -1441,28 +1476,37 @@ export default function Services() {
         discountValue: castingPricing.discountValue,
         discountPercent: castingPricing.discountPercent,
         discountAmount: castingPricing.savingsAmount,
-        price: isNegotiatingIntake ? numProposedIntake : baseIntakePrice,
-        totalPrice: isNegotiatingIntake ? numProposedIntake : baseIntakePrice,
+        price: isNegotiatingIntake ? numProposedIntake : listedIntakePrice,
+        totalPrice: isNegotiatingIntake ? numProposedIntake : listedIntakePrice,
         negotiatedPrice: isNegotiatingIntake ? numProposedIntake : null,
         proposedPrice: isNegotiatingIntake ? numProposedIntake : null,
-        agreedPrice: isNegotiatingIntake ? null : baseIntakePrice,
+        agreedPrice: isNegotiatingIntake ? null : listedIntakePrice,
         negotiationStatus: isNegotiatingIntake ? 'pending_admin' : 'none',
         clientNegotiationNote: isNegotiatingIntake ? intakeNegotiationNote.trim() : '',
         negotiationHistory: isNegotiatingIntake
           ? [
               {
                 actor: 'client',
-                action: 'proposed_price',
+                action: 'proposed_and_paid_via_paystack',
                 amount: numProposedIntake,
-                note: intakeNegotiationNote.trim() || `Proposed GH₵ ${numProposedIntake.toLocaleString()} for Casting Intake`,
+                note: intakeNegotiationNote.trim() || `Proposed & paid GH₵ ${numProposedIntake.toLocaleString()} via Paystack (Ref: ${verifiedPaystackRef})`,
                 timestamp: new Date().toISOString()
               }
             ]
           : [],
-        amountPaid: isNegotiatingIntake ? 0 : baseIntakePrice,
-        balanceDue: isNegotiatingIntake ? numProposedIntake : 0,
-        paymentStatus: isNegotiatingIntake ? 'Negotiating' : 'Paid',
-        priceConfirmed: !isNegotiatingIntake,
+        amountPaid: baseIntakePrice,
+        totalPaidWithFee: paidTotalGhs,
+        transactionFee: intakeTransactionFee,
+        feePercentage: intakeFeeBreakdown.feePercentageDisplay,
+        balanceDue: 0,
+        paymentStatus: 'Paid',
+        paymentGateway: 'Paystack',
+        gateway: 'Paystack',
+        paymentReference: verifiedPaystackRef,
+        paystackReference: verifiedPaystackRef,
+        paymentChannel: verifiedChannel,
+        paidAt: new Date().toISOString(),
+        priceConfirmed: true,
         createdAt: new Date().toISOString()
       };
 
@@ -1482,14 +1526,13 @@ export default function Services() {
         console.warn("Failed to fetch casting_received template, falling back to default SMS.", err);
       }
 
-      const defaultSmsMsg = customSmsMessage || `Hello ${formData.fullName.trim()}, your Grefas registration has been received successfully! Status: Pending. Our team will review your profile shortly. - Grefas Consult`;
+      const defaultSmsMsg = customSmsMessage || `Hello ${formData.fullName.trim()}, your Grefas Movie & Skit Making registration and Paystack payment (Ref: ${verifiedPaystackRef}) have been received! Our team will review your profile shortly. - Grefas Consult`;
 
       // Dispatch direct SMS alert to client/applicant
       const clientPhone = formData.contact?.trim() || formData.whatsappNumber?.trim();
       if (clientPhone) {
         try {
           await sendArkeselSms(clientPhone, defaultSmsMsg);
-          console.log("Client SMS alert sent immediately via Arkesel!");
         } catch (smsErr) {
           console.warn("Direct Arkesel SMS error:", smsErr);
         }
@@ -1509,10 +1552,10 @@ export default function Services() {
         console.warn('Failed to send email notification:', err);
       }
 
-      toast.success('Movie & Skit Registration Logged!', {
-        description: 'Thank you for registering. Our director or casting team will reach out via WhatsApp shortly!'
+      toast.success('Movie & Skit Registration Logged via Paystack!', {
+        description: `Paystack Ref: ${verifiedPaystackRef}. Our director or casting team will reach out via WhatsApp shortly!`
       });
-      setLastSubmittedSnapshot({ ...formData });
+      setLastSubmittedSnapshot({ ...formData, paymentReference: verifiedPaystackRef, paymentGateway: 'Paystack' });
       setSubmittedName(formData.fullName);
       setShowSuccessState(true);
       setFormData({
@@ -1534,6 +1577,7 @@ export default function Services() {
         signature: ''
       });
       setPriceConfirmed(false);
+      setPaymentRef('');
       setErrors({});
       setCurrentStep(1);
       localStorage.removeItem('grefas_casting_draft');
@@ -1543,6 +1587,24 @@ export default function Services() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateAllIntakeFields()) {
+      return;
+    }
+
+    // Strictly enforce Paystack payment before submitting the Skit Making Form
+    if (!priceConfirmed || !paymentRef) {
+      toast.info('Redirecting to Paystack payment gateway to complete your Movie & Skit Making Form submission...');
+      setAutoSubmitAfterPaystack(true);
+      setShowPaystackGatewayModal(true);
+      return;
+    }
+
+    await submitSkitFormToFirestore(paymentRef, paymentChannelUsed, Number(intakeTotalPayable));
   };
 
   useEffect(() => {
@@ -2727,17 +2789,17 @@ export default function Services() {
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xs font-extrabold">Pay Listed Price Now</span>
-                                    <span className="text-xs font-mono font-black text-orange-600">GH₵ {baseIntakePrice.toLocaleString()}</span>
+                                    <span className="text-xs font-extrabold">Standard Listed Fee</span>
+                                    <span className="text-xs font-mono font-black text-orange-600">GH₵ {listedIntakePrice.toLocaleString()}</span>
                                   </div>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5">Instant confirmation via Paystack</p>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">Instant checkout via Paystack gateway</p>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setIntakePricingMode('negotiate');
                                     if (!intakeProposedPrice) {
-                                      setIntakeProposedPrice(String(Math.max(10, Math.round(baseIntakePrice * 0.8))));
+                                      setIntakeProposedPrice(String(Math.max(10, Math.round(listedIntakePrice * 0.8))));
                                     }
                                   }}
                                   className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
@@ -2748,16 +2810,16 @@ export default function Services() {
                                 >
                                   <div className="flex items-center justify-between">
                                     <span className="text-xs font-extrabold flex items-center gap-1 text-indigo-600 dark:text-indigo-400">
-                                      <LucideIcons.Handshake className="h-3.5 w-3.5" /> Negotiate Fee
+                                      <LucideIcons.Handshake className="h-3.5 w-3.5" /> Propose Custom Fee
                                     </span>
-                                    <span className="text-[10px] font-black uppercase bg-indigo-500/15 text-indigo-600 px-2 py-0.5 rounded-full">Custom Offer</span>
+                                    <span className="text-[10px] font-black uppercase bg-indigo-500/15 text-indigo-600 px-2 py-0.5 rounded-full">Pay via Paystack</span>
                                   </div>
-                                  <p className="text-[10px] text-muted-foreground mt-0.5">Propose an amount for admin review before paying</p>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">Enter your custom budget & pay via Paystack</p>
                                 </button>
                               </div>
                             )}
 
-                            {castingPricing.isNegotiable && intakePricingMode === 'negotiate' && !priceConfirmed ? (
+                            {castingPricing.isNegotiable && intakePricingMode === 'negotiate' && !priceConfirmed && (
                               <div className="border-t border-indigo-500/20 pt-4 space-y-3 bg-indigo-500/5 p-4 rounded-xl">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                   <div>
@@ -2770,7 +2832,7 @@ export default function Services() {
                                       step="any"
                                       value={intakeProposedPrice}
                                       onChange={(e) => setIntakeProposedPrice(e.target.value)}
-                                      placeholder={String(baseIntakePrice)}
+                                      placeholder={String(listedIntakePrice)}
                                       className="w-full h-10 rounded-xl border border-indigo-500/40 bg-background px-3 text-sm font-mono font-black text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                     />
                                   </div>
@@ -2788,11 +2850,21 @@ export default function Services() {
                                   </div>
                                 </div>
                                 <p className="text-[11px] text-muted-foreground">
-                                  Submitting with a proposed fee sets your application status to <strong className="text-indigo-600">Negotiation</strong>. Once admin accepts or counters your offer, you can pay the agreed amount.
+                                  Paystack payment is strictly enforced for all Movie & Skit Making Form submissions. Your proposed amount of <strong className="text-indigo-600 font-mono">GH₵ {baseIntakePrice.toFixed(2)}</strong> will be processed securely through <strong className="text-emerald-600">Paystack</strong> below.
                                 </p>
                               </div>
-                            ) : (
+                            )}
+
                             <div className="border-t border-border/40 pt-4 space-y-2">
+                              <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-3 py-2 mb-2">
+                                <span className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                                  <LucideIcons.ShieldCheck className="h-4 w-4 text-emerald-600" />
+                                  Official Payment Gateway: Paystack (Enforced)
+                                </span>
+                                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                                  MoMo &amp; Card Supported
+                                </span>
+                              </div>
                               {castingPricing.hasDiscount && (
                                 <div className="flex justify-between items-center text-xs font-medium text-muted-foreground">
                                   <span>Original Listed Fee:</span>
@@ -2806,12 +2878,12 @@ export default function Services() {
                                 </div>
                               )}
                               <div className="flex justify-between items-center text-xs font-medium text-muted-foreground">
-                                <span>Registration Base Fee:</span>
+                                <span>{isNegotiatingIntakePrice ? 'Proposed Skit / Casting Fee:' : 'Registration Base Fee:'}</span>
                                 <span className="text-foreground font-mono font-bold">GH₵ {baseIntakePrice.toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between items-center text-xs font-medium text-muted-foreground">
                                 <span className="flex items-center gap-1.5">
-                                  <span>{intakeTransactionFee === 0 ? 'Transaction Processing Fee:' : `${intakeFeeBreakdown.feePercentageDisplay} Transaction Processing Charge:`}</span>
+                                  <span>{intakeTransactionFee === 0 ? 'Transaction Processing Fee:' : `${intakeFeeBreakdown.feePercentageDisplay} Paystack Processing Charge:`}</span>
                                   <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${intakeTransactionFee === 0 ? 'text-emerald-600 bg-emerald-500/10' : 'text-orange-600 bg-orange-500/10'}`}>
                                     {intakeTransactionFee === 0 ? '0% (Waived)' : intakeFeeBreakdown.feePercentageDisplay}
                                   </span>
@@ -2822,7 +2894,7 @@ export default function Services() {
                               </div>
                               <div className="h-px bg-border/60 my-1" />
                               <div className="flex justify-between items-center text-xs font-bold text-foreground">
-                                <span>Total Accurate Audition Fee:</span>
+                                <span>Total Payable via Paystack:</span>
                                 <span className="text-emerald-600 font-mono text-sm font-black">GH₵ {intakeTotalPayable.toFixed(2)}</span>
                               </div>
 
@@ -2833,24 +2905,24 @@ export default function Services() {
                                     <button
                                       type="button"
                                       onClick={() => setPaymentProvider('mtn')}
-                                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1.5 ${
+                                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1.5 cursor-pointer ${
                                         paymentProvider !== 'card'
                                           ? 'border-orange-500 bg-orange-500/10 text-orange-950 dark:text-orange-200'
                                           : 'border-border bg-card text-muted-foreground hover:bg-muted'
                                       }`}
                                     >
-                                      <LucideIcons.Smartphone className="h-4 w-4" /> Mobile Money
+                                      <LucideIcons.Smartphone className="h-4 w-4" /> Paystack Mobile Money
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setPaymentProvider('card')}
-                                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1.5 ${
+                                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1.5 cursor-pointer ${
                                         paymentProvider === 'card'
                                           ? 'border-orange-500 bg-orange-500/10 text-orange-950 dark:text-orange-200'
                                           : 'border-border bg-card text-muted-foreground hover:bg-muted'
                                       }`}
                                     >
-                                      <LucideIcons.CreditCard className="h-4 w-4" /> Credit / Debit Card
+                                      <LucideIcons.CreditCard className="h-4 w-4" /> Paystack Bank Card
                                     </button>
                                   </div>
 
@@ -2872,7 +2944,7 @@ export default function Services() {
                                         <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Mobile Money Number</label>
                                         <input
                                           type="tel"
-                                          placeholder="024XXXXXXX"
+                                          placeholder={formData.contact || "024XXXXXXX"}
                                           value={momoNumber}
                                           onChange={(e) => setMomoNumber(e.target.value)}
                                           className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
@@ -2880,47 +2952,11 @@ export default function Services() {
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="space-y-3">
-                                      <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cardholder Name</label>
-                                        <input
-                                          placeholder="John Doe"
-                                          value={cardName}
-                                          onChange={(e) => setCardName(e.target.value)}
-                                          className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                        />
-                                      </div>
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <div className="sm:col-span-1.5 space-y-1.5">
-                                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Card Number</label>
-                                          <input
-                                            placeholder="4111 2222 3333 4444"
-                                            value={cardNumber}
-                                            onChange={(e) => setCardNumber(e.target.value)}
-                                            className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                          />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Expiry (MM/YY)</label>
-                                          <input
-                                            placeholder="12/28"
-                                            value={cardExpiry}
-                                            onChange={(e) => setCardExpiry(e.target.value)}
-                                            className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                          />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">CVV</label>
-                                          <input
-                                            type="password"
-                                            maxLength={4}
-                                            placeholder="123"
-                                            value={cardCvv}
-                                            onChange={(e) => setCardCvv(e.target.value)}
-                                            className="w-full bg-muted/50 border border-border h-10 px-3 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                          />
-                                        </div>
-                                      </div>
+                                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-muted-foreground flex items-center gap-2.5">
+                                      <LucideIcons.ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
+                                      <span>
+                                        Your Visa / Mastercard details will be entered directly inside the encrypted <strong>Paystack 3D-Secure</strong> checkout window when you click pay or submit below.
+                                      </span>
                                     </div>
                                   )}
 
@@ -2928,7 +2964,7 @@ export default function Services() {
                                     <div className="bg-card border border-border/60 p-4 rounded-xl space-y-3">
                                       <div className="flex items-center gap-2">
                                         <LucideIcons.Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
-                                        <span className="text-xs font-bold text-foreground">Executing Secure Gateway Protocol...</span>
+                                        <span className="text-xs font-bold text-foreground">Executing Paystack Gateway Protocol...</span>
                                       </div>
                                       <div className="space-y-1.5">
                                         {paymentSteps.map((stepMsg, idx) => (
@@ -2971,9 +3007,9 @@ export default function Services() {
                                       <Button
                                         type="button"
                                         onClick={handleProcessPayment}
-                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm"
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                                       >
-                                        <LucideIcons.Lock className="h-3.5 w-3.5" /> Proceed to Paystack Payment (GH₵ {intakeTotalPayable.toFixed(2)})
+                                        <LucideIcons.Lock className="h-3.5 w-3.5" /> Pay Now with Paystack (GH₵ {intakeTotalPayable.toFixed(2)})
                                       </Button>
                                       {paystackAuthUrl && (
                                         <div className="flex gap-2">
@@ -3004,14 +3040,13 @@ export default function Services() {
                                   <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600">
                                     <LucideIcons.CheckCircle className="h-6 w-6" />
                                   </div>
-                                  <h5 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Payment Secured Successfully</h5>
+                                  <h5 className="text-sm font-bold text-emerald-800 dark:text-emerald-400">Paystack Payment Verified</h5>
                                   <p className="text-[10px] text-muted-foreground">
-                                    Reference: <span className="font-mono font-bold text-foreground">{paymentRef}</span>
+                                    Paystack Reference: <span className="font-mono font-bold text-foreground">{paymentRef}</span>
                                   </p>
                                 </div>
                               )}
                             </div>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -3037,42 +3072,28 @@ export default function Services() {
                         <LucideIcons.Save className="h-4 w-4" />
                         <span>Save as Draft</span>
                       </Button>
-                      {(() => {
-                        const canSubmitIntake = priceConfirmed || (castingPricing.isNegotiable && intakePricingMode === 'negotiate' && Number(intakeProposedPrice) > 0);
-                        return (
-                          <Button
-                            type="submit"
-                            disabled={submitting || !canSubmitIntake}
-                            className={`ml-auto font-bold h-11 px-6 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all ${
-                              canSubmitIntake 
-                                ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-md' 
-                                : 'bg-muted border border-border text-muted-foreground cursor-not-allowed shadow-none hover:bg-muted'
-                            }`}
-                          >
-                            {submitting ? (
-                              <>
-                                <LucideIcons.Loader2 className="h-5 w-5 animate-spin" />
-                                <span>Transmitting...</span>
-                              </>
-                            ) : (castingPricing.isNegotiable && intakePricingMode === 'negotiate') ? (
-                              <>
-                                <LucideIcons.Handshake className="h-5 w-5" />
-                                <span>Submit with Price Proposal (GH₵ {Number(intakeProposedPrice || 0).toLocaleString()})</span>
-                              </>
-                            ) : !priceConfirmed ? (
-                              <>
-                                <LucideIcons.Lock className="h-4 w-4 text-muted-foreground/60" />
-                                <span>Payment Required</span>
-                              </>
-                            ) : (
-                              <>
-                                <LucideIcons.Film className="h-5 w-5 animate-pulse" />
-                                <span>Submit Film Intake</span>
-                              </>
-                            )}
-                          </Button>
-                        );
-                      })()}
+                      <Button
+                        type="submit"
+                        disabled={submitting || isPaying}
+                        className="ml-auto font-bold h-11 px-6 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all bg-orange-600 hover:bg-orange-700 text-white shadow-md"
+                      >
+                        {submitting ? (
+                          <>
+                            <LucideIcons.Loader2 className="h-5 w-5 animate-spin" />
+                            <span>Submitting Skit Form...</span>
+                          </>
+                        ) : !priceConfirmed ? (
+                          <>
+                            <LucideIcons.ShieldCheck className="h-5 w-5" />
+                            <span>Pay &amp; Submit Skit Form via Paystack (GH₵ {intakeTotalPayable.toFixed(2)})</span>
+                          </>
+                        ) : (
+                          <>
+                            <LucideIcons.Film className="h-5 w-5 animate-pulse" />
+                            <span>Submit Movie &amp; Skit Form</span>
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </motion.div>
                 )}
@@ -3374,6 +3395,65 @@ export default function Services() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Enforced Paystack Gateway Modal for Movie & Skit Making Form */}
+      <PaystackPayment
+        isOpen={showPaystackGatewayModal}
+        onClose={() => {
+          setShowPaystackGatewayModal(false);
+          setAutoSubmitAfterPaystack(false);
+        }}
+        amount={Number(baseIntakePrice)}
+        email={formData.emailAddress || auth.currentUser?.email || 'talent@grefas.com'}
+        fullName={formData.fullName || auth.currentUser?.displayName || 'Grefas Talent'}
+        phone={momoNumber || formData.contact || formData.whatsappNumber || ''}
+        title="Movie & Skit Making Form Registration"
+        description={`Official Paystack checkout for ${formData.roleType || 'Actor / Skit Performer'} registration`}
+        metadata={{
+          formType: 'Movie & Skit Making Form',
+          fullName: formData.fullName,
+          roleType: formData.roleType,
+          contact: formData.contact,
+          whatsappNumber: formData.whatsappNumber,
+          isNegotiated: isNegotiatingIntakePrice,
+          proposedAmount: isNegotiatingIntakePrice ? Number(intakeProposedPrice) : undefined
+        }}
+        onSuccess={async (paymentData) => {
+          const verifiedRef = paymentData.reference;
+          const channelStr = paymentData.channel || 'paystack';
+          const recordedByEmail = auth.currentUser?.email || formData.emailAddress || 'online_client';
+
+          try {
+            await addDoc(collection(db, 'transactions'), {
+              description: `Movie & Skit Form Fee (Paystack): ${formData.fullName} - ${formData.roleType || 'Casting Intake'} [Base: GH₵ ${baseIntakePrice.toFixed(2)} + ${intakeFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${intakeTransactionFee.toFixed(2)}]`,
+              amount: Number(paymentData.amount || intakeTotalPayable),
+              subtotal: Number(baseIntakePrice),
+              processingFee: Number(paymentData.processingFee ?? intakeTransactionFee),
+              feePercentage: intakeFeeBreakdown.feePercentageDisplay,
+              type: 'credit',
+              category: 'Audition / Casting Fee',
+              ref: verifiedRef,
+              gateway: 'Paystack',
+              channel: channelStr,
+              recordedBy: recordedByEmail,
+              createdAt: new Date(),
+              transactionDate: new Date().toISOString()
+            });
+          } catch (txErr) {
+            console.warn('Could not log transaction record:', txErr);
+          }
+
+          setPaymentRef(verifiedRef);
+          setPaymentChannelUsed(channelStr);
+          setPriceConfirmed(true);
+          setShowPaystackGatewayModal(false);
+
+          if (autoSubmitAfterPaystack || validateAllIntakeFields()) {
+            setAutoSubmitAfterPaystack(false);
+            await submitSkitFormToFirestore(verifiedRef, channelStr, Number(paymentData.amount || intakeTotalPayable));
+          }
+        }}
+      />
     </>
   );
 }

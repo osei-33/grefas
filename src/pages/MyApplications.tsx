@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import AuthDialog from '@/components/AuthDialog';
+import PaystackPayment from '@/components/PaystackPayment';
 import { jsPDF } from 'jspdf';
 import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
 import { calculateTransactionCharge } from '@/lib/transactionFees';
@@ -670,48 +671,25 @@ export default function MyApplications() {
     printWindow.document.close();
   };
 
-  const handleProcessPayment = async () => {
+  const handleRecordPaystackInstallmentSuccess = async (paymentData: {
+    reference: string;
+    amount: number;
+    baseAmount?: number;
+    processingFee?: number;
+    channel: string;
+    paidAt: string;
+  }) => {
     if (!activePaymentApp || !activePaymentInstallment) return;
     setIsProcessingPayment(true);
-    setPaymentStep('processing');
-    
-    const txnId = generatePaystackReference('GREFAS-INST');
-    const baseInstAmount = Number(activePaymentInstallment.amount) || 0;
+
+    const txnId = paymentData.reference || generatePaystackReference('GREFAS-INST');
+    const baseInstAmount = Number(paymentData.baseAmount ?? activePaymentInstallment.amount) || 0;
     const instFeeBreakdown = calculateTransactionCharge(baseInstAmount, { isSponsorship: false });
-    const instTransactionFee = instFeeBreakdown.feeAmount;
-    const instTotalPayable = instFeeBreakdown.totalAmount;
-      
+    const instTransactionFee = Number(paymentData.processingFee ?? instFeeBreakdown.feeAmount);
+    const instTotalPayable = Number(paymentData.amount || instFeeBreakdown.totalAmount);
+    const channelUsed = paymentData.channel || 'paystack';
+
     try {
-      // 1. Initialize Paystack Transaction with 1% charge included
-      await initializePaystackPayment({
-        email: activePaymentApp.emailAddress || user?.email || 'client@grefas.com',
-        amount: Number(instTotalPayable),
-        currency: 'GHS',
-        reference: txnId,
-        metadata: {
-          fullName: activePaymentApp.fullName,
-          applicationId: activePaymentApp.id,
-          installmentId: activePaymentInstallment.id,
-          installmentName: activePaymentInstallment.name,
-          paymentMode,
-          phone: momoNumber || activePaymentApp.contact,
-          baseAmount: baseInstAmount,
-          transactionFee: instTransactionFee,
-          feePercentage: instFeeBreakdown.feePercentageDisplay,
-          totalPayable: instTotalPayable
-        },
-        channels: paymentMode === 'momo' ? ['mobile_money'] : ['card']
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-
-      // 2. Verify Transaction with Paystack
-      try {
-        await verifyPaystackPayment(txnId);
-      } catch (vErr) {
-        console.warn("Paystack verify fallback:", vErr);
-      }
-
       const appInsts = Array.isArray(activePaymentApp.paymentPlan?.installments)
         ? activePaymentApp.paymentPlan.installments
         : [];
@@ -720,14 +698,14 @@ export default function MyApplications() {
           return {
             ...inst,
             status: 'Paid',
-            paidAt: new Date().toISOString(),
+            paidAt: paymentData.paidAt || new Date().toISOString(),
             transactionId: txnId,
             gateway: 'Paystack',
-            paymentMode,
+            paymentMode: channelUsed.includes('card') ? 'card' : 'momo',
+            channel: channelUsed,
             baseAmount: baseInstAmount,
             transactionFee: instTransactionFee,
             totalPaid: instTotalPayable,
-            ...(paymentMode === 'momo' ? { momoOperator, momoNumber } : {})
           };
         }
         return inst;
@@ -742,14 +720,14 @@ export default function MyApplications() {
             amount: baseInstAmount,
             dueDate: new Date().toISOString().split('T')[0],
             status: 'Paid',
-            paidAt: new Date().toISOString(),
+            paidAt: paymentData.paidAt || new Date().toISOString(),
             transactionId: txnId,
             gateway: 'Paystack',
-            paymentMode,
+            paymentMode: channelUsed.includes('card') ? 'card' : 'momo',
+            channel: channelUsed,
             baseAmount: baseInstAmount,
             transactionFee: instTransactionFee,
             totalPaid: instTotalPayable,
-            ...(paymentMode === 'momo' ? { momoOperator, momoNumber } : {})
           }
         ];
       }
@@ -782,7 +760,10 @@ export default function MyApplications() {
         amountPaid: paidAmount,
         balanceDue: nextBalanceDue,
         paymentStatus: calcStatus,
+        paymentGateway: 'Paystack',
+        gateway: 'Paystack',
         paymentReference: txnId,
+        paystackReference: txnId,
         lastPaymentDate: new Date().toISOString(),
         paymentPlan: {
           ...existingPlanObj,
@@ -803,7 +784,7 @@ export default function MyApplications() {
         category: 'Installment Payment',
         ref: txnId,
         gateway: 'Paystack',
-        channel: paymentMode === 'momo' ? `momo_${momoOperator}` : 'card',
+        channel: channelUsed,
         recordedBy: user?.email || activePaymentApp.emailAddress || 'client',
         createdAt: new Date(),
         transactionDate: new Date().toISOString()
@@ -821,7 +802,7 @@ export default function MyApplications() {
             contact: activePaymentApp.contact,
             amountPaid: instTotalPayable,
             paymentPlan: activePaymentApp.paymentPlan?.type === 'full' ? 'One-time Full' : activePaymentApp.paymentPlan?.type === 'installments_2' ? '2-Installments (50/50)' : '3-Installments (40/30/30)',
-            paymentMethod: paymentMode === 'momo' ? `Mobile Money (${momoOperator.toUpperCase()})` : 'Credit/Debit Card',
+            paymentMethod: `Paystack (${channelUsed.toUpperCase()})`,
             totalPrice: priceVal,
             balanceDue: balanceDue,
             paymentStatus: calcStatus,
@@ -838,7 +819,7 @@ export default function MyApplications() {
           userEmail: user.email,
           userName: activePaymentApp.fullName || user.displayName || 'Authorized Talent',
           type: 'payment_success',
-          description: `Paid milestone "${activePaymentInstallment.name}" of GHS ${activePaymentInstallment.amount} via ${paymentMode.toUpperCase()}.`,
+          description: `Paid milestone "${activePaymentInstallment.name}" of GHS ${activePaymentInstallment.amount} via Paystack (${txnId}).`,
           createdAt: new Date().toISOString()
         });
       } catch (logErr) {
@@ -846,13 +827,13 @@ export default function MyApplications() {
       }
       
       setTransactionId(txnId);
-      setPaymentStep('success');
-      toast.success('Payment authorized and verified!');
+      setActivePaymentInstallment(null);
+      setActivePaymentApp(null);
+      toast.success(`Paystack payment verified and recorded! (Ref: ${txnId})`);
     } catch (err: any) {
       console.error('Payment processing failed:', err);
       handleFirestoreError(err, OperationType.WRITE, `service_intakes/${activePaymentApp.id}`);
       toast.error('Could not process payment database record. Try again.');
-      setPaymentStep('form');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -1609,218 +1590,31 @@ export default function MyApplications() {
         )}
       </div>
 
-      {/* Payment Simulator Modal */}
+      {/* Official Enforced Paystack Gateway Modal */}
       {activePaymentInstallment && activePaymentApp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-card w-full max-w-md rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-orange-600" />
-                <h3 className="text-sm font-bold text-foreground">Secure Checkout Simulator</h3>
-              </div>
-              {!isProcessingPayment && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setActivePaymentInstallment(null);
-                    setActivePaymentApp(null);
-                  }}
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-
-            {/* Body */}
-            <div className="p-5 flex-1 min-h-[250px] flex flex-col justify-center">
-              {paymentStep === 'form' && (
-                <div className="space-y-4">
-                  {/* Summary with 1% charge breakdown */}
-                  {(() => {
-                    const baseInstAmount = Number(activePaymentInstallment.amount) || 0;
-                    const feeBreakdown = calculateTransactionCharge(baseInstAmount, { isSponsorship: false });
-                    const instFee = feeBreakdown.feeAmount;
-                    const totalPayable = feeBreakdown.totalAmount;
-
-                    return (
-                      <div className="p-3.5 bg-muted/30 rounded-xl border border-border/40 text-xs space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground font-medium">Casting Milestone:</span>
-                          <span className="text-foreground font-bold">{activePaymentInstallment.name}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground font-medium">Milestone Base Amount:</span>
-                          <span className="text-foreground font-mono font-bold">GH₵ {baseInstAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground font-medium flex items-center gap-1.5">
-                            <span>{instFee === 0 ? 'Transaction Processing Fee:' : `${feeBreakdown.feePercentageDisplay} Transaction Processing Charge:`}</span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${instFee === 0 ? 'text-emerald-600 bg-emerald-500/10' : 'text-orange-600 bg-orange-500/10'}`}>
-                              {instFee === 0 ? '0% (Waived)' : feeBreakdown.feePercentageDisplay}
-                            </span>
-                          </span>
-                          <span className={`font-mono font-bold ${instFee === 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                            {instFee === 0 ? 'GH₵ 0.00 (Waived)' : `+ GH₵ ${instFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                          </span>
-                        </div>
-                        <div className="h-px bg-border/60 my-1" />
-                        <div className="flex justify-between items-center font-bold">
-                          <span className="text-foreground">Total Accurate Payable:</span>
-                          <span className="text-orange-600 font-extrabold font-mono text-sm">GH₵ {totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Payment Mode Selector */}
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-muted/40 rounded-lg">
-                    <button
-                      onClick={() => setPaymentMode('momo')}
-                      className={`py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        paymentMode === 'momo' ? 'bg-card text-orange-600 shadow-xs' : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <Phone className="h-3.5 w-3.5" /> Mobile Money
-                    </button>
-                    <button
-                      onClick={() => setPaymentMode('card')}
-                      className={`py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        paymentMode === 'card' ? 'bg-card text-orange-600 shadow-xs' : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <CreditCard className="h-3.5 w-3.5" /> Bank Card
-                    </button>
-                  </div>
-
-                  {/* Form inputs */}
-                  {paymentMode === 'momo' ? (
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Network Provider</label>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {['mtn', 'telecel', 'airteltigo'].map((op) => (
-                            <button
-                              key={op}
-                              onClick={() => setMomoOperator(op as any)}
-                              className={`py-2 text-[10px] uppercase font-bold border rounded-lg transition-all cursor-pointer ${
-                                momoOperator === op 
-                                  ? 'border-orange-500 bg-orange-500/5 text-orange-600' 
-                                  : 'border-border/60 hover:bg-muted text-muted-foreground'
-                              }`}
-                            >
-                              {op === 'airteltigo' ? 'AirtelTigo' : op}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Wallet Phone Number</label>
-                        <Input
-                          type="tel"
-                          value={momoNumber}
-                          onChange={(e) => setMomoNumber(e.target.value)}
-                          placeholder="e.g. 0541234567"
-                          className="h-9 text-xs font-semibold"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Card Number</label>
-                        <Input
-                          type="text"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="4000 1234 5678 9010"
-                          className="h-9 text-xs font-semibold"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Expiry (MM/YY)</label>
-                          <Input
-                            type="text"
-                            value={cardExpiry}
-                            onChange={(e) => setCardExpiry(e.target.value)}
-                            placeholder="12/28"
-                            className="h-9 text-xs font-semibold"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">CVV</label>
-                          <Input
-                            type="password"
-                            value={cardCvv}
-                            onChange={(e) => setCardCvv(e.target.value)}
-                            placeholder="***"
-                            maxLength={3}
-                            className="h-9 text-xs font-semibold"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Proceed Button */}
-                  <Button
-                    onClick={handleProcessPayment}
-                    disabled={paymentMode === 'momo' ? !momoNumber : (!cardNumber || !cardExpiry || !cardCvv)}
-                    className="w-full h-10 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white cursor-pointer shadow-md mt-2"
-                  >
-                    Authorize Payment of GH₵ {(calculateTransactionCharge(Number(activePaymentInstallment.amount) || 0, { isSponsorship: false }).totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Button>
-                </div>
-              )}
-
-              {paymentStep === 'processing' && (
-                <div className="py-6 text-center space-y-4">
-                  <Loader2 className="h-10 w-10 text-orange-600 animate-spin mx-auto" />
-                  <div className="space-y-1">
-                    <p className="text-xs font-bold text-foreground">Processing Secure Transaction...</p>
-                    <p className="text-[11px] text-muted-foreground px-4">
-                      {paymentMode === 'momo' 
-                        ? `A push notification request has been dispatched to ${momoNumber}. Please authenticate via your device's mobile wallet PIN prompts.`
-                        : "Authorizing charge request with your bank..."}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {paymentStep === 'success' && (
-                <div className="py-6 text-center space-y-4">
-                  <div className="h-12 w-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 flex items-center justify-center mx-auto">
-                    <Check className="h-6 w-6 stroke-[3]" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-foreground">Payment Successful!</p>
-                    <p className="text-[11px] text-muted-foreground px-4">
-                      Your transaction GHS {(calculateTransactionCharge(Number(activePaymentInstallment.amount) || 0, { isSponsorship: false }).totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} has been processed and recorded in Grefas archives.
-                    </p>
-                    <p className="text-[10px] text-emerald-600 font-semibold px-4 pt-1">
-                      An automated receipt email and SMS notification has been sent immediately.
-                    </p>
-                  </div>
-                  <div className="p-2.5 bg-muted/40 rounded-lg max-w-[280px] mx-auto text-[10px] font-mono text-muted-foreground border">
-                    REF ID: {transactionId}
-                  </div>
-                  <Button
-                    onClick={() => {
-                      setActivePaymentInstallment(null);
-                      setActivePaymentApp(null);
-                    }}
-                    className="w-full max-w-[180px] h-9 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                  >
-                    Close & Return
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <PaystackPayment
+          isOpen={Boolean(activePaymentInstallment && activePaymentApp)}
+          onClose={() => {
+            if (!isProcessingPayment) {
+              setActivePaymentInstallment(null);
+              setActivePaymentApp(null);
+            }
+          }}
+          amount={Number(activePaymentInstallment.amount) || 0}
+          email={activePaymentApp.emailAddress || user?.email || 'client@grefas.com'}
+          fullName={activePaymentApp.fullName || user?.displayName || 'Authorized Talent'}
+          phone={activePaymentApp.whatsappNumber || activePaymentApp.contact || ''}
+          title={activePaymentInstallment.name || 'Movie & Skit Form Fee Settlement'}
+          description={`Official Paystack settlement for ${activePaymentApp.fullName}`}
+          metadata={{
+            formType: 'Movie & Skit Making Form Settlement',
+            applicationId: activePaymentApp.id,
+            installmentId: activePaymentInstallment.id,
+            installmentName: activePaymentInstallment.name,
+            fullName: activePaymentApp.fullName
+          }}
+          onSuccess={handleRecordPaystackInstallmentSuccess}
+        />
       )}
 
       <AuthDialog 
