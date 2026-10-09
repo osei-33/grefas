@@ -10,11 +10,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { db, auth, handleFirestoreError, OperationType } from '@/firebase';
 import { logAuditActivity } from '@/lib/auditLogger';
 import { sendArkeselSms } from '@/lib/arkeselSms';
-import { collection, onSnapshot, setDoc, doc, serverTimestamp, getDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, setDoc, doc, updateDoc, serverTimestamp, getDoc, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer, ShieldCheck, Smartphone, CreditCard, Lock, CheckCircle } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer, ShieldCheck, Smartphone, CreditCard, Lock, CheckCircle, Handshake, Tag, Percent } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
@@ -34,6 +34,7 @@ import PaystackPop from '@paystack/inline-js';
 import { usePaystack } from '@/providers/PaystackProvider';
 import { useResendPayment } from '@/hooks/useResendPayment';
 import { calculateTransactionCharge, useTransactionFee } from '@/lib/transactionFees';
+import { mergeServicesWithDefaults, getServicePricing, getRecordNegotiationSummary } from '@/lib/servicePricing';
 
 const convertAccraTimeToUserTimezone = (accraTimeStr: string, targetTimezone: string) => {
   try {
@@ -106,8 +107,39 @@ export default function Booking() {
 
   const { calculateCharge: calculateFeeCharge } = useTransactionFee();
 
-  // Transaction fee calculation (dynamically controlled by admin settings)
-  const baseConsultationPrice = Math.max(0, Number(consultationPrice) || 150);
+  // Merge Firestore services with all default services so every service is selectable and has pricing/discount/negotiable config
+  const allServices = React.useMemo(() => mergeServicesWithDefaults(services), [services]);
+  const selectedService = React.useMemo(
+    () => allServices.find((s) => s.id === formData.serviceId) || null,
+    [allServices, formData.serviceId]
+  );
+  const selectedServicePricing = React.useMemo(
+    () => getServicePricing(selectedService || { price: consultationPrice }),
+    [selectedService, consultationPrice]
+  );
+
+  // Price Negotiation States (Step 2 & Step 3)
+  const [wantsToNegotiate, setWantsToNegotiate] = useState(false);
+  const [proposedPriceInput, setProposedPriceInput] = useState<string>('');
+  const [negotiationNoteInput, setNegotiationNoteInput] = useState<string>('');
+  const [negotiationCheckoutMode, setNegotiationCheckoutMode] = useState<'propose_first' | 'pay_proposed_now'>('propose_first');
+
+  // Status Lookup Negotiation & Balance Payment States
+  const [statusCounterInput, setStatusCounterInput] = useState<string>('');
+  const [statusCounterNote, setStatusCounterNote] = useState<string>('');
+  const [isUpdatingNegotiation, setIsUpdatingNegotiation] = useState(false);
+  const [isPayingStatusBalance, setIsPayingStatusBalance] = useState(false);
+  const [statusPaymentChannel, setStatusPaymentChannel] = useState<'momo' | 'card'>('momo');
+  const [statusMomoNetwork, setStatusMomoNetwork] = useState('MTN');
+  const [statusMomoPhone, setStatusMomoPhone] = useState('');
+
+  // Effective consultation price (uses negotiated proposed amount if client chose to pay proposed now, otherwise discounted effective price)
+  const effectiveListedPrice = selectedService ? selectedServicePricing.effectivePrice : Math.max(0, Number(consultationPrice) || 150);
+  const parsedProposedPrice = Math.max(1, Number(proposedPriceInput) || effectiveListedPrice);
+  const baseConsultationPrice =
+    wantsToNegotiate && selectedServicePricing.isNegotiable && negotiationCheckoutMode === 'pay_proposed_now'
+      ? parsedProposedPrice
+      : effectiveListedPrice;
   const bookingFeeBreakdown = calculateFeeCharge(baseConsultationPrice, false);
   const bookingTransactionFee = bookingFeeBreakdown.feeAmount;
   const bookingTotalPayable = bookingFeeBreakdown.totalAmount;
@@ -454,12 +486,14 @@ export default function Booking() {
     };
   }, []);
 
-  // Parse query string for preferred staff selected on the Team page or status checking
+  // Parse query string for preferred staff selected on the Team page, serviceId, negotiate flag, or status checking
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const staffId = params.get('staffId');
     const staffName = params.get('staffName');
     const urlOrderNumber = params.get('orderNumber');
+    const urlServiceId = params.get('serviceId');
+    const urlNegotiate = params.get('negotiate');
     
     if (staffId && staffName) {
       setFormData(prev => ({
@@ -467,6 +501,23 @@ export default function Booking() {
         teamMemberId: staffId,
         teamMemberName: decodeURIComponent(staffName)
       }));
+    }
+
+    if (urlServiceId && allServices.length > 0) {
+      const matched = allServices.find((s) => s.id === urlServiceId);
+      if (matched) {
+        const pricing = getServicePricing(matched);
+        setFormData((prev) => ({
+          ...prev,
+          serviceId: matched.id,
+          serviceTitle: matched.title || ''
+        }));
+        setConsultationPrice(pricing.effectivePrice);
+        if (urlNegotiate === 'true' && pricing.isNegotiable) {
+          setWantsToNegotiate(true);
+          setProposedPriceInput(String(Math.max(10, Math.round(pricing.effectivePrice * 0.85))));
+        }
+      }
     }
     
     if (urlOrderNumber) {
@@ -491,7 +542,7 @@ export default function Booking() {
       };
       performAutoSearch();
     }
-  }, [location.search]);
+  }, [location.search, allServices]);
 
   // Real-time listener for automated client-side bookings list tracking
   useEffect(() => {
@@ -598,6 +649,221 @@ export default function Booking() {
       }
     } finally {
       setIsSearchingStatus(false);
+    }
+  };
+
+  // Client accepts Admin's counter-offer in Status Lookup
+  const handleClientAcceptAdminCounter = async (bookingRecord: any) => {
+    if (!bookingRecord?.id) return;
+    const summary = getRecordNegotiationSummary(bookingRecord);
+    const counterAmt = summary.adminCounterPrice || summary.negotiatedPrice || summary.agreedPrice;
+    if (!counterAmt || counterAmt <= 0) {
+      toast.error('No counter-offer amount found to accept.');
+      return;
+    }
+
+    setIsUpdatingNegotiation(true);
+    try {
+      const paidSoFar = summary.amountPaid || 0;
+      const newBalance = Math.max(0, counterAmt - paidSoFar);
+      const history = Array.isArray(bookingRecord.negotiationHistory) ? [...bookingRecord.negotiationHistory] : [];
+      history.push({
+        actor: 'client',
+        action: 'accepted_counter',
+        amount: counterAmt,
+        note: `Client accepted admin counter-offer of GH₵ ${counterAmt.toLocaleString()}`,
+        timestamp: new Date().toISOString()
+      });
+
+      const updates = {
+        negotiationStatus: 'agreed',
+        negotiatedPrice: counterAmt,
+        agreedPrice: counterAmt,
+        price: counterAmt,
+        totalPrice: counterAmt,
+        balanceDue: newBalance,
+        paymentStatus: newBalance <= 0 ? 'Paid' : paidSoFar > 0 ? 'Part Paid' : 'Unpaid',
+        negotiationHistory: history,
+        updatedAt: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'bookings', bookingRecord.id), updates);
+      setStatusSearchResult((prev: any) => (prev ? { ...prev, ...updates } : prev));
+      toast.success(`Counter-offer of GH₵ ${counterAmt.toLocaleString()} accepted! You can now pay the agreed amount below.`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingRecord.id}`);
+    } finally {
+      setIsUpdatingNegotiation(false);
+    }
+  };
+
+  // Client submits a new price proposal / counter-offer in Status Lookup
+  const handleClientSendNewProposal = async (bookingRecord: any) => {
+    if (!bookingRecord?.id) return;
+    const newAmt = Number(statusCounterInput);
+    if (!newAmt || newAmt <= 0) {
+      toast.error('Please enter a valid proposed price in GH₵.');
+      return;
+    }
+
+    setIsUpdatingNegotiation(true);
+    try {
+      const summary = getRecordNegotiationSummary(bookingRecord);
+      const paidSoFar = summary.amountPaid || 0;
+      const history = Array.isArray(bookingRecord.negotiationHistory) ? [...bookingRecord.negotiationHistory] : [];
+      history.push({
+        actor: 'client',
+        action: 'counter_proposed',
+        amount: newAmt,
+        note: statusCounterNote.trim() || `Client proposed GH₵ ${newAmt.toLocaleString()}`,
+        timestamp: new Date().toISOString()
+      });
+
+      const updates = {
+        status: 'Negotiation',
+        negotiationStatus: 'pending_admin',
+        negotiatedPrice: newAmt,
+        proposedPrice: newAmt,
+        price: newAmt,
+        totalPrice: newAmt,
+        balanceDue: Math.max(0, newAmt - paidSoFar),
+        clientNegotiationNote: statusCounterNote.trim(),
+        negotiationHistory: history,
+        updatedAt: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'bookings', bookingRecord.id), updates);
+      setStatusSearchResult((prev: any) => (prev ? { ...prev, ...updates } : prev));
+      setStatusCounterInput('');
+      setStatusCounterNote('');
+      toast.success(`Your new offer of GH₵ ${newAmt.toLocaleString()} has been sent to the admin!`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingRecord.id}`);
+    } finally {
+      setIsUpdatingNegotiation(false);
+    }
+  };
+
+  // Client pays the agreed / balance amount via Paystack in Status Lookup
+  const handlePayAgreedBalance = async (bookingRecord: any) => {
+    if (!bookingRecord?.id) return;
+    const summary = getRecordNegotiationSummary(bookingRecord);
+    const amountToPayBase = summary.balanceDue > 0 ? summary.balanceDue : summary.agreedPrice;
+    if (!amountToPayBase || amountToPayBase <= 0) {
+      toast.info('This booking has no outstanding balance due.');
+      return;
+    }
+
+    if (statusPaymentChannel === 'momo' && !statusMomoPhone.trim()) {
+      toast.error('Please enter your Mobile Money number to complete payment.');
+      return;
+    }
+
+    const feeBreakdown = calculateFeeCharge(amountToPayBase, false);
+    const totalPayableNow = feeBreakdown.totalAmount;
+    const refCode = generatePaystackReference('GREFAS-AGREED');
+
+    setIsPayingStatusBalance(true);
+    try {
+      let authUrl: string | undefined;
+      let accessCode: string | undefined;
+      try {
+        const initRes = await initializePaystackPayment({
+          email: bookingRecord.userEmail || auth.currentUser?.email || 'client@grefas.com',
+          amount: Number(totalPayableNow),
+          currency: 'GHS',
+          reference: refCode,
+          channels: statusPaymentChannel === 'card' ? ['card'] : ['mobile_money'],
+          metadata: {
+            bookingId: bookingRecord.id,
+            orderNumber: bookingRecord.orderNumber,
+            agreedPrice: summary.agreedPrice,
+            balancePaid: amountToPayBase
+          }
+        });
+        authUrl = initRes.data?.authorization_url;
+        accessCode = initRes.data?.access_code;
+      } catch (e) {
+        // fallback to inline popup
+      }
+
+      const activePublicKey =
+        paystackContext?.publicKey || ((import.meta as any).env?.VITE_PAYSTACK_PUBLIC_KEY as string) || '';
+
+      await openPaystackModal({
+        publicKey: activePublicKey,
+        email: bookingRecord.userEmail || auth.currentUser?.email || 'client@grefas.com',
+        amount: Number(totalPayableNow),
+        currency: 'GHS',
+        reference: refCode,
+        access_code: accessCode,
+        authorization_url: authUrl,
+        channels: statusPaymentChannel === 'card' ? ['card'] : ['mobile_money'],
+        metadata: {
+          bookingId: bookingRecord.id,
+          orderNumber: bookingRecord.orderNumber,
+          agreedPrice: summary.agreedPrice,
+          balancePaid: amountToPayBase
+        },
+        onSuccess: async () => {
+          const newTotalPaid = (summary.amountPaid || 0) + amountToPayBase;
+          const history = Array.isArray(bookingRecord.negotiationHistory) ? [...bookingRecord.negotiationHistory] : [];
+          history.push({
+            actor: 'client',
+            action: 'paid_agreed_price',
+            amount: amountToPayBase,
+            note: `Paid agreed amount of GH₵ ${amountToPayBase.toLocaleString()} via Paystack (Ref: ${refCode})`,
+            timestamp: new Date().toISOString()
+          });
+
+          const updates = {
+            status: bookingRecord.status === 'Negotiation' ? 'confirmed' : bookingRecord.status || 'confirmed',
+            negotiationStatus: 'agreed',
+            amountPaid: newTotalPaid,
+            paidAmount: newTotalPaid,
+            balanceDue: 0,
+            paymentStatus: 'Paid',
+            paymentRef: refCode,
+            paystackReference: refCode,
+            negotiationHistory: history,
+            updatedAt: new Date().toISOString()
+          };
+
+          await updateDoc(doc(db, 'bookings', bookingRecord.id), updates);
+
+          await addDoc(collection(db, 'transactions'), {
+            description: `Agreed Service Payment (Paystack): ${bookingRecord.serviceTitle || 'Service'} (Order #${bookingRecord.orderNumber})`,
+            amount: Number(totalPayableNow),
+            subtotal: Number(amountToPayBase),
+            processingFee: Number(feeBreakdown.feeAmount),
+            feePercentage: feeBreakdown.feePercentageDisplay,
+            type: 'credit',
+            category: 'Consultation Booking',
+            ref: refCode,
+            gateway: 'Paystack',
+            channel: statusPaymentChannel === 'card' ? 'card' : `momo_${statusMomoNetwork.toLowerCase()}`,
+            bookingId: bookingRecord.id,
+            bookingOrderNumber: bookingRecord.orderNumber,
+            customerName: bookingRecord.userName || '',
+            customerEmail: bookingRecord.userEmail || '',
+            serviceTitle: bookingRecord.serviceTitle || '',
+            status: 'successful',
+            recordedBy: bookingRecord.userEmail || 'online_client',
+            createdAt: serverTimestamp(),
+            transactionDate: new Date().toISOString()
+          });
+
+          setStatusSearchResult((prev: any) => (prev ? { ...prev, ...updates } : prev));
+          setIsPayingStatusBalance(false);
+          toast.success(`Payment of GH₵ ${totalPayableNow.toFixed(2)} completed! Your booking is now Paid & Confirmed.`);
+        },
+        onCancel: () => {
+          setIsPayingStatusBalance(false);
+        }
+      });
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not process payment.');
+      setIsPayingStatusBalance(false);
     }
   };
 
@@ -865,8 +1131,18 @@ export default function Booking() {
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isPaid || !paystackReceipt || !paymentRef) {
-      toast.error("A verified Paystack transaction receipt is required before marking this booking as 'Paid'. Please complete the payment first.");
+    const isNegotiationProposalOnly =
+      wantsToNegotiate && selectedServicePricing.isNegotiable && negotiationCheckoutMode === 'propose_first';
+
+    if (wantsToNegotiate && selectedServicePricing.isNegotiable) {
+      if (!proposedPriceInput || Number(proposedPriceInput) <= 0) {
+        toast.error('Please enter a valid proposed price greater than GH₵ 0.');
+        return;
+      }
+    }
+
+    if (!isNegotiationProposalOnly && (!isPaid || !paystackReceipt || !paymentRef)) {
+      toast.error("A verified Paystack transaction receipt is required before marking this booking as 'Paid'. Please complete the payment first, or submit a Price Negotiation Proposal.");
       return;
     }
 
@@ -889,67 +1165,102 @@ export default function Booking() {
       setOrderNumber(newOrderNumber);
 
       const recordedByEmail = auth.currentUser?.email || formData.userEmail || 'online_client';
-      const actualChannel = paystackReceipt.channel || (paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`);
+      const actualChannel = paystackReceipt?.channel || (paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`);
+      const isNegotiatingThisBooking = Boolean(wantsToNegotiate && selectedServicePricing.isNegotiable);
+      const finalBookingPrice = isNegotiatingThisBooking ? parsedProposedPrice : effectiveListedPrice;
 
-      // Create a new booking with Verified Paystack receipt
-      const newBookingRef = await addDoc(collection(db, 'bookings'), {
+      const bookingPayload: Record<string, any> = {
         ...formData,
         orderNumber: newOrderNumber,
         date: dateStr,
         clientTimezone: timezone,
         userId: user?.uid || 'anonymous',
-        status: 'pending',
-        paymentStatus: 'Paid',
-        paymentGateway: 'Paystack',
-        paymentRef: paymentRef,
-        paystackReference: paymentRef,
-        paystackReceiptId: String(paystackReceipt.id || paymentRef),
-        paystackReceipt: {
-          id: paystackReceipt.id || null,
-          status: paystackReceipt.status || 'success',
-          reference: paymentRef,
-          amount: paystackReceipt.amount || (bookingTotalPayable * 100),
-          amountInGhs: paystackReceipt.amountInGhs || bookingTotalPayable,
-          baseAmount: baseConsultationPrice,
-          transactionFee: bookingTransactionFee,
-          paid_at: paystackReceipt.paid_at || new Date().toISOString(),
-          channel: actualChannel,
-          gateway_response: paystackReceipt.gateway_response || 'Approved'
-        },
-        paymentChannel: actualChannel,
-        paidAmount: paystackReceipt.amountInGhs || bookingTotalPayable,
-        paidAt: paystackReceipt.paid_at || new Date().toISOString(),
-        price: baseConsultationPrice,
+        status: isNegotiatingThisBooking ? 'Negotiation' : 'pending',
+        originalPrice: selectedServicePricing.originalPrice,
+        servicePrice: selectedServicePricing.effectivePrice,
+        discountType: selectedServicePricing.discountType,
+        discountValue: selectedServicePricing.discountValue,
+        discountPercent: selectedServicePricing.discountPercent,
+        discountAmount: selectedServicePricing.savingsAmount,
+        negotiationStatus: isNegotiatingThisBooking ? 'pending_admin' : 'none',
+        negotiatedPrice: isNegotiatingThisBooking ? parsedProposedPrice : null,
+        proposedPrice: isNegotiatingThisBooking ? parsedProposedPrice : null,
+        agreedPrice: isNegotiatingThisBooking ? null : effectiveListedPrice,
+        adminCounterPrice: null,
+        clientNegotiationNote: isNegotiatingThisBooking ? negotiationNoteInput.trim() : '',
+        negotiationHistory: isNegotiatingThisBooking
+          ? [
+              {
+                actor: 'client',
+                action: isNegotiationProposalOnly ? 'proposed_price' : 'proposed_and_paid_deposit',
+                amount: parsedProposedPrice,
+                note:
+                  negotiationNoteInput.trim() ||
+                  `Client proposed GH₵ ${parsedProposedPrice.toLocaleString()} (Listed: GH₵ ${effectiveListedPrice.toLocaleString()})`,
+                timestamp: new Date().toISOString()
+              }
+            ]
+          : [],
+        price: finalBookingPrice,
+        totalPrice: finalBookingPrice,
         subtotal: baseConsultationPrice,
-        transactionFee: bookingTransactionFee,
+        amountPaid: isNegotiationProposalOnly ? 0 : baseConsultationPrice,
+        balanceDue: isNegotiationProposalOnly ? finalBookingPrice : 0,
+        paymentStatus: isNegotiationProposalOnly ? 'Negotiating' : 'Paid',
+        paymentGateway: isNegotiationProposalOnly ? 'Pending Agreement' : 'Paystack',
+        paymentRef: isNegotiationProposalOnly ? '' : paymentRef,
+        paystackReference: isNegotiationProposalOnly ? '' : paymentRef,
+        paystackReceiptId: isNegotiationProposalOnly ? '' : String(paystackReceipt?.id || paymentRef),
+        paystackReceipt: isNegotiationProposalOnly
+          ? null
+          : {
+              id: paystackReceipt?.id || null,
+              status: paystackReceipt?.status || 'success',
+              reference: paymentRef,
+              amount: paystackReceipt?.amount || bookingTotalPayable * 100,
+              amountInGhs: paystackReceipt?.amountInGhs || bookingTotalPayable,
+              baseAmount: baseConsultationPrice,
+              transactionFee: bookingTransactionFee,
+              paid_at: paystackReceipt?.paid_at || new Date().toISOString(),
+              channel: actualChannel,
+              gateway_response: paystackReceipt?.gateway_response || 'Approved'
+            },
+        paymentChannel: isNegotiationProposalOnly ? 'pending' : actualChannel,
+        paidAmount: isNegotiationProposalOnly ? 0 : paystackReceipt?.amountInGhs || bookingTotalPayable,
+        paidAt: isNegotiationProposalOnly ? null : paystackReceipt?.paid_at || new Date().toISOString(),
+        transactionFee: isNegotiationProposalOnly ? 0 : bookingTransactionFee,
         feePercentage: bookingFeeBreakdown.feePercentageDisplay,
         createdAt: serverTimestamp()
-      });
+      };
 
-      // Write direct to Firestore Transactions Collection with association to booking
-      await addDoc(collection(db, 'transactions'), {
-        description: `Consultation Booking (Paystack): ${formData.serviceTitle || 'General Consult'} (Booking Ref: ${newOrderNumber}) [Base: GH₵ ${baseConsultationPrice.toFixed(2)} + ${bookingFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${bookingTransactionFee.toFixed(2)}]`,
-        amount: Number(paystackReceipt.amountInGhs || bookingTotalPayable),
-        subtotal: Number(baseConsultationPrice),
-        processingFee: Number(bookingTransactionFee),
-        feePercentage: bookingFeeBreakdown.feePercentageDisplay,
-        type: 'credit',
-        category: 'Consultation Booking',
-        ref: paymentRef,
-        gateway: 'Paystack',
-        channel: actualChannel,
-        bookingId: newBookingRef.id,
-        bookingOrderNumber: newOrderNumber,
-        customerName: formData.userName || '',
-        customerEmail: formData.userEmail || '',
-        customerPhone: formData.userPhone || '',
-        serviceTitle: formData.serviceTitle || 'General Consultation',
-        status: 'successful',
-        receiptData: paystackReceipt ? JSON.parse(JSON.stringify(paystackReceipt)) : {},
-        recordedBy: recordedByEmail,
-        createdAt: serverTimestamp(),
-        transactionDate: new Date().toISOString()
-      });
+      const newBookingRef = await addDoc(collection(db, 'bookings'), bookingPayload);
+
+      // Write direct to Firestore Transactions Collection when payment was made now
+      if (!isNegotiationProposalOnly && paystackReceipt) {
+        await addDoc(collection(db, 'transactions'), {
+          description: `Consultation Booking (Paystack): ${formData.serviceTitle || 'General Consult'} (Booking Ref: ${newOrderNumber}) [Base: GH₵ ${baseConsultationPrice.toFixed(2)} + ${bookingFeeBreakdown.feePercentageDisplay} Fee: GH₵ ${bookingTransactionFee.toFixed(2)}]`,
+          amount: Number(paystackReceipt.amountInGhs || bookingTotalPayable),
+          subtotal: Number(baseConsultationPrice),
+          processingFee: Number(bookingTransactionFee),
+          feePercentage: bookingFeeBreakdown.feePercentageDisplay,
+          type: 'credit',
+          category: 'Consultation Booking',
+          ref: paymentRef,
+          gateway: 'Paystack',
+          channel: actualChannel,
+          bookingId: newBookingRef.id,
+          bookingOrderNumber: newOrderNumber,
+          customerName: formData.userName || '',
+          customerEmail: formData.userEmail || '',
+          customerPhone: formData.userPhone || '',
+          serviceTitle: formData.serviceTitle || 'General Consultation',
+          status: 'successful',
+          receiptData: paystackReceipt ? JSON.parse(JSON.stringify(paystackReceipt)) : {},
+          recordedBy: recordedByEmail,
+          createdAt: serverTimestamp(),
+          transactionDate: new Date().toISOString()
+        });
+      }
 
       await logAuditActivity({
         type: 'create',
@@ -1477,24 +1788,147 @@ export default function Booking() {
                               value={formData.serviceId}
                               required
                               onChange={(e) => {
-                                const s = services.find(s => s.id === e.target.value);
+                                const s = allServices.find(item => item.id === e.target.value);
                                 setFormData({ 
                                   ...formData, 
                                   serviceId: e.target.value,
                                   serviceTitle: s?.title || ''
                                 });
                                 if (s) {
-                                  setConsultationPrice(s.price || 150);
+                                  const p = getServicePricing(s);
+                                  setConsultationPrice(p.effectivePrice);
+                                  setWantsToNegotiate(false);
+                                  setProposedPriceInput(String(Math.max(10, Math.round(p.effectivePrice * 0.85))));
                                 }
                               }}
                             >
                               <option value="" className="bg-card">Select a service category</option>
-                              {services.map(s => (
-                                <option key={s.id} value={s.id} className="bg-card">{s.title}</option>
-                              ))}
+                              {allServices.map(s => {
+                                const p = getServicePricing(s);
+                                return (
+                                  <option key={s.id} value={s.id} className="bg-card">
+                                    {s.title} — GH₵ {p.effectivePrice.toLocaleString()}{p.hasDiscount ? ` (${p.discountBadgeText})` : ''}{p.isNegotiable ? ' • Negotiable' : ''}
+                                  </option>
+                                );
+                              })}
                             </select>
                           </div>
                         </div>
+
+                        {selectedService && (
+                          <div className="rounded-2xl border border-orange-500/25 bg-orange-500/5 p-4 space-y-3 animate-in fade-in">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-extrabold text-foreground">{selectedService.title}</span>
+                                {selectedServicePricing.hasDiscount && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 text-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
+                                    <Tag className="h-3 w-3" /> {selectedServicePricing.discountBadgeText}
+                                  </span>
+                                )}
+                                {selectedServicePricing.isNegotiable && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
+                                    <Handshake className="h-3 w-3" /> Price Negotiable
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {selectedServicePricing.hasDiscount && (
+                                  <span className="text-xs font-bold text-muted-foreground line-through font-mono">
+                                    GH₵ {selectedServicePricing.originalPrice.toLocaleString()}
+                                  </span>
+                                )}
+                                <span className="text-base font-black text-orange-600 font-mono">
+                                  GH₵ {selectedServicePricing.effectivePrice.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+
+                            {selectedServicePricing.hasDiscount && (
+                              <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                                Automatic discount applied: You save GH₵ {selectedServicePricing.savingsAmount.toLocaleString()} ({selectedServicePricing.discountBadgeText})!
+                              </p>
+                            )}
+
+                            {selectedServicePricing.isNegotiable && (
+                              <div className="pt-2 border-t border-border/50 space-y-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setWantsToNegotiate(false)}
+                                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                                      !wantsToNegotiate
+                                        ? 'border-orange-600 bg-orange-600/10 text-foreground'
+                                        : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-extrabold">Accept Listed Price</span>
+                                      <span className="text-xs font-mono font-black text-orange-600">
+                                        GH₵ {selectedServicePricing.effectivePrice.toLocaleString()}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">Standard checkout at Step 3</p>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setWantsToNegotiate(true);
+                                      if (!proposedPriceInput) {
+                                        setProposedPriceInput(String(Math.max(10, Math.round(selectedServicePricing.effectivePrice * 0.85))));
+                                      }
+                                    }}
+                                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                                      wantsToNegotiate
+                                        ? 'border-indigo-600 bg-indigo-600/10 text-foreground'
+                                        : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-extrabold flex items-center gap-1 text-indigo-600 dark:text-indigo-400">
+                                        <Handshake className="h-3.5 w-3.5" /> Negotiate Price
+                                      </span>
+                                      <span className="text-[10px] font-black uppercase bg-indigo-500/15 text-indigo-600 px-2 py-0.5 rounded-full">
+                                        Propose Offer
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">Propose your budget for admin review</p>
+                                  </button>
+                                </div>
+
+                                {wantsToNegotiate && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-3">
+                                    <div>
+                                      <label className="block text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">
+                                        Your Proposed Price (GH₵) *
+                                      </label>
+                                      <Input
+                                        type="number"
+                                        min="1"
+                                        step="any"
+                                        value={proposedPriceInput}
+                                        onChange={(e) => setProposedPriceInput(e.target.value)}
+                                        placeholder={String(selectedServicePricing.effectivePrice)}
+                                        className="h-10 font-mono font-black border-indigo-500/40"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                                        Negotiation Reason / Note
+                                      </label>
+                                      <Input
+                                        value={negotiationNoteInput}
+                                        onChange={(e) => setNegotiationNoteInput(e.target.value)}
+                                        placeholder="Optional note for admin..."
+                                        className="h-10 text-xs"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         <div className="space-y-1.5">
                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Requested Specialist (Optional)</label>
@@ -1652,27 +2086,92 @@ export default function Booking() {
                               <span>Service / Category:</span>
                               <span className="text-foreground font-extrabold">{formData.serviceTitle || 'General Consultation'}</span>
                             </div>
+                            {selectedServicePricing.hasDiscount && (
+                              <>
+                                <div className="flex justify-between text-xs font-semibold text-muted-foreground">
+                                  <span>Original Service Price:</span>
+                                  <span className="line-through font-mono">GH₵ {selectedServicePricing.originalPrice.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                  <span>Automatic Discount ({selectedServicePricing.discountBadgeText}):</span>
+                                  <span className="font-mono">- GH₵ {selectedServicePricing.savingsAmount.toFixed(2)}</span>
+                                </div>
+                              </>
+                            )}
                             <div className="flex justify-between text-xs font-semibold text-muted-foreground">
-                              <span>Consultation Base Fee:</span>
-                              <span className="text-foreground font-bold font-mono">GH₵ {baseConsultationPrice.toFixed(2)}</span>
+                              <span>{selectedServicePricing.hasDiscount ? 'Discounted Service Fee:' : 'Standard Service Fee:'}</span>
+                              <span className="text-foreground font-bold font-mono">GH₵ {effectiveListedPrice.toFixed(2)}</span>
                             </div>
-                            <div className="flex justify-between text-xs font-semibold text-muted-foreground">
-                              <span className="flex items-center gap-1.5">
-                                <span>{bookingTransactionFee === 0 ? 'Transaction Processing Fee:' : `${bookingFeeBreakdown.feePercentageDisplay} Transaction Processing Charge:`}</span>
-                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${bookingTransactionFee === 0 ? 'text-emerald-600 bg-emerald-500/10' : 'text-orange-600 bg-orange-500/10'}`}>
-                                  {bookingTransactionFee === 0 ? '0% (Waived)' : bookingFeeBreakdown.feePercentageDisplay}
-                                </span>
-                              </span>
-                              <span className={`font-bold font-mono ${bookingTransactionFee === 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                                {bookingTransactionFee === 0 ? 'GH₵ 0.00 (Waived)' : `+ GH₵ ${bookingTransactionFee.toFixed(2)}`}
-                              </span>
-                            </div>
-                            <div className="h-px bg-border/60 my-1" />
-                            <div className="flex justify-between text-sm font-black">
-                              <span className="text-foreground">Total Accurate Price:</span>
-                              <span className="text-emerald-600 font-mono font-black">GH₵ {bookingTotalPayable.toFixed(2)}</span>
-                            </div>
+                            {wantsToNegotiate && selectedServicePricing.isNegotiable && (
+                              <div className="flex justify-between text-xs font-extrabold text-indigo-600 dark:text-indigo-400 pt-1 border-t border-border/40">
+                                <span>Your Proposed Negotiated Price:</span>
+                                <span className="font-mono">GH₵ {parsedProposedPrice.toFixed(2)}</span>
+                              </div>
+                            )}
+                            {!(wantsToNegotiate && selectedServicePricing.isNegotiable && negotiationCheckoutMode === 'propose_first') && (
+                              <>
+                                <div className="flex justify-between text-xs font-semibold text-muted-foreground">
+                                  <span className="flex items-center gap-1.5">
+                                    <span>{bookingTransactionFee === 0 ? 'Transaction Processing Fee:' : `${bookingFeeBreakdown.feePercentageDisplay} Transaction Processing Charge:`}</span>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${bookingTransactionFee === 0 ? 'text-emerald-600 bg-emerald-500/10' : 'text-orange-600 bg-orange-500/10'}`}>
+                                      {bookingTransactionFee === 0 ? '0% (Waived)' : bookingFeeBreakdown.feePercentageDisplay}
+                                    </span>
+                                  </span>
+                                  <span className={`font-bold font-mono ${bookingTransactionFee === 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                    {bookingTransactionFee === 0 ? 'GH₵ 0.00 (Waived)' : `+ GH₵ ${bookingTransactionFee.toFixed(2)}`}
+                                  </span>
+                                </div>
+                                <div className="h-px bg-border/60 my-1" />
+                                <div className="flex justify-between text-sm font-black">
+                                  <span className="text-foreground">Total Payable Now:</span>
+                                  <span className="text-emerald-600 font-mono font-black">GH₵ {bookingTotalPayable.toFixed(2)}</span>
+                                </div>
+                              </>
+                            )}
                           </div>
+
+                          {wantsToNegotiate && selectedServicePricing.isNegotiable && !isPaid && (
+                            <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-3.5 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-extrabold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+                                  <Handshake className="h-4 w-4" /> Price Negotiation Settlement Option
+                                </span>
+                                <span className="text-[10px] font-mono font-black bg-indigo-500/15 text-indigo-600 px-2 py-0.5 rounded-full">
+                                  Proposed: GH₵ {parsedProposedPrice.toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setNegotiationCheckoutMode('propose_first')}
+                                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                                    negotiationCheckoutMode === 'propose_first'
+                                      ? 'border-indigo-600 bg-indigo-600/15 text-foreground'
+                                      : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  <span className="text-xs font-extrabold block">Submit Proposal First (Pay Later)</span>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Admin reviews, accepts, or counter-offers before you pay
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setNegotiationCheckoutMode('pay_proposed_now')}
+                                  className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                                    negotiationCheckoutMode === 'pay_proposed_now'
+                                      ? 'border-emerald-600 bg-emerald-600/15 text-foreground'
+                                      : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  <span className="text-xs font-extrabold block">Pay Proposed GH₵ {parsedProposedPrice.toLocaleString()} Now</span>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Pay your proposed offer now via Paystack
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
                           {!isPaid ? (
                             <div className="space-y-4">
@@ -1876,22 +2375,36 @@ export default function Booking() {
                           >
                             <ArrowLeft className="h-4 w-4" /> Edit Details
                           </Button>
-                          <Button
-                            type="button"
-                            onClick={handleBooking}
-                            disabled={submitting || !isPaid}
-                            className={`font-bold h-11 px-6 rounded-xl flex-1 justify-center flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm ${
-                              isPaid ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-muted border border-border text-muted-foreground cursor-not-allowed shadow-none hover:bg-muted'
-                            }`}
-                          >
-                            {submitting ? (
-                              <span className="flex items-center gap-1.5 justify-center"><Loader2 className="h-5 w-5 animate-spin" /> Transmitting Booking...</span>
-                            ) : !isPaid ? (
-                              <span className="flex items-center gap-1.5 justify-center"><Lock className="h-4 w-4 text-muted-foreground/60" /> Secure Payment Required</span>
-                            ) : (
-                              <>Confirm & Request Booking <Check className="h-4.5 w-4.5" /></>
-                            )}
-                          </Button>
+                          {(() => {
+                            const isProposalOnly = wantsToNegotiate && selectedServicePricing.isNegotiable && negotiationCheckoutMode === 'propose_first';
+                            const canSubmitBooking = isPaid || isProposalOnly;
+                            return (
+                              <Button
+                                type="button"
+                                onClick={handleBooking}
+                                disabled={submitting || !canSubmitBooking}
+                                className={`font-bold h-11 px-6 rounded-xl flex-1 justify-center flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm ${
+                                  canSubmitBooking
+                                    ? isProposalOnly
+                                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                      : 'bg-orange-600 hover:bg-orange-700 text-white'
+                                    : 'bg-muted border border-border text-muted-foreground cursor-not-allowed shadow-none hover:bg-muted'
+                                }`}
+                              >
+                                {submitting ? (
+                                  <span className="flex items-center gap-1.5 justify-center"><Loader2 className="h-5 w-5 animate-spin" /> Transmitting Booking...</span>
+                                ) : isProposalOnly ? (
+                                  <span className="flex items-center gap-1.5 justify-center">
+                                    <Handshake className="h-4 w-4" /> Submit Booking & Price Proposal (GH₵ {parsedProposedPrice.toLocaleString()})
+                                  </span>
+                                ) : !isPaid ? (
+                                  <span className="flex items-center gap-1.5 justify-center"><Lock className="h-4 w-4 text-muted-foreground/60" /> Secure Payment Required</span>
+                                ) : (
+                                  <>Confirm & Request Booking <Check className="h-4.5 w-4.5" /></>
+                                )}
+                              </Button>
+                            );
+                          })()}
                         </div>
                       </motion.div>
                     )}
@@ -2188,7 +2701,11 @@ export default function Booking() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status:</span>
-                          {statusSearchResult.status === 'confirmed' || statusSearchResult.status === 'approved' ? (
+                          {statusSearchResult.status === 'Negotiation' || statusSearchResult.negotiationStatus === 'pending_admin' || statusSearchResult.negotiationStatus === 'admin_countered' ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold leading-none bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/30">
+                              <Handshake className="h-3.5 w-3.5" /> Negotiation ({statusSearchResult.negotiationStatus === 'admin_countered' ? 'Admin Counter-Offer' : 'Under Review'})
+                            </span>
+                          ) : statusSearchResult.status === 'confirmed' || statusSearchResult.status === 'approved' ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold leading-none bg-green-500/10 text-green-600 border border-green-500/20">
                               <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" /> Approved & Confirmed
                             </span>
@@ -2260,6 +2777,187 @@ export default function Booking() {
                           </div>
                         )}
                       </div>
+
+                      {/* Price Negotiation & Settlement Hub */}
+                      {(() => {
+                        const negSummary = getRecordNegotiationSummary(statusSearchResult);
+                        return (
+                          <div className="px-6 pb-6 bg-card">
+                            <div className="rounded-2xl border border-indigo-500/25 bg-indigo-500/5 p-5 space-y-4">
+                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-500/15 pb-3">
+                                <div className="flex items-center gap-2">
+                                  <Handshake className="h-5 w-5 text-indigo-600" />
+                                  <h4 className="text-sm font-extrabold text-foreground">Price, Discount & Negotiation Summary</h4>
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">
+                                  {negSummary.negotiationLabel} • {negSummary.paymentStatus}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                <div className="p-3 rounded-xl bg-card border border-border/60">
+                                  <span className="text-[10px] font-bold uppercase text-muted-foreground block">Listed Service Fee</span>
+                                  <span className="font-mono font-black text-sm text-foreground">
+                                    GH₵ {Number(negSummary.listedPrice ?? negSummary.originalPrice ?? 0).toLocaleString()}
+                                  </span>
+                                  {negSummary.discountAmount > 0 && (
+                                    <span className="block text-[10px] text-emerald-600 font-bold">
+                                      Saved GH₵ {Number(negSummary.discountAmount || 0).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-card border border-border/60">
+                                  <span className="text-[10px] font-bold uppercase text-muted-foreground block">Negotiated / Agreed</span>
+                                  <span className="font-mono font-black text-sm text-indigo-600 dark:text-indigo-400">
+                                    GH₵ {Number(negSummary.negotiatedPrice ?? negSummary.agreedPrice ?? negSummary.finalTotal ?? 0).toLocaleString()}
+                                  </span>
+                                  {negSummary.proposedPrice !== null && negSummary.proposedPrice !== undefined && (
+                                    <span className="block text-[10px] text-muted-foreground">
+                                      Proposed: GH₵ {Number(negSummary.proposedPrice || 0).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-card border border-border/60">
+                                  <span className="text-[10px] font-bold uppercase text-muted-foreground block">Amount Paid</span>
+                                  <span className="font-mono font-black text-sm text-emerald-600">
+                                    GH₵ {Number(negSummary.amountPaid || 0).toLocaleString()}
+                                  </span>
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-card border border-border/60">
+                                  <span className="text-[10px] font-bold uppercase text-muted-foreground block">Balance Due</span>
+                                  <span className={`font-mono font-black text-sm ${negSummary.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                                    GH₵ {Number(negSummary.balanceDue || 0).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Admin Counter-Offer Response Controls */}
+                              {(negSummary.negotiationStatus === 'admin_countered' || negSummary.negotiationStatus === 'countered_by_admin') && (
+                                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-4 space-y-3">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-xs font-extrabold text-amber-800 dark:text-amber-300">
+                                        Admin Counter-Offer: GH₵ {Number(negSummary.adminCounterPrice || negSummary.negotiatedPrice || negSummary.agreedPrice || 0).toLocaleString()}
+                                      </p>
+                                      {statusSearchResult.adminNegotiationNote && (
+                                        <p className="text-xs text-muted-foreground mt-0.5 italic">
+                                          Admin Note: "{statusSearchResult.adminNegotiationNote}"
+                                        </p>
+                                      )}
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      disabled={isUpdatingNegotiation}
+                                      onClick={() => handleClientAcceptAdminCounter(statusSearchResult)}
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs"
+                                    >
+                                      <Check className="mr-1.5 h-3.5 w-3.5" /> Accept Counter-Offer (GH₵ {Number(negSummary.adminCounterPrice || negSummary.negotiatedPrice || negSummary.agreedPrice || 0).toLocaleString()})
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Client New Proposal / Counter Form */}
+                              {negSummary.paymentStatus !== 'Paid' && (
+                                <div className="pt-2 border-t border-indigo-500/15 space-y-2">
+                                  <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                                    Propose / Update Negotiated Price (GH₵)
+                                  </label>
+                                  <div className="flex flex-col sm:flex-row gap-2">
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      step="any"
+                                      value={statusCounterInput}
+                                      onChange={(e) => setStatusCounterInput(e.target.value)}
+                                      placeholder="Enter proposed price (GH₵)"
+                                      className="h-9 text-xs font-mono sm:w-44 bg-card"
+                                    />
+                                    <Input
+                                      value={statusCounterNote}
+                                      onChange={(e) => setStatusCounterNote(e.target.value)}
+                                      placeholder="Note for admin (optional)..."
+                                      className="h-9 text-xs flex-1 bg-card"
+                                    />
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={isUpdatingNegotiation}
+                                      onClick={() => handleClientSendNewProposal(statusSearchResult)}
+                                      className="h-9 text-xs font-bold border-indigo-500/40 text-indigo-600 hover:bg-indigo-500/10"
+                                    >
+                                      Send Price Offer
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Pay Agreed Price / Balance Due Section */}
+                              {negSummary.balanceDue > 0 && (
+                                <div className="pt-3 border-t border-indigo-500/20 space-y-3">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div>
+                                      <h5 className="text-xs font-extrabold text-foreground">
+                                        Pay Agreed / Outstanding Amount: <span className="text-emerald-600 font-mono">GH₵ {negSummary.balanceDue.toLocaleString()}</span>
+                                      </h5>
+                                      <p className="text-[11px] text-muted-foreground">
+                                        Complete your payment via Paystack Mobile Money or Card to confirm your booking.
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <select
+                                      value={statusPaymentChannel}
+                                      onChange={(e) => setStatusPaymentChannel(e.target.value as 'momo' | 'card')}
+                                      className="h-9 rounded-xl border border-border bg-card px-3 text-xs font-bold"
+                                    >
+                                      <option value="momo">Mobile Money (MoMo)</option>
+                                      <option value="card">Visa / Mastercard</option>
+                                    </select>
+                                    {statusPaymentChannel === 'momo' && (
+                                      <>
+                                        <select
+                                          value={statusMomoNetwork}
+                                          onChange={(e) => setStatusMomoNetwork(e.target.value)}
+                                          className="h-9 rounded-xl border border-border bg-card px-3 text-xs font-bold"
+                                        >
+                                          <option value="MTN">MTN MoMo</option>
+                                          <option value="Telecel">Telecel Cash</option>
+                                          <option value="AT">AT Money</option>
+                                        </select>
+                                        <Input
+                                          type="tel"
+                                          value={statusMomoPhone}
+                                          onChange={(e) => setStatusMomoPhone(e.target.value)}
+                                          placeholder="024XXXXXXX"
+                                          className="h-9 text-xs bg-card"
+                                        />
+                                      </>
+                                    )}
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    disabled={isPayingStatusBalance}
+                                    onClick={() => handlePayAgreedBalance(statusSearchResult)}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-10 rounded-xl"
+                                  >
+                                    {isPayingStatusBalance ? (
+                                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing Payment...</>
+                                    ) : (
+                                      <><Lock className="mr-2 h-4 w-4" /> Pay Agreed Amount (GH₵ {negSummary.balanceDue.toLocaleString()}) Now</>
+                                    )}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Success / Instructions Message */}
                       <div className="p-5 border-t border-border bg-orange-650/[0.02] flex gap-3 text-xs text-muted-foreground leading-relaxed">

@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { 
   FileText, Clock, CheckCircle2, AlertTriangle, Play, MessageCircle, MapPin, 
   Phone, Mail, Calendar, Sparkles, LogIn, ArrowRight, Loader2, LogOut, Printer, X,
-  Bell, CreditCard, Receipt, ShieldCheck, Check, Download
+  Bell, CreditCard, Receipt, ShieldCheck, Check, Download, Handshake, Tag
 } from 'lucide-react';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
@@ -20,6 +20,7 @@ import AuthDialog from '@/components/AuthDialog';
 import { jsPDF } from 'jspdf';
 import { generatePaystackReference, initializePaystackPayment, verifyPaystackPayment } from '@/lib/paystack';
 import { calculateTransactionCharge } from '@/lib/transactionFees';
+import { getRecordNegotiationSummary } from '@/lib/servicePricing';
 
 export default function MyApplications() {
   const [user, setUser] = useState<any>(null);
@@ -220,12 +221,82 @@ export default function MyApplications() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentStep, setPaymentStep] = useState<'form' | 'processing' | 'success'>('form');
   const [transactionId, setTransactionId] = useState('');
+  const [clientOfferMap, setClientOfferMap] = useState<Record<string, string>>({});
+  const [clientOfferNoteMap, setClientOfferNoteMap] = useState<Record<string, string>>({});
+  const [submittingOfferId, setSubmittingOfferId] = useState<string | null>(null);
+
+  const getEffectivePrice = (item: any) => {
+    const val = item?.agreedPrice ?? item?.totalPrice ?? item?.price ?? item?.originalPrice;
+    return val !== undefined && val !== null && Number(val) > 0 ? Number(val) : 0;
+  };
 
   const getAmountPaid = (item: any) => {
-    if (!item.price || !item.paymentPlan || !item.paymentPlan.installments) return 0;
-    return item.paymentPlan.installments
-      .filter((inst: any) => inst.status === 'Paid')
-      .reduce((sum: number, inst: any) => sum + (inst.amount || 0), 0);
+    const directPaid = Number(item?.amountPaid || 0);
+    const instPaid = Array.isArray(item?.paymentPlan?.installments)
+      ? item.paymentPlan.installments
+          .filter((inst: any) => inst.status === 'Paid')
+          .reduce((sum: number, inst: any) => sum + (Number(inst.amount) || 0), 0)
+      : 0;
+    return Math.max(directPaid, instPaid);
+  };
+
+  const handleClientNegotiateIntake = async (
+    app: any,
+    options: {
+      proposedPrice?: number;
+      agreedPrice?: number;
+      negotiationStatus: 'proposed' | 'agreed';
+      note?: string;
+    }
+  ) => {
+    if (!app?.id) return;
+    setSubmittingOfferId(app.id);
+    try {
+      const effPrice = getEffectivePrice(app);
+      const origPrice = Number(app.originalPrice ?? effPrice ?? 500);
+      const nextAgreed = options.agreedPrice !== undefined ? Number(options.agreedPrice) : (app.agreedPrice ?? effPrice);
+      const nextTotal = options.negotiationStatus === 'agreed' ? nextAgreed : effPrice;
+      const paid = getAmountPaid(app);
+      const balanceDue = Math.max(0, nextTotal - paid);
+
+      const historyEntry = {
+        actor: 'client',
+        actorName: app.fullName || user?.displayName || user?.email || 'Client',
+        action: options.negotiationStatus === 'agreed' ? 'accept' : 'propose',
+        amount: options.negotiationStatus === 'agreed' ? nextAgreed : Number(options.proposedPrice || 0),
+        note: options.note || (options.negotiationStatus === 'agreed' ? `Client accepted agreed price of GH₵ ${nextAgreed.toLocaleString()}` : `Client proposed GH₵ ${Number(options.proposedPrice || 0).toLocaleString()}`),
+        timestamp: new Date().toISOString()
+      };
+      const existingHistory = Array.isArray(app.negotiationHistory) ? app.negotiationHistory : [];
+
+      await setDoc(doc(db, 'service_intakes', app.id), {
+        originalPrice: origPrice,
+        ...(options.proposedPrice !== undefined ? { proposedPrice: Number(options.proposedPrice) } : {}),
+        ...(options.agreedPrice !== undefined ? {
+          agreedPrice: nextAgreed,
+          price: nextAgreed,
+          totalPrice: nextAgreed,
+          balanceDue
+        } : {}),
+        negotiationStatus: options.negotiationStatus,
+        negotiationNote: options.note || app.negotiationNote || '',
+        negotiationNotes: options.note || app.negotiationNotes || '',
+        negotiationHistory: [...existingHistory, historyEntry],
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      toast.success(
+        options.negotiationStatus === 'agreed'
+          ? `Agreed price of GH₵ ${nextAgreed.toLocaleString()} confirmed! You can now proceed to pay.`
+          : `Price proposal of GH₵ ${Number(options.proposedPrice || 0).toLocaleString()} sent to Admin!`
+      );
+      setClientOfferMap(prev => ({ ...prev, [app.id]: '' }));
+      setClientOfferNoteMap(prev => ({ ...prev, [app.id]: '' }));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `service_intakes/${app.id}`);
+    } finally {
+      setSubmittingOfferId(null);
+    }
   };
   
   // Controls print preview modal
@@ -641,8 +712,10 @@ export default function MyApplications() {
         console.warn("Paystack verify fallback:", vErr);
       }
 
-      const appInsts = activePaymentApp.paymentPlan?.installments || [];
-      const updatedInsts = appInsts.map((inst: any) => {
+      const appInsts = Array.isArray(activePaymentApp.paymentPlan?.installments)
+        ? activePaymentApp.paymentPlan.installments
+        : [];
+      let updatedInsts = appInsts.map((inst: any) => {
         if (inst.id === activePaymentInstallment.id) {
           return {
             ...inst,
@@ -659,11 +732,35 @@ export default function MyApplications() {
         }
         return inst;
       });
+
+      if (appInsts.length === 0 || !appInsts.some((inst: any) => inst.id === activePaymentInstallment.id)) {
+        updatedInsts = [
+          ...appInsts,
+          {
+            id: activePaymentInstallment.id || `inst_${Date.now()}`,
+            name: activePaymentInstallment.name || 'Agreed Service Fee Payment',
+            amount: baseInstAmount,
+            dueDate: new Date().toISOString().split('T')[0],
+            status: 'Paid',
+            paidAt: new Date().toISOString(),
+            transactionId: txnId,
+            gateway: 'Paystack',
+            paymentMode,
+            baseAmount: baseInstAmount,
+            transactionFee: instTransactionFee,
+            totalPaid: instTotalPayable,
+            ...(paymentMode === 'momo' ? { momoOperator, momoNumber } : {})
+          }
+        ];
+      }
       
-      const priceVal = Number(activePaymentApp.price) || 0;
-      const paidAmount = updatedInsts
+      const priceVal = getEffectivePrice(activePaymentApp) || baseInstAmount;
+      const instPaidAmount = updatedInsts
         .filter((inst: any) => inst.status === 'Paid')
-        .reduce((sum: number, inst: any) => sum + (inst.amount || 0), 0);
+        .reduce((sum: number, inst: any) => sum + (Number(inst.amount) || 0), 0);
+      const prevDirectPaid = Number(activePaymentApp.amountPaid || 0);
+      const paidAmount = Math.max(instPaidAmount, prevDirectPaid + (appInsts.length === 0 ? baseInstAmount : 0));
+      const nextBalanceDue = Math.max(0, priceVal - paidAmount);
         
       let calcStatus = 'Unpaid';
       if (priceVal > 0) {
@@ -674,13 +771,25 @@ export default function MyApplications() {
         }
       }
       
+      const existingPlanObj = typeof activePaymentApp.paymentPlan === 'object' && activePaymentApp.paymentPlan !== null
+        ? activePaymentApp.paymentPlan
+        : { type: typeof activePaymentApp.paymentPlan === 'string' ? activePaymentApp.paymentPlan : 'full' };
+
       const docRef = doc(db, 'service_intakes', activePaymentApp.id);
       await setDoc(docRef, {
+        price: priceVal,
+        totalPrice: priceVal,
+        amountPaid: paidAmount,
+        balanceDue: nextBalanceDue,
         paymentStatus: calcStatus,
+        paymentReference: txnId,
+        lastPaymentDate: new Date().toISOString(),
         paymentPlan: {
-          ...activePaymentApp.paymentPlan,
+          ...existingPlanObj,
+          status: calcStatus,
           installments: updatedInsts
-        }
+        },
+        updatedAt: new Date().toISOString()
       }, { merge: true });
 
       // Add to main ledger with dynamic fee itemization
@@ -1165,116 +1274,265 @@ export default function MyApplications() {
                           </div>
                         </div>
 
-                        {/* Account Billing & Payments Status */}
-                        {app.price > 0 && (
-                          <div className="mt-5 pt-5 border-t border-border/60 space-y-4">
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-muted/25 p-4 rounded-xl border border-border/40">
-                              <div className="space-y-1">
-                                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                  <CreditCard className="h-3.5 w-3.5 text-orange-600 animate-pulse" /> Tuition & Casting Fee Breakdown
-                                </h4>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs font-bold text-foreground">
-                                  <div>Total Cost: <span className="font-mono text-orange-600">GH₵ {Number(app.price).toLocaleString()}</span></div>
-                                  <div className="text-muted-foreground font-normal">•</div>
-                                  <div>Amount Paid: <span className="font-mono text-emerald-600">GH₵ {getAmountPaid(app).toLocaleString()}</span></div>
-                                  <div className="text-muted-foreground font-normal">•</div>
-                                  <div>Outstanding: <span className="font-mono text-red-500">GH₵ {(Number(app.price) - getAmountPaid(app)).toLocaleString()}</span></div>
+                        {/* Account Billing, Discounts, Negotiation & Payments Status */}
+                        {!app.isCareerApp && (() => {
+                          const effPrice = getEffectivePrice(app);
+                          const origPrice = Number(app.originalPrice ?? effPrice);
+                          const paidAmt = getAmountPaid(app);
+                          const outstandingBal = Math.max(0, effPrice - paidAmt);
+                          const progressPct = effPrice > 0 ? Math.min(100, Math.round((paidAmt / effPrice) * 100)) : 0;
+                          const isFullyPaid = effPrice > 0 && paidAmt >= effPrice;
+                          const installmentsList = Array.isArray(app.paymentPlan?.installments) ? app.paymentPlan.installments : [];
+
+                          return (
+                            <div className="mt-5 pt-5 border-t border-border/60 space-y-4">
+                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-muted/25 p-4 rounded-xl border border-border/40">
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                      <CreditCard className="h-3.5 w-3.5 text-orange-600 animate-pulse" /> Service Fee, Discount & Negotiation
+                                    </h4>
+                                    {Number(app.discountPercent || 0) > 0 && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 text-white px-2 py-0.5 text-[9px] font-extrabold uppercase">
+                                        <Tag className="h-2.5 w-2.5" /> {app.discountPercent}% Discount Applied
+                                      </span>
+                                    )}
+                                    {app.negotiationStatus === 'agreed' && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-2 py-0.5 text-[9px] font-extrabold uppercase">
+                                        <Handshake className="h-2.5 w-2.5" /> Agreed Amount Locked
+                                      </span>
+                                    )}
+                                    {app.negotiationStatus === 'proposed' && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 px-2 py-0.5 text-[9px] font-extrabold uppercase">
+                                        <Handshake className="h-2.5 w-2.5" /> Offer Sent: GH₵ {Number(app.proposedPrice || 0).toLocaleString()}
+                                      </span>
+                                    )}
+                                    {app.negotiationStatus === 'countered' && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 px-2 py-0.5 text-[9px] font-extrabold uppercase">
+                                        <Handshake className="h-2.5 w-2.5" /> Admin Counter-Offer: GH₵ {Number(app.adminCounterPrice || effPrice).toLocaleString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs font-bold text-foreground">
+                                    {origPrice > effPrice && (
+                                      <>
+                                        <div>Standard: <span className="font-mono line-through text-muted-foreground">GH₵ {origPrice.toLocaleString()}</span></div>
+                                        <div className="text-muted-foreground font-normal">•</div>
+                                      </>
+                                    )}
+                                    <div>Agreed / Effective Cost: <span className="font-mono text-orange-600">GH₵ {effPrice.toLocaleString()}</span></div>
+                                    <div className="text-muted-foreground font-normal">•</div>
+                                    <div>Amount Paid: <span className="font-mono text-emerald-600">GH₵ {paidAmt.toLocaleString()}</span></div>
+                                    <div className="text-muted-foreground font-normal">•</div>
+                                    <div>Outstanding: <span className="font-mono text-red-500">GH₵ {outstandingBal.toLocaleString()}</span></div>
+                                  </div>
                                 </div>
+
+                                {effPrice > 0 && (
+                                  <div className="w-full sm:w-48 space-y-1">
+                                    <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase">
+                                      <span>Payment Progress</span>
+                                      <span className="font-mono text-emerald-600">{progressPct}%</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-muted border border-border/50 rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                        style={{ width: `${progressPct}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
                               </div>
 
-                              <div className="w-full sm:w-48 space-y-1">
-                                <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase">
-                                  <span>Payment Progress</span>
-                                  <span className="font-mono text-emerald-600">{Math.round((getAmountPaid(app) / Number(app.price)) * 100)}%</span>
-                                </div>
-                                <div className="h-2 w-full bg-muted border border-border/50 rounded-full overflow-hidden">
-                                  <div 
-                                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                                    style={{ width: `${(getAmountPaid(app) / Number(app.price)) * 100}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
+                              {/* Client & Admin Price Negotiation Interactive Panel */}
+                              {!isFullyPaid && (
+                                <div className="p-3.5 rounded-xl bg-indigo-500/5 border border-indigo-500/20 space-y-3">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="space-y-0.5">
+                                      <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                        <Handshake className="h-4 w-4 text-indigo-600" />
+                                        Price Negotiation & Direct Settlement
+                                      </p>
+                                      <p className="text-[11px] text-muted-foreground">
+                                        {app.negotiationStatus === 'countered'
+                                          ? `Admin counter-offered GH₵ ${Number(app.adminCounterPrice || effPrice).toLocaleString()}. You can accept and pay this agreed amount or send a new offer.`
+                                          : app.negotiationStatus === 'agreed'
+                                          ? `Agreed service price is locked at GH₵ ${effPrice.toLocaleString()}. Pay the remaining balance of GH₵ ${outstandingBal.toLocaleString()} below.`
+                                          : 'Propose a custom price to negotiate with Admin, or pay the agreed balance directly.'}
+                                      </p>
+                                    </div>
 
-                            {/* Milestones Listing */}
-                            <div className="space-y-2.5">
-                              <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">
-                                Scheduled Payment Milestones / Invoices
-                              </h5>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {(app.paymentPlan?.installments || []).map((inst: any, idx: number) => {
-                                  const isPaid = inst.status === 'Paid';
-                                  const isOverdue = !isPaid && new Date(inst.dueDate) < new Date();
-                                  return (
-                                    <div 
-                                      key={inst.id || idx}
-                                      className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 bg-card/40 transition-colors ${
-                                        isPaid ? 'border-emerald-500/20 hover:bg-emerald-500/[0.01]' : 
-                                        isOverdue ? 'border-red-500/20 hover:bg-red-500/[0.01]' : 'border-border/80 hover:bg-muted/[0.01]'
-                                      }`}
-                                    >
-                                      {/* Info */}
-                                      <div className="space-y-1">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <span className="font-bold text-xs text-foreground line-clamp-1">{inst.name}</span>
-                                          <span className={`shrink-0 inline-block px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wide ${
-                                            isPaid ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-500/10' :
-                                            isOverdue ? 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400 border border-red-500/10' :
-                                            'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-500/10'
-                                          }`}>
-                                            {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Unpaid'}
-                                          </span>
-                                        </div>
-                                        <div className="text-[10px] text-muted-foreground font-semibold flex justify-between items-center">
-                                          <span>Due: {inst.dueDate ? new Date(inst.dueDate).toLocaleDateString() : 'Immediate'}</span>
-                                          <span className="font-bold text-xs text-foreground font-mono">GH₵ {inst.amount.toLocaleString()}</span>
-                                        </div>
-                                      </div>
+                                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                                      {app.negotiationStatus === 'countered' && (
+                                        <Button
+                                          size="sm"
+                                          disabled={submittingOfferId === app.id}
+                                          onClick={() => handleClientNegotiateIntake(app, {
+                                            agreedPrice: Number(app.adminCounterPrice || effPrice),
+                                            negotiationStatus: 'agreed',
+                                            note: `Client accepted Admin counter-offer of GH₵ ${Number(app.adminCounterPrice || effPrice).toLocaleString()}`
+                                          })}
+                                          className="h-8 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        >
+                                          <Check className="h-3.5 w-3.5 mr-1" /> Accept GH₵ {Number(app.adminCounterPrice || effPrice).toLocaleString()}
+                                        </Button>
+                                      )}
 
-                                      {/* Action Button */}
-                                      {isPaid ? (
-                                        <div className="grid grid-cols-2 gap-2 mt-1">
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => triggerPrintReceipt(app, inst)}
-                                            className="h-8 text-[10px] font-bold w-full rounded-lg border-emerald-500/20 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/5 cursor-pointer flex items-center justify-center gap-1"
-                                          >
-                                            <Printer className="h-3.5 w-3.5 shrink-0" /> Print
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => downloadReceiptPdf(app, inst)}
-                                            className="h-8 text-[10px] font-bold w-full rounded-lg border-orange-500/20 text-orange-600 hover:text-orange-700 hover:bg-orange-500/5 cursor-pointer flex items-center justify-center gap-1"
-                                          >
-                                            <Download className="h-3.5 w-3.5 shrink-0" /> Download
-                                          </Button>
-                                        </div>
-                                      ) : (
+                                      {outstandingBal > 0 && installmentsList.length === 0 && (
                                         <Button
                                           size="sm"
                                           onClick={() => {
                                             setActivePaymentApp(app);
-                                            setActivePaymentInstallment(inst);
+                                            setActivePaymentInstallment({
+                                              id: `agreed_${Date.now()}`,
+                                              name: app.negotiationStatus === 'agreed' ? 'Agreed Service Fee Settlement' : 'Service Fee Balance Settlement',
+                                              amount: outstandingBal,
+                                              dueDate: new Date().toISOString().split('T')[0],
+                                              status: 'Unpaid'
+                                            });
                                             setPaymentMode('momo');
                                             setMomoOperator('mtn');
                                             setMomoNumber(app.whatsappNumber || app.contact || '');
                                             setPaymentStep('form');
                                             setTransactionId('');
                                           }}
-                                          className="h-8 text-[11px] font-bold w-full rounded-lg bg-orange-600 hover:bg-orange-700 text-white cursor-pointer shadow-xs"
+                                          className="h-8 text-[11px] font-bold bg-orange-600 hover:bg-orange-700 text-white shadow-xs"
                                         >
-                                          <CreditCard className="h-3.5 w-3.5 mr-1" /> Pay Milestone Fee
+                                          <CreditCard className="h-3.5 w-3.5 mr-1" /> Pay Agreed Amount (GH₵ {outstandingBal.toLocaleString()})
                                         </Button>
                                       )}
                                     </div>
-                                  );
-                                })}
-                              </div>
+                                  </div>
+
+                                  {(app.negotiationNotes || app.negotiationNote) && (
+                                    <div className="text-[11px] bg-background/80 border border-border/50 rounded-lg px-3 py-1.5 text-muted-foreground italic">
+                                      Latest Note: "{app.negotiationNotes || app.negotiationNote}"
+                                    </div>
+                                  )}
+
+                                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                                    <Input
+                                      type="number"
+                                      min={1}
+                                      placeholder="Your Proposed Price (GH₵)"
+                                      value={clientOfferMap[app.id] ?? ''}
+                                      onChange={(e) => setClientOfferMap(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                      className="h-8 text-xs bg-background sm:w-48"
+                                    />
+                                    <Input
+                                      type="text"
+                                      placeholder="Optional reason or note for Admin..."
+                                      value={clientOfferNoteMap[app.id] ?? ''}
+                                      onChange={(e) => setClientOfferNoteMap(prev => ({ ...prev, [app.id]: e.target.value }))}
+                                      className="h-8 text-xs bg-background flex-1"
+                                    />
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={!clientOfferMap[app.id] || submittingOfferId === app.id}
+                                      onClick={() => {
+                                        const val = Number(clientOfferMap[app.id]);
+                                        if (isNaN(val) || val <= 0) {
+                                          toast.error('Please enter a valid proposed amount in GH₵');
+                                          return;
+                                        }
+                                        handleClientNegotiateIntake(app, {
+                                          proposedPrice: val,
+                                          negotiationStatus: 'proposed',
+                                          note: clientOfferNoteMap[app.id]?.trim() || `Client proposed GH₵ ${val.toLocaleString()}`
+                                        });
+                                      }}
+                                      className="h-8 text-xs font-bold border-indigo-500/40 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-500/10 shrink-0"
+                                    >
+                                      <Handshake className="h-3.5 w-3.5 mr-1" /> Send Price Offer
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Milestones Listing */}
+                              {installmentsList.length > 0 && (
+                                <div className="space-y-2.5">
+                                  <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">
+                                    Scheduled Payment Milestones / Invoices
+                                  </h5>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {installmentsList.map((inst: any, idx: number) => {
+                                      const isPaid = inst.status === 'Paid';
+                                      const isOverdue = !isPaid && new Date(inst.dueDate) < new Date();
+                                      return (
+                                        <div 
+                                          key={inst.id || idx}
+                                          className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 bg-card/40 transition-colors ${
+                                            isPaid ? 'border-emerald-500/20 hover:bg-emerald-500/[0.01]' : 
+                                            isOverdue ? 'border-red-500/20 hover:bg-red-500/[0.01]' : 'border-border/80 hover:bg-muted/[0.01]'
+                                          }`}
+                                        >
+                                          {/* Info */}
+                                          <div className="space-y-1">
+                                            <div className="flex items-start justify-between gap-2">
+                                              <span className="font-bold text-xs text-foreground line-clamp-1">{inst.name}</span>
+                                              <span className={`shrink-0 inline-block px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wide ${
+                                                isPaid ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-500/10' :
+                                                isOverdue ? 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400 border border-red-500/10' :
+                                                'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-500/10'
+                                              }`}>
+                                                {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Unpaid'}
+                                              </span>
+                                            </div>
+                                            <div className="text-[10px] text-muted-foreground font-semibold flex justify-between items-center">
+                                              <span>Due: {inst.dueDate ? new Date(inst.dueDate).toLocaleDateString() : 'Immediate'}</span>
+                                              <span className="font-bold text-xs text-foreground font-mono">GH₵ {Number(inst.amount || 0).toLocaleString()}</span>
+                                            </div>
+                                          </div>
+
+                                          {/* Action Button */}
+                                          {isPaid ? (
+                                            <div className="grid grid-cols-2 gap-2 mt-1">
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => triggerPrintReceipt(app, inst)}
+                                                className="h-8 text-[10px] font-bold w-full rounded-lg border-emerald-500/20 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/5 cursor-pointer flex items-center justify-center gap-1"
+                                              >
+                                                <Printer className="h-3.5 w-3.5 shrink-0" /> Print
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => downloadReceiptPdf(app, inst)}
+                                                className="h-8 text-[10px] font-bold w-full rounded-lg border-orange-500/20 text-orange-600 hover:text-orange-700 hover:bg-orange-500/5 cursor-pointer flex items-center justify-center gap-1"
+                                              >
+                                                <Download className="h-3.5 w-3.5 shrink-0" /> Download
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            <Button
+                                              size="sm"
+                                              onClick={() => {
+                                                setActivePaymentApp(app);
+                                                setActivePaymentInstallment(inst);
+                                                setPaymentMode('momo');
+                                                setMomoOperator('mtn');
+                                                setMomoNumber(app.whatsappNumber || app.contact || '');
+                                                setPaymentStep('form');
+                                                setTransactionId('');
+                                              }}
+                                              className="h-8 text-[11px] font-bold w-full rounded-lg bg-orange-600 hover:bg-orange-700 text-white cursor-pointer shadow-xs"
+                                            >
+                                              <CreditCard className="h-3.5 w-3.5 mr-1" /> Pay Milestone Fee
+                                            </Button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
 
                       {/* Right: Assessment Status Indicators */}

@@ -59,6 +59,9 @@ export default function Breadcrumbs({
     letters: 'Official Letters',
     sms: 'SMS Dashboard',
     sitemap: 'Sitemap & Indexing',
+    negotiations: 'Negotiated Prices & Budgets',
+    'negotiated-prices': 'Negotiated Prices & Budgets',
+    'agreed-budgets': 'Negotiated Prices & Budgets',
     ...customLabels,
   };
 

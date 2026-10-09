@@ -2468,6 +2468,96 @@ Sitemap: ${domain}/sitemap.xml`);
     });
   });
 
+  app.post("/api/notifications/negotiation-approved", async (req, res) => {
+    const {
+      phone,
+      email,
+      name,
+      serviceTitle,
+      agreedPrice,
+      originalPrice,
+      proposedPrice,
+      orderNumber,
+      adminNote,
+      actionType = "approved", // 'approved' | 'counter_offer' | 'declined'
+      customSmsMessage
+    } = req.body || {};
+
+    const clientName = String(name || "Valued Client").trim();
+    const serviceName = String(serviceTitle || "Service Order").trim();
+    const numAgreed = Number(agreedPrice || 0);
+    const numOriginal = Number(originalPrice || 0);
+    const formattedAgreed = numAgreed.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const orderRefPart = orderNumber ? ` (Ref: ${orderNumber})` : "";
+    const savingsAmount = numOriginal > numAgreed && numAgreed > 0 ? numOriginal - numAgreed : 0;
+    const savingsPart = savingsAmount > 0 ? ` You save GHc ${savingsAmount.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} off the standard rate.` : "";
+    const notePart = adminNote ? ` Note: "${String(adminNote).trim()}"` : "";
+
+    let smsText = customSmsMessage ? String(customSmsMessage).trim() : "";
+    if (!smsText) {
+      if (actionType === "counter_offer") {
+        smsText = `GREFAS CONSULT: Dear ${clientName}, Administration has reviewed your budget request for "${serviceName}"${orderRefPart} and proposed a counter-offer of GHc ${formattedAgreed}.${notePart} Visit our booking portal to review and accept.`;
+      } else if (actionType === "declined") {
+        smsText = `GREFAS CONSULT: Dear ${clientName}, regarding your budget proposal for "${serviceName}"${orderRefPart}, Administration is unable to approve the proposed amount at this time.${notePart} Please contact us or visit our portal for options.`;
+      } else {
+        smsText = `GREFAS CONSULT: Dear ${clientName}, your agreed budget of GHc ${formattedAgreed} for "${serviceName}"${orderRefPart} has been APPROVED by Administration!${savingsPart}${notePart} Please visit our booking portal to proceed with your service. Thank you!`;
+      }
+    }
+
+    let smsDispatched = false;
+    let smsSimulated = false;
+    let smsError: string | undefined;
+
+    if (phone && String(phone).trim()) {
+      try {
+        const smsResult = await sendArkeselSms(String(phone).trim(), smsText);
+        smsDispatched = smsResult.success;
+        smsSimulated = Boolean((smsResult.raw as any)?.simulated);
+        if (!smsResult.success) {
+          smsError = smsResult.error;
+        }
+      } catch (err: any) {
+        console.error("Failed to dispatch negotiation approval SMS:", err);
+        smsError = err?.message || "SMS dispatch error";
+      }
+    }
+
+    if (email && resend && actionType === "approved") {
+      try {
+        await resend.emails.send({
+          from: "Grefas Consult <onboarding@resend.dev>",
+          to: [String(email).trim()],
+          subject: `Agreed Budget Approved: GH₵ ${formattedAgreed} for ${serviceName}${orderRefPart}`,
+          html: `
+            <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e4e4e7; border-radius: 16px;">
+              <h2 style="color: #ea580c; margin-top: 0;">Agreed Budget Approved</h2>
+              <p>Dear <strong>${clientName}</strong>,</p>
+              <p>We are pleased to inform you that Administration has <strong>approved</strong> your agreed budget for <strong>${serviceName}</strong>${orderRefPart}.</p>
+              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 16px 0;">
+                <p style="margin: 4px 0; font-size: 16px; color: #166534;"><strong>Approved Agreed Budget:</strong> GH₵ ${formattedAgreed}</p>
+                ${numOriginal > 0 ? `<p style="margin: 4px 0; font-size: 13px; color: #52525b;"><strong>Standard Listed Price:</strong> GH₵ ${numOriginal.toLocaleString("en-GH", { minimumFractionDigits: 2 })}</p>` : ""}
+                ${savingsAmount > 0 ? `<p style="margin: 4px 0; font-size: 13px; color: #15803d;"><strong>Total Approved Savings:</strong> GH₵ ${savingsAmount.toLocaleString("en-GH", { minimumFractionDigits: 2 })}</p>` : ""}
+                ${adminNote ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: #3f3f46;"><strong>Admin Note:</strong> ${adminNote}</p>` : ""}
+              </div>
+              <p style="font-size: 13px; color: #52525b;">You may now proceed with your booking and payment at the approved budget rate via the Grefas Consult & Entertainment portal.</p>
+            </div>
+          `
+        });
+      } catch (emailErr) {
+        console.warn("Optional negotiation approval email failed:", emailErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      smsDispatched,
+      smsSimulated,
+      smsError,
+      recipient: phone || null,
+      message: smsText
+    });
+  });
+
   app.post("/api/letters/generate", async (req, res) => {
     const { recipientName, recipientType, recipientAddress, subject, additionalContext, tone } = req.body || {};
     

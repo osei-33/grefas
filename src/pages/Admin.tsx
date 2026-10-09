@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Minus, Percent, Sliders, ToggleLeft, ToggleRight, Sparkles, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt, Package } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Minus, Percent, Sliders, ToggleLeft, ToggleRight, Sparkles, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt, Package, Handshake, Tag } from 'lucide-react';
 import { setLocalTransactionFeeConfig } from '@/lib/transactionFees';
+import { mergeServicesWithDefaults, getServicePricing, getRecordNegotiationSummary, DEFAULT_SERVICES } from '@/lib/servicePricing';
+import { sendNegotiatedPriceApprovedSms } from '@/lib/arkeselSms';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
 import { auth, db, storage, handleFirestoreError, OperationType } from '@/firebase';
@@ -47,6 +49,8 @@ const ManageLegalPolicies = React.lazy(() => import('@/components/ManageLegalPol
 const ManageSitemap = React.lazy(() => import('./ManageSitemap'));
 const ManageSponsorships = React.lazy(() => import('@/components/admin/ManageSponsorships'));
 const ManageCompanyAssets = React.lazy(() => import('@/components/admin/ManageCompanyAssets'));
+const ManageNegotiatedPrices = React.lazy(() => import('@/components/admin/ManageNegotiatedPrices'));
+import ClientInteractionsFeed from '@/components/admin/ClientInteractionsFeed';
 
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
@@ -768,7 +772,7 @@ export default function Admin() {
 
           {/* 3. OPERATIONS & BOOKINGS */}
           {(!menuFilter || 
-            'operations services intakes bookings appointments careers jobs tasks'.includes(menuFilter.toLowerCase())) && (
+            'operations services negotiations negotiated prices budgets intakes bookings appointments careers jobs tasks'.includes(menuFilter.toLowerCase())) && (
             <div className="space-y-1">
               <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground/70">
                 Operations & Clients
@@ -786,6 +790,23 @@ export default function Admin() {
                 <Briefcase className={`h-4 w-4 ${isActive('/admin/services') ? 'text-orange-600' : ''}`} />
                 <span>Manage Services</span>
                 {isActive('/admin/services') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/negotiations"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/negotiations') || isActive('/admin/negotiated-prices') || isActive('/admin/agreed-budgets'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-negotiations"
+              >
+                <Handshake className={`h-4 w-4 ${(isActive('/admin/negotiations') || isActive('/admin/negotiated-prices') || isActive('/admin/agreed-budgets')) ? 'text-orange-600' : ''}`} />
+                <span>Negotiated Prices</span>
+                <span className="ml-auto text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 uppercase">
+                  SMS
+                </span>
               </Link>
 
               <Link
@@ -1127,6 +1148,9 @@ export default function Admin() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/services" element={<ManageServices />} />
+            <Route path="/negotiations" element={<ManageNegotiatedPrices />} />
+            <Route path="/negotiated-prices" element={<ManageNegotiatedPrices />} />
+            <Route path="/agreed-budgets" element={<ManageNegotiatedPrices />} />
             <Route path="/intakes" element={<AdminServiceRequests />} />
             <Route path="/careers" element={<ManageCareerApplications />} />
             <Route path="/career-applications" element={<ManageCareerApplications />} />
@@ -1880,7 +1904,7 @@ function Dashboard() {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
           {/* 1. COMPANY ASSETS - Highlighted Prominently */}
           <Link
             to="/admin/assets"
@@ -1900,7 +1924,26 @@ function Dashboard() {
             </div>
           </Link>
 
-          {/* 2. TRANSACTION FEES */}
+          {/* 2. NEGOTIATED PRICES & BUDGETS */}
+          <Link
+            to="/admin/negotiations"
+            className="group p-3 rounded-xl border border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-8 w-8 rounded-lg bg-emerald-600 text-white group-hover:bg-white group-hover:text-emerald-600 flex items-center justify-center transition-colors">
+                <Handshake className="h-4 w-4" />
+              </div>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 group-hover:bg-white/20 group-hover:text-white">
+                SMS Auto
+              </span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Negotiated Prices</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Approve budgets & SMS</p>
+            </div>
+          </Link>
+
+          {/* 3. TRANSACTION FEES */}
           <Link
             to="/admin/settings"
             className="group p-3 rounded-xl border border-border bg-card hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
@@ -2072,6 +2115,9 @@ function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Filtered Client Interactions & Budget Proposal Feed */}
+      <ClientInteractionsFeed />
 
       {/* Recharts Analytics Charts */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -2440,18 +2486,51 @@ function AdminServiceRequests() {
   const [typedVerifyRef, setTypedVerifyRef] = useState('');
   const [verifyRefError, setVerifyRefError] = useState('');
 
+  const [billingDiscountPercent, setBillingDiscountPercent] = useState<number>(0);
+  const [billingAgreedPrice, setBillingAgreedPrice] = useState<string>('');
+  const [billingNegotiationNote, setBillingNegotiationNote] = useState<string>('');
+  const [quickCounterMap, setQuickCounterMap] = useState<Record<string, string>>({});
+
+  const getEffectiveIntakePrice = (item: any) => {
+    const val = item?.agreedPrice ?? item?.totalPrice ?? item?.price ?? item?.originalPrice;
+    return val !== undefined && val !== null && Number(val) > 0 ? Number(val) : 0;
+  };
+
   useEffect(() => {
     if (!editingBillingIntake) {
       setBillingPrice(0);
       setBillingPlanType('full');
       setInstallments([]);
+      setBillingDiscountPercent(0);
+      setBillingAgreedPrice('');
+      setBillingNegotiationNote('');
       return;
     }
     
-    if (editingBillingIntake.price) {
-      setBillingPrice(editingBillingIntake.price);
-      setBillingPlanType(editingBillingIntake.paymentPlan?.type || 'full');
-      setInstallments(editingBillingIntake.paymentPlan?.installments || []);
+    const existingPrice = getEffectiveIntakePrice(editingBillingIntake);
+    setBillingDiscountPercent(Number(editingBillingIntake.discountPercent || 0));
+    setBillingAgreedPrice(editingBillingIntake.agreedPrice !== undefined ? String(editingBillingIntake.agreedPrice) : (existingPrice ? String(existingPrice) : '500'));
+    setBillingNegotiationNote(editingBillingIntake.negotiationNotes || '');
+
+    if (existingPrice > 0) {
+      setBillingPrice(existingPrice);
+      const pType = typeof editingBillingIntake.paymentPlan === 'object'
+        ? (editingBillingIntake.paymentPlan?.type || 'full')
+        : (editingBillingIntake.paymentPlan || 'full');
+      setBillingPlanType(pType);
+      if (Array.isArray(editingBillingIntake.paymentPlan?.installments) && editingBillingIntake.paymentPlan.installments.length > 0) {
+        setInstallments(editingBillingIntake.paymentPlan.installments);
+      } else {
+        setInstallments([
+          {
+            id: 'inst_1',
+            name: 'Agreed Service Fee',
+            amount: existingPrice,
+            status: Number(editingBillingIntake.amountPaid || 0) >= existingPrice ? 'Paid' : 'Unpaid',
+            dueDate: new Date().toISOString().split('T')[0]
+          }
+        ]);
+      }
     } else {
       setBillingPrice(500);
       setBillingPlanType('full');
@@ -2532,20 +2611,129 @@ function AdminServiceRequests() {
   };
 
   const getAmountPaid = (item: any) => {
-    if (!item.price || !item.paymentPlan || !item.paymentPlan.installments) return 0;
-    return item.paymentPlan.installments
-      .filter((inst: any) => inst.status === 'Paid')
-      .reduce((sum: number, inst: any) => sum + (inst.amount || 0), 0);
+    const directPaid = Number(item?.amountPaid || 0);
+    const instPaid = Array.isArray(item?.paymentPlan?.installments)
+      ? item.paymentPlan.installments
+          .filter((inst: any) => inst.status === 'Paid')
+          .reduce((sum: number, inst: any) => sum + (Number(inst.amount) || 0), 0)
+      : 0;
+    return Math.max(directPaid, instPaid);
+  };
+
+  const handleAdminNegotiateIntake = async (
+    item: any,
+    options: {
+      agreedPrice?: number;
+      adminCounterPrice?: number;
+      discountPercent?: number;
+      negotiationStatus: 'agreed' | 'countered' | 'rejected';
+      note?: string;
+    }
+  ) => {
+    try {
+      const baseOriginal = Number(item.originalPrice ?? item.totalPrice ?? item.price ?? 500);
+      let finalPrice = options.agreedPrice ?? options.adminCounterPrice ?? baseOriginal;
+      let discountAmt = Number(item.discountAmount || 0);
+      const discountPct = options.discountPercent !== undefined ? options.discountPercent : Number(item.discountPercent || 0);
+
+      if (options.discountPercent !== undefined) {
+        discountAmt = Math.round((baseOriginal * discountPct) / 100);
+        finalPrice = Math.max(0, baseOriginal - discountAmt);
+      }
+
+      const paid = getAmountPaid(item);
+      const balanceDue = Math.max(0, finalPrice - paid);
+      const paymentStatus = finalPrice > 0 && paid >= finalPrice ? 'Fully Paid' : paid > 0 ? 'Partially Paid' : 'Unpaid';
+
+      const historyEntry = {
+        actor: 'admin',
+        actorName: auth.currentUser?.displayName || auth.currentUser?.email || 'Admin',
+        action: options.negotiationStatus === 'agreed' ? 'accept' : options.negotiationStatus === 'countered' ? 'counter' : 'reject',
+        amount: finalPrice,
+        note: options.note || (options.negotiationStatus === 'agreed' ? `Agreed on GH₵ ${finalPrice.toLocaleString()}` : `Admin offered GH₵ ${finalPrice.toLocaleString()}`),
+        timestamp: new Date().toISOString()
+      };
+
+      const existingHistory = Array.isArray(item.negotiationHistory) ? item.negotiationHistory : [];
+      const clientPhone = item.contact || item.whatsappNumber || item.phoneNumber || item.phone || item.contactPhone || item.userPhone || '';
+      const clientName = item.fullName || item.name || 'Valued Client';
+      const serviceTitle = item.selectedProgramName || item.serviceTitle || item.roleType || 'Service Intake';
+
+      let smsUpdateFields: Record<string, any> = {};
+      if (clientPhone && (options.negotiationStatus === 'agreed' || options.negotiationStatus === 'countered')) {
+        const smsRes = await sendNegotiatedPriceApprovedSms({
+          phone: clientPhone,
+          email: item.emailAddress || item.email,
+          name: clientName,
+          serviceTitle,
+          agreedPrice: finalPrice,
+          originalPrice: baseOriginal,
+          proposedPrice: item.proposedPrice ? Number(item.proposedPrice) : undefined,
+          orderNumber: item.orderNumber || `GREF-IN-${String(item.id).slice(0, 6).toUpperCase()}`,
+          adminNote: options.note,
+          actionType: options.negotiationStatus === 'agreed' ? 'approved' : 'counter_offer'
+        });
+        if (smsRes.success) {
+          smsUpdateFields = {
+            agreedSmsSentAt: new Date().toISOString(),
+            agreedSmsRecipient: clientPhone,
+            agreedSmsMessage: smsRes.message
+          };
+        }
+      }
+
+      await updateDoc(doc(db, 'service_intakes', item.id), {
+        originalPrice: baseOriginal,
+        price: finalPrice,
+        totalPrice: finalPrice,
+        negotiatedPrice: finalPrice,
+        agreedPrice: finalPrice,
+        adminCounterPrice: options.adminCounterPrice ?? finalPrice,
+        discountPercent: discountPct,
+        discountAmount: discountAmt,
+        status: options.negotiationStatus === 'countered' ? 'Negotiation' : (item.status === 'Negotiation' ? 'In Review' : (item.status || 'Pending')),
+        negotiationStatus: options.negotiationStatus,
+        negotiationNotes: options.note || item.negotiationNotes || '',
+        negotiationHistory: [...existingHistory, historyEntry],
+        balanceDue,
+        paymentStatus,
+        ...smsUpdateFields,
+        updatedAt: new Date().toISOString()
+      });
+
+      if (item.userId && item.userId !== 'anonymous') {
+        await addDoc(collection(db, 'notifications'), {
+          userId: item.userId,
+          title: options.negotiationStatus === 'agreed' ? 'Service Price Agreed!' : 'New Price Counter-Offer from Admin',
+          message: options.negotiationStatus === 'agreed'
+            ? `Your agreed service fee for ${item.selectedProgramName || item.roleType || 'your service request'} is now set to GH₵ ${finalPrice.toLocaleString()}. Balance due: GH₵ ${balanceDue.toLocaleString()}. You can now pay the agreed amount in your Client Portal.`
+            : `Admin proposed GH₵ ${finalPrice.toLocaleString()} for ${item.selectedProgramName || item.roleType || 'your service request'}. Visit your Client Portal to accept and pay or respond.`,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      toast.success(
+        options.negotiationStatus === 'agreed'
+          ? `Agreed price set to GH₵ ${finalPrice.toLocaleString()}${smsUpdateFields.agreedSmsSentAt ? ` & SMS sent to ${clientPhone}` : ''}!`
+          : `Counter-offer of GH₵ ${finalPrice.toLocaleString()} sent to client${smsUpdateFields.agreedSmsSentAt ? ` via SMS` : ''}!`
+      );
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `service_intakes/${item.id}`);
+    }
   };
 
   const handleSaveBillingPlan = async () => {
     if (!editingBillingIntake) return;
     try {
       const priceVal = Number(billingPrice) || 0;
+      const baseOriginal = Number(editingBillingIntake.originalPrice ?? editingBillingIntake.totalPrice ?? editingBillingIntake.price ?? priceVal);
       
-      const paidAmount = installments
+      const instPaidAmount = installments
         .filter((inst: any) => inst.status === 'Paid')
-        .reduce((sum: number, inst: any) => sum + (inst.amount || 0), 0);
+        .reduce((sum: number, inst: any) => sum + (Number(inst.amount) || 0), 0);
+      const paidAmount = Math.max(Number(editingBillingIntake.amountPaid || 0), instPaidAmount);
+      const balanceDue = Math.max(0, priceVal - paidAmount);
 
       let calcStatus = 'Unpaid';
       if (priceVal > 0) {
@@ -2556,13 +2744,63 @@ function AdminServiceRequests() {
         }
       }
 
+      const clientPhone =
+        editingBillingIntake.contact ||
+        editingBillingIntake.whatsappNumber ||
+        editingBillingIntake.phoneNumber ||
+        editingBillingIntake.phone ||
+        editingBillingIntake.userPhone ||
+        '';
+      let smsFields: Record<string, any> = {};
+      if (clientPhone && priceVal > 0) {
+        const smsRes = await sendNegotiatedPriceApprovedSms({
+          phone: clientPhone,
+          email: editingBillingIntake.emailAddress || editingBillingIntake.email,
+          name: editingBillingIntake.fullName || 'Valued Client',
+          serviceTitle:
+            editingBillingIntake.selectedProgramName ||
+            editingBillingIntake.roleType ||
+            'Service Intake',
+          agreedPrice: priceVal,
+          originalPrice: baseOriginal,
+          proposedPrice: editingBillingIntake.proposedPrice
+            ? Number(editingBillingIntake.proposedPrice)
+            : undefined,
+          orderNumber:
+            editingBillingIntake.orderNumber ||
+            `GREF-IN-${String(editingBillingIntake.id).slice(0, 6).toUpperCase()}`,
+          adminNote: billingNegotiationNote.trim() || undefined,
+          actionType: 'approved',
+        });
+        if (smsRes.success) {
+          smsFields = {
+            agreedSmsSentAt: new Date().toISOString(),
+            agreedSmsRecipient: clientPhone,
+            agreedSmsMessage: smsRes.message,
+          };
+        }
+      }
+
       await updateDoc(doc(db, 'service_intakes', editingBillingIntake.id), {
+        originalPrice: baseOriginal,
         price: priceVal,
+        totalPrice: priceVal,
+        negotiatedPrice: priceVal,
+        agreedPrice: priceVal,
+        discountPercent: Number(billingDiscountPercent) || 0,
+        discountAmount: Math.max(0, baseOriginal - priceVal),
+        negotiationStatus: 'agreed',
+        negotiationNotes: billingNegotiationNote.trim(),
+        amountPaid: paidAmount,
+        balanceDue,
         paymentStatus: calcStatus,
         paymentPlan: {
           type: billingPlanType,
+          status: calcStatus,
           installments: installments
-        }
+        },
+        ...smsFields,
+        updatedAt: new Date().toISOString()
       });
 
       // Record activity
@@ -2980,66 +3218,218 @@ function AdminServiceRequests() {
                       <span>{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A'}</span>
                     </div>
 
-                    {/* Billing & Fees Section */}
+                    {/* Billing, Discount & Price Negotiation Section */}
                     <div className="pt-3 border-t border-border/40 space-y-2.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-muted-foreground flex items-center gap-1.5">
-                          <CreditCard className="h-3.5 w-3.5 text-orange-600" /> Billing & Fees
-                        </span>
-                        {item.price ? (
-                          <span className={`px-2 py-0.5 font-bold text-[9px] uppercase rounded-full ${
-                            (item.paymentPlan?.status === 'Fully Paid' || getAmountPaid(item) >= item.price) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
-                            getAmountPaid(item) > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' :
-                            'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400'
-                          }`}>
-                            {item.paymentPlan?.status || (getAmountPaid(item) >= item.price ? 'Fully Paid' : 'Unpaid')}
-                          </span>
-                        ) : (
-                          <span className="bg-zinc-100 dark:bg-zinc-800/60 text-muted-foreground text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
-                            No Price Set
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const effPrice = getEffectiveIntakePrice(item);
+                        const origPrice = Number(item.originalPrice ?? effPrice);
+                        const paid = getAmountPaid(item);
+                        const bal = Math.max(0, effPrice - paid);
+                        const isFullyPaid = effPrice > 0 && (item.paymentStatus === 'Fully Paid' || item.paymentPlan?.status === 'Fully Paid' || paid >= effPrice);
+                        const hasProposed = item.proposedPrice !== undefined && item.proposedPrice !== null && Number(item.proposedPrice) >= 0;
 
-                      {item.price ? (
-                        <div className="space-y-1.5 bg-muted/40 p-2 rounded-lg border border-border/30">
-                          <div className="flex justify-between text-[11px] font-medium text-foreground">
-                            <span>Total Price:</span>
-                            <span className="font-bold">GH₵ {item.price.toLocaleString()}</span>
-                          </div>
-                          
-                          {/* Progress bar */}
-                          {(() => {
-                            const paid = getAmountPaid(item);
-                            const percent = Math.min(100, Math.round((paid / item.price) * 100));
-                            return (
-                              <div className="space-y-1">
-                                <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
-                                  <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${percent}%` }} />
-                                </div>
-                                <div className="flex justify-between text-[9px] text-muted-foreground font-mono">
-                                  <span>Paid: GH₵ {paid} ({percent}%)</span>
-                                  <span>Bal: GH₵ {item.price - paid}</span>
-                                </div>
+                        return (
+                          <>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-muted-foreground flex items-center gap-1.5">
+                                <CreditCard className="h-3.5 w-3.5 text-orange-600" /> Billing, Discount & Negotiation
+                              </span>
+                              <div className="flex items-center gap-1">
+                                {item.negotiationStatus === 'proposed' && (
+                                  <span className="px-2 py-0.5 font-bold text-[9px] uppercase rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400">
+                                    Offer: GH₵ {Number(item.proposedPrice).toLocaleString()}
+                                  </span>
+                                )}
+                                {item.negotiationStatus === 'countered' && (
+                                  <span className="px-2 py-0.5 font-bold text-[9px] uppercase rounded-full bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400">
+                                    Countered
+                                  </span>
+                                )}
+                                {item.negotiationStatus === 'agreed' && (
+                                  <span className="px-2 py-0.5 font-bold text-[9px] uppercase rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                                    Price Agreed
+                                  </span>
+                                )}
+                                {effPrice > 0 ? (
+                                  <span className={`px-2 py-0.5 font-bold text-[9px] uppercase rounded-full ${
+                                    isFullyPaid ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                                    paid > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400' :
+                                    'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-400'
+                                  }`}>
+                                    {isFullyPaid ? 'Fully Paid' : paid > 0 ? 'Partially Paid' : 'Unpaid'}
+                                  </span>
+                                ) : (
+                                  <span className="bg-zinc-100 dark:bg-zinc-800/60 text-muted-foreground text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                                    No Price Set
+                                  </span>
+                                )}
                               </div>
-                            );
-                          })()}
-                        </div>
-                      ) : (
-                        <p className="text-[11px] text-muted-foreground italic pl-1">
-                          No program fee or invoice setup has been configured for this client.
-                        </p>
-                      )}
+                            </div>
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEditingBillingIntake(item)}
-                        className="w-full h-8 text-[11px] font-bold border-orange-600/30 hover:border-orange-600 hover:bg-orange-600/5 text-orange-600 cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <CreditCard className="h-3.5 w-3.5" />
-                        {item.price ? 'Manage Billing & Payments' : 'Configure Billing & Fee Plan'}
-                      </Button>
+                            {effPrice > 0 ? (
+                              <div className="space-y-2 bg-muted/40 p-2.5 rounded-lg border border-border/30">
+                                <div className="flex justify-between text-[11px] font-medium text-foreground items-center">
+                                  <span>Agreed / Effective Fee:</span>
+                                  <div className="flex items-center gap-1.5">
+                                    {origPrice > effPrice && (
+                                      <span className="text-[10px] line-through text-muted-foreground">GH₵ {origPrice.toLocaleString()}</span>
+                                    )}
+                                    <span className="font-bold text-orange-600">GH₵ {effPrice.toLocaleString()}</span>
+                                    {Number(item.discountPercent || 0) > 0 && (
+                                      <span className="text-[9px] font-black bg-red-500/10 text-red-600 px-1.5 py-0.5 rounded">
+                                        -{item.discountPercent}%
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {hasProposed && (
+                                  <div className="p-2 rounded bg-blue-500/10 border border-blue-500/20 space-y-1.5">
+                                    <div className="flex items-center justify-between text-[11px]">
+                                      <span className="font-bold text-blue-600 flex items-center gap-1">
+                                        <Handshake className="h-3 w-3" /> Client Proposed Price:
+                                      </span>
+                                      <span className="font-black text-blue-700 dark:text-blue-300">
+                                        GH₵ {Number(item.proposedPrice).toLocaleString()}
+                                      </span>
+                                    </div>
+                                    {item.negotiationNotes && (
+                                      <p className="text-[10px] text-muted-foreground italic">"{item.negotiationNotes}"</p>
+                                    )}
+                                    {item.negotiationStatus !== 'agreed' && (
+                                      <div className="flex items-center gap-1.5 pt-1">
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          onClick={() => handleAdminNegotiateIntake(item, {
+                                            agreedPrice: Number(item.proposedPrice),
+                                            negotiationStatus: 'agreed',
+                                            note: `Admin accepted client's proposed price of GH₵ ${Number(item.proposedPrice).toLocaleString()}`
+                                          })}
+                                          className="h-6 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 flex-1"
+                                        >
+                                          <Check className="h-3 w-3 mr-1" /> Accept GH₵ {Number(item.proposedPrice).toLocaleString()}
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Quick Admin Price Negotiation & Discount Bar */}
+                                {!isFullyPaid && (
+                                  <div className="pt-1.5 border-t border-border/30 space-y-1.5">
+                                    <div className="flex items-center gap-1">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        placeholder="Set Agreed / Counter GH₵"
+                                        value={quickCounterMap[item.id] ?? ''}
+                                        onChange={(e) => setQuickCounterMap(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                        className="h-7 text-[10px] bg-background border-border flex-1"
+                                      />
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        disabled={!quickCounterMap[item.id]}
+                                        onClick={() => {
+                                          const val = Number(quickCounterMap[item.id]);
+                                          if (isNaN(val) || val < 0) return;
+                                          handleAdminNegotiateIntake(item, {
+                                            agreedPrice: val,
+                                            adminCounterPrice: val,
+                                            negotiationStatus: 'agreed',
+                                            note: `Admin set agreed price to GH₵ ${val.toLocaleString()}`
+                                          });
+                                          setQuickCounterMap(prev => ({ ...prev, [item.id]: '' }));
+                                        }}
+                                        className="h-7 text-[10px] bg-orange-600 hover:bg-orange-700 text-white font-bold px-2"
+                                        title="Lock in this agreed amount so the client can pay it"
+                                      >
+                                        Agree Price
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={!quickCounterMap[item.id]}
+                                        onClick={() => {
+                                          const val = Number(quickCounterMap[item.id]);
+                                          if (isNaN(val) || val < 0) return;
+                                          handleAdminNegotiateIntake(item, {
+                                            agreedPrice: val,
+                                            adminCounterPrice: val,
+                                            negotiationStatus: 'countered',
+                                            note: `Admin counter-offered GH₵ ${val.toLocaleString()}`
+                                          });
+                                          setQuickCounterMap(prev => ({ ...prev, [item.id]: '' }));
+                                        }}
+                                        className="h-7 text-[10px] border-purple-500/40 text-purple-600 hover:bg-purple-500/10 font-bold px-2"
+                                        title="Send as a counter-offer for client approval"
+                                      >
+                                        Counter
+                                      </Button>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="text-[9px] uppercase font-bold text-muted-foreground">Quick Discount:</span>
+                                      <div className="flex items-center gap-1">
+                                        {[0, 10, 15, 20, 30, 50].map(pct => (
+                                          <button
+                                            key={pct}
+                                            type="button"
+                                            onClick={() => handleAdminNegotiateIntake(item, {
+                                              discountPercent: pct,
+                                              negotiationStatus: 'agreed',
+                                              note: pct > 0 ? `Admin applied ${pct}% discount` : 'Discount cleared'
+                                            })}
+                                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition-colors ${
+                                              Number(item.discountPercent || 0) === pct && pct > 0
+                                                ? 'bg-orange-600 text-white border-orange-600'
+                                                : 'bg-background border-border text-muted-foreground hover:text-foreground'
+                                            }`}
+                                          >
+                                            {pct === 0 ? '0%' : `-${pct}%`}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Progress bar */}
+                                {(() => {
+                                  const percent = effPrice > 0 ? Math.min(100, Math.round((paid / effPrice) * 100)) : 0;
+                                  return (
+                                    <div className="space-y-1 pt-1">
+                                      <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
+                                        <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${percent}%` }} />
+                                      </div>
+                                      <div className="flex justify-between text-[9px] text-muted-foreground font-mono">
+                                        <span>Paid: GH₵ {paid.toLocaleString()} ({percent}%)</span>
+                                        <span>Bal Due: GH₵ {bal.toLocaleString()}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground italic pl-1">
+                                No program fee or invoice setup has been configured for this client.
+                              </p>
+                            )}
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditingBillingIntake(item)}
+                              className="w-full h-8 text-[11px] font-bold border-orange-600/30 hover:border-orange-600 hover:bg-orange-600/5 text-orange-600 cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <CreditCard className="h-3.5 w-3.5" />
+                              {effPrice > 0 ? 'Manage Billing, Discount & Installments' : 'Configure Billing & Agreed Fee'}
+                            </Button>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {/* Application Assessment Status */}
@@ -4131,9 +4521,16 @@ function ManageServices() {
     iconName: 'Briefcase', 
     color: 'bg-blue-100 text-blue-600', 
     category: 'Consulting',
-    price: 150 
+    price: 150,
+    isNegotiable: true,
+    discountPercent: 0,
+    discountAmount: 0,
+    discountLabel: ''
   });
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [bulkDiscountPercent, setBulkDiscountPercent] = useState<string>('');
+  const [bulkDiscountLabel, setBulkDiscountLabel] = useState<string>('');
+  const [isApplyingBulk, setIsApplyingBulk] = useState(false);
 
   const [categoryType, setCategoryType] = useState('Consulting');
   const [customCategory, setCustomCategory] = useState('');
@@ -4148,6 +4545,8 @@ function ManageServices() {
     return () => unsubscribe();
   }, []);
 
+  const allServices = mergeServicesWithDefaults(services);
+
   const handleEditClick = (service: any) => {
     setEditingId(service.id);
     setNewService({
@@ -4156,7 +4555,11 @@ function ManageServices() {
       iconName: service.iconName || 'Briefcase',
       color: service.color || 'bg-blue-100 text-blue-600',
       category: service.category || 'Consulting',
-      price: service.price !== undefined ? service.price : 150
+      price: service.price !== undefined ? service.price : 150,
+      isNegotiable: service.isNegotiable !== undefined ? Boolean(service.isNegotiable) : true,
+      discountPercent: Number(service.discountPercent || 0),
+      discountAmount: Number(service.discountAmount || 0),
+      discountLabel: service.discountLabel || ''
     });
     const standardCategories = ['Consulting', 'Entertainment', 'Production', 'Creative'];
     if (standardCategories.includes(service.category)) {
@@ -4167,6 +4570,78 @@ function ManageServices() {
       setCustomCategory(service.category || '');
     }
     setIsAdding(true);
+  };
+
+  const handleQuickUpdateService = async (service: any, patch: Record<string, any>) => {
+    try {
+      await setDoc(doc(db, 'services', service.id), {
+        title: service.title,
+        description: service.description,
+        iconName: service.iconName || 'Briefcase',
+        color: service.color || 'bg-blue-100 text-blue-600',
+        category: service.category || 'Consulting',
+        price: Number(service.price ?? 150),
+        isNegotiable: service.isNegotiable !== undefined ? Boolean(service.isNegotiable) : true,
+        discountPercent: Number(service.discountPercent || 0),
+        discountAmount: Number(service.discountAmount || 0),
+        discountLabel: service.discountLabel || '',
+        ...patch,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      toast.success(`Updated "${service.title}"`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `services/${service.id}`);
+    }
+  };
+
+  const handleApplyBulkDiscount = async (percentValue: number, labelValue?: string) => {
+    setIsApplyingBulk(true);
+    try {
+      const cleanPercent = Math.min(100, Math.max(0, Number(percentValue) || 0));
+      await Promise.all(allServices.map(service =>
+        setDoc(doc(db, 'services', service.id), {
+          title: service.title,
+          description: service.description,
+          iconName: service.iconName || 'Briefcase',
+          color: service.color || 'bg-blue-100 text-blue-600',
+          category: service.category || 'Consulting',
+          price: Number(service.price ?? 150),
+          isNegotiable: service.isNegotiable !== undefined ? Boolean(service.isNegotiable) : true,
+          discountPercent: cleanPercent,
+          discountAmount: 0,
+          discountLabel: cleanPercent > 0 ? (labelValue !== undefined ? labelValue : bulkDiscountLabel.trim()) : '',
+          updatedAt: new Date().toISOString()
+        }, { merge: true })
+      ));
+      toast.success(cleanPercent > 0 ? `Applied ${cleanPercent}% discount to all ${allServices.length} services!` : 'Cleared discounts on all services!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'services');
+    } finally {
+      setIsApplyingBulk(false);
+    }
+  };
+
+  const handleBulkToggleNegotiable = async (enableNegotiable: boolean) => {
+    setIsApplyingBulk(true);
+    try {
+      await Promise.all(allServices.map(service =>
+        setDoc(doc(db, 'services', service.id), {
+          title: service.title,
+          description: service.description,
+          iconName: service.iconName || 'Briefcase',
+          color: service.color || 'bg-blue-100 text-blue-600',
+          category: service.category || 'Consulting',
+          price: Number(service.price ?? 150),
+          isNegotiable: enableNegotiable,
+          updatedAt: new Date().toISOString()
+        }, { merge: true })
+      ));
+      toast.success(enableNegotiable ? 'Enabled price negotiation for all services!' : 'Set all services to fixed price!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'services');
+    } finally {
+      setIsApplyingBulk(false);
+    }
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -4184,6 +4659,11 @@ function ManageServices() {
         color: newService.color,
         category: finalCategory,
         price: Number(newService.price) || 0,
+        isNegotiable: Boolean(newService.isNegotiable),
+        discountPercent: Math.min(100, Math.max(0, Number(newService.discountPercent) || 0)),
+        discountAmount: Math.max(0, Number(newService.discountAmount) || 0),
+        discountLabel: (newService.discountLabel || '').trim(),
+        updatedAt: new Date().toISOString()
       };
 
       if (editingId) {
@@ -4199,7 +4679,7 @@ function ManageServices() {
 
       setIsAdding(false);
       setEditingId(null);
-      setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting', price: 150 });
+      setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting', price: 150, isNegotiable: true, discountPercent: 0, discountAmount: 0, discountLabel: '' });
       setCategoryType('Consulting');
       setCustomCategory('');
     } catch (error) {
@@ -4273,7 +4753,12 @@ function ManageServices() {
   const confirmDelete = async () => {
     if (!deleteId) return;
     try {
-      await deleteDoc(doc(db, 'services', deleteId));
+      const isDefault = DEFAULT_SERVICES.some(d => d.id === deleteId);
+      if (isDefault) {
+        await setDoc(doc(db, 'services', deleteId), { isDeleted: true }, { merge: true });
+      } else {
+        await deleteDoc(doc(db, 'services', deleteId));
+      }
       toast.success('Service deleted');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `services/${deleteId}`);
@@ -4284,28 +4769,113 @@ function ManageServices() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Manage Services</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Manage Services, Discounts & Negotiation</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Configure service base prices, toggle client price negotiation, and apply promotional discounts to individual or all services.
+          </p>
+        </div>
         <Button 
           onClick={() => {
             if (isAdding) {
               setIsAdding(false);
               setEditingId(null);
-              setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting', price: 150 });
+              setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting', price: 150, isNegotiable: true, discountPercent: 0, discountAmount: 0, discountLabel: '' });
             } else {
               setIsAdding(true);
             }
           }} 
-          className="bg-orange-600 hover:bg-orange-700 text-white"
+          className="bg-orange-600 hover:bg-orange-700 text-white shrink-0"
         >
           {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add Service</>}
         </Button>
       </div>
 
+      {/* Global Discount & Negotiation Control Bar */}
+      <Card className="bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-transparent border-orange-500/20">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-orange-600 font-bold text-sm">
+                <Tag className="h-4 w-4" />
+                <span>Global Service Discount & Negotiation Controls ({allServices.length} Services)</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Apply a percentage discount across all services at once, or toggle whether all services accept price negotiation from clients.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 bg-background/80 border border-border rounded-lg p-1.5">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="Discount %"
+                  value={bulkDiscountPercent}
+                  onChange={e => setBulkDiscountPercent(e.target.value)}
+                  className="w-28 h-8 text-xs bg-muted/40 border-border"
+                />
+                <Input
+                  type="text"
+                  placeholder="Promo label (e.g. Easter Promo)"
+                  value={bulkDiscountLabel}
+                  onChange={e => setBulkDiscountLabel(e.target.value)}
+                  className="w-44 h-8 text-xs bg-muted/40 border-border"
+                />
+                <Button
+                  size="sm"
+                  disabled={isApplyingBulk || bulkDiscountPercent === ''}
+                  onClick={() => handleApplyBulkDiscount(Number(bulkDiscountPercent))}
+                  className="h-8 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold"
+                >
+                  Apply to All
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={isApplyingBulk}
+                  onClick={() => {
+                    setBulkDiscountPercent('0');
+                    setBulkDiscountLabel('');
+                    handleApplyBulkDiscount(0, '');
+                  }}
+                  className="h-8 text-xs text-muted-foreground hover:text-red-600"
+                >
+                  Clear All Discounts
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isApplyingBulk}
+                  onClick={() => handleBulkToggleNegotiable(true)}
+                  className="h-8 text-xs border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
+                >
+                  <Handshake className="h-3.5 w-3.5 mr-1" /> Make All Negotiable
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isApplyingBulk}
+                  onClick={() => handleBulkToggleNegotiable(false)}
+                  className="h-8 text-xs border-border text-muted-foreground hover:text-foreground"
+                >
+                  Set All Fixed Price
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {isAdding && (
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-foreground">{editingId ? 'Edit Service' : 'Add New Service'}</CardTitle>
+            <CardTitle className="text-foreground">{editingId ? 'Edit Service, Discount & Negotiation' : 'Add New Service'}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleAdd} className="space-y-4">
@@ -4324,29 +4894,40 @@ function ManageServices() {
                 className="bg-muted/50 border-border"
               />
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Input 
-                  placeholder="Price (GH₵)" 
-                  type="number"
-                  value={newService.price} 
-                  onChange={e => setNewService({...newService, price: Number(e.target.value) || 0})} 
-                  required 
-                  className="bg-muted/50 border-border"
-                />
-                <Input 
-                  placeholder="Icon Name (Lucide)" 
-                  value={newService.iconName} 
-                  onChange={e => setNewService({...newService, iconName: e.target.value})} 
-                  required 
-                  className="bg-muted/50 border-border"
-                />
-                <Input 
-                  placeholder="Color Classes" 
-                  value={newService.color} 
-                  onChange={e => setNewService({...newService, color: e.target.value})} 
-                  required 
-                  className="bg-muted/50 border-border"
-                />
+                <div>
+                  <label className="text-[11px] font-bold uppercase text-muted-foreground mb-1 block">Base Price (GH₵)</label>
+                  <Input 
+                    placeholder="Price (GH₵)" 
+                    type="number"
+                    min={0}
+                    value={newService.price} 
+                    onChange={e => setNewService({...newService, price: Number(e.target.value) || 0})} 
+                    required 
+                    className="bg-muted/50 border-border"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase text-muted-foreground mb-1 block">Icon Name (Lucide)</label>
+                  <Input 
+                    placeholder="Icon Name (Lucide)" 
+                    value={newService.iconName} 
+                    onChange={e => setNewService({...newService, iconName: e.target.value})} 
+                    required 
+                    className="bg-muted/50 border-border"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase text-muted-foreground mb-1 block">Color Classes</label>
+                  <Input 
+                    placeholder="Color Classes" 
+                    value={newService.color} 
+                    onChange={e => setNewService({...newService, color: e.target.value})} 
+                    required 
+                    className="bg-muted/50 border-border"
+                  />
+                </div>
                 <div className="flex flex-col gap-2">
+                  <label className="text-[11px] font-bold uppercase text-muted-foreground mb-1 block">Category</label>
                   <select
                     value={categoryType}
                     onChange={e => setCategoryType(e.target.value)}
@@ -4369,6 +4950,64 @@ function ManageServices() {
                   )}
                 </div>
               </div>
+
+              {/* Discount & Negotiable Settings */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl bg-muted/30 border border-border">
+                <div>
+                  <label className="text-[11px] font-bold uppercase text-muted-foreground mb-1 block">Discount Percentage (%)</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    placeholder="0"
+                    value={newService.discountPercent}
+                    onChange={e => setNewService({ ...newService, discountPercent: Number(e.target.value) || 0, discountAmount: 0 })}
+                    className="bg-background border-border"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase text-muted-foreground mb-1 block">Or Flat Discount (GH₵)</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    value={newService.discountAmount}
+                    onChange={e => setNewService({ ...newService, discountAmount: Number(e.target.value) || 0, discountPercent: 0 })}
+                    className="bg-background border-border"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase text-muted-foreground mb-1 block">Discount Label (Optional)</label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. Limited Offer -20%"
+                    value={newService.discountLabel}
+                    onChange={e => setNewService({ ...newService, discountLabel: e.target.value })}
+                    className="bg-background border-border"
+                  />
+                </div>
+                <div className="flex flex-col justify-end">
+                  <label className="text-[11px] font-bold uppercase text-muted-foreground mb-1 block">Price Negotiation</label>
+                  <button
+                    type="button"
+                    onClick={() => setNewService({ ...newService, isNegotiable: !newService.isNegotiable })}
+                    className={`h-10 px-4 rounded-md font-bold text-xs flex items-center justify-between border transition-all ${
+                      newService.isNegotiable
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600'
+                        : 'bg-muted border-border text-muted-foreground'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Handshake className="h-4 w-4" />
+                      {newService.isNegotiable ? 'Negotiable (Enabled)' : 'Fixed Price Only'}
+                    </span>
+                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-background/80">
+                      {newService.isNegotiable ? 'ON' : 'OFF'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               <Button type="submit" className="w-full bg-orange-600 text-white">
                 {editingId ? 'Save Changes' : 'Save Service'}
               </Button>
@@ -4380,31 +5019,104 @@ function ManageServices() {
       <Card className="bg-card border-border">
         <CardContent className="p-0">
           <div className="divide-y divide-border">
-            {services.map((service) => (
-              <div key={service.id} className="flex items-center justify-between p-4">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-foreground text-sm">{service.title}</p>
-                    <span className="text-[10px] uppercase font-bold bg-muted text-muted-foreground px-2 py-0.5 rounded tracking-wider">
-                      {service.category || 'Consulting'}
-                    </span>
-                    <span className="text-xs font-extrabold text-orange-600 bg-orange-600/10 px-2 py-0.5 rounded-full">
-                      GH₵ {(service.price !== undefined ? service.price : 150).toLocaleString()}
-                    </span>
+            {allServices.map((service) => {
+              const pricing = getServicePricing(service);
+              return (
+                <div key={service.id} className="flex flex-col lg:flex-row lg:items-center justify-between p-4 gap-4 hover:bg-muted/20 transition-colors">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-foreground text-sm">{service.title}</p>
+                      <span className="text-[10px] uppercase font-bold bg-muted text-muted-foreground px-2 py-0.5 rounded tracking-wider">
+                        {service.category || 'Consulting'}
+                      </span>
+                      {pricing.hasDiscount ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs line-through text-muted-foreground">
+                            GH₵ {pricing.originalPrice.toLocaleString()}
+                          </span>
+                          <span className="text-xs font-extrabold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                            GH₵ {pricing.effectivePrice.toLocaleString()}
+                          </span>
+                          <span className="text-[10px] font-black uppercase bg-red-500/10 text-red-600 border border-red-500/20 px-2 py-0.5 rounded-full">
+                            {pricing.discountBadgeText}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-extrabold text-orange-600 bg-orange-600/10 px-2 py-0.5 rounded-full">
+                          GH₵ {pricing.effectivePrice.toLocaleString()}
+                        </span>
+                      )}
+
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        pricing.isNegotiable
+                          ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
+                          : 'bg-muted text-muted-foreground border border-border'
+                      }`}>
+                        <Handshake className="h-3 w-3" />
+                        {pricing.isNegotiable ? 'Negotiable' : 'Fixed Price'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground max-w-2xl">{service.description}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground truncate max-w-md mt-1">{service.description}</p>
+
+                  {/* Quick Inline Admin Controls for Negotiable & Discount */}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {/* Negotiable Toggle Button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickUpdateService(service, { isNegotiable: !pricing.isNegotiable })}
+                      className={`h-8 text-xs font-bold ${
+                        pricing.isNegotiable
+                          ? 'border-blue-500/40 bg-blue-500/10 text-blue-600 hover:bg-blue-500/20'
+                          : 'border-border text-muted-foreground hover:text-foreground'
+                      }`}
+                      title="Toggle whether clients can negotiate the price of this service"
+                    >
+                      <Handshake className="h-3.5 w-3.5 mr-1.5" />
+                      {pricing.isNegotiable ? 'Negotiable: ON' : 'Negotiable: OFF'}
+                    </Button>
+
+                    {/* Quick Discount Selector */}
+                    <div className="flex items-center gap-1 bg-muted/40 border border-border rounded-md px-2 py-1">
+                      <Percent className="h-3 w-3 text-orange-600" />
+                      <select
+                        value={service.discountPercent || 0}
+                        onChange={(e) => {
+                          const pct = Number(e.target.value) || 0;
+                          handleQuickUpdateService(service, {
+                            discountPercent: pct,
+                            discountAmount: 0,
+                            discountLabel: pct > 0 ? `${pct}% OFF` : ''
+                          });
+                        }}
+                        className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
+                        title="Apply quick percentage discount to this service"
+                      >
+                        <option value={0}>No Discount (0%)</option>
+                        <option value={5}>5% Discount</option>
+                        <option value={10}>10% Discount</option>
+                        <option value={15}>15% Discount</option>
+                        <option value={20}>20% Discount</option>
+                        <option value={25}>25% Discount</option>
+                        <option value={30}>30% Discount</option>
+                        <option value={40}>40% Discount</option>
+                        <option value={50}>50% Discount</option>
+                      </select>
+                    </div>
+
+                    <Button variant="ghost" size="sm" onClick={() => handleEditClick(service)} className="text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 hover:text-orange-700 h-8">
+                      <Edit className="h-4 w-4 mr-1" /> Edit
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(service.id)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-700 h-8">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex space-x-2">
-                  <Button variant="ghost" size="sm" onClick={() => handleEditClick(service)} className="text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 hover:text-orange-700">
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(service.id)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-700">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-            {services.length === 0 && <p className="p-8 text-center text-muted-foreground">No services found.</p>}
+              );
+            })}
+            {allServices.length === 0 && <p className="p-8 text-center text-muted-foreground">No services found.</p>}
           </div>
         </CardContent>
       </Card>
@@ -9316,6 +10028,263 @@ function ManageBookings() {
   const [passesLoading, setPassesLoading] = useState(true);
   const [passesSearch, setPassesSearch] = useState('');
 
+  // Booking Price Negotiation & Discount Modal State
+  const [editingBookingBilling, setEditingBookingBilling] = useState<any | null>(null);
+  const [bookingBillingForm, setBookingBillingForm] = useState({
+    servicePrice: 150,
+    discountPercent: 0,
+    discountAmount: 0,
+    agreedPrice: '' as string | number,
+    adminCounterPrice: '' as string | number,
+    amountPaid: 0,
+    negotiationStatus: 'none',
+    negotiationNotes: ''
+  });
+  const [savingBookingBilling, setSavingBookingBilling] = useState(false);
+
+  const openBookingBillingModal = (booking: any) => {
+    const summary = getRecordNegotiationSummary(booking, Number(booking.servicePrice || booking.totalPrice || 150));
+    setEditingBookingBilling(booking);
+    setBookingBillingForm({
+      servicePrice: summary.originalPrice,
+      discountPercent: Number(booking.discountPercent || 0),
+      discountAmount: Number(booking.discountAmount || 0),
+      agreedPrice: booking.agreedPrice !== undefined && booking.agreedPrice !== null ? Number(booking.agreedPrice) : '',
+      adminCounterPrice: booking.adminCounterPrice !== undefined && booking.adminCounterPrice !== null ? Number(booking.adminCounterPrice) : '',
+      amountPaid: summary.amountPaid,
+      negotiationStatus: booking.negotiationStatus || (booking.proposedPrice ? 'pending_admin' : 'none'),
+      negotiationNotes: booking.negotiationNotes || ''
+    });
+  };
+
+  const handleQuickBookingNegotiation = async (
+    booking: any,
+    action: 'accept_client_offer' | 'counter_offer',
+    customAmount?: number
+  ) => {
+    try {
+      const summary = getRecordNegotiationSummary(booking, Number(booking.servicePrice || 150));
+      let nextAgreed = summary.agreedPrice;
+      let nextCounter = summary.adminCounterPrice;
+      let nextStatus = summary.negotiationStatus;
+
+      if (action === 'accept_client_offer' && summary.proposedPrice !== null) {
+        nextAgreed = Math.max(0, Number(summary.proposedPrice));
+        nextStatus = 'agreed';
+      } else if (action === 'counter_offer' && customAmount !== undefined) {
+        nextCounter = Math.max(0, Number(customAmount));
+        nextStatus = 'countered_by_admin';
+      }
+
+      const finalTotal =
+        nextAgreed !== null
+          ? nextAgreed
+          : nextCounter !== null && nextStatus === 'countered_by_admin'
+          ? nextCounter
+          : summary.finalTotal;
+      const balanceDue = Math.max(0, finalTotal - summary.amountPaid);
+      const paymentStatus =
+        summary.amountPaid >= finalTotal && finalTotal > 0
+          ? 'paid'
+          : summary.amountPaid > 0
+          ? 'partial'
+          : 'unpaid';
+
+      const existingHistory = Array.isArray(booking.negotiationHistory) ? booking.negotiationHistory : [];
+      const nextOrderStatus =
+        nextStatus === 'countered_by_admin'
+          ? 'Negotiation'
+          : nextStatus === 'agreed' && (booking.status === 'Negotiation' || booking.status === 'negotiation')
+          ? 'pending'
+          : booking.status || 'pending';
+
+      const bookingPhone = booking.phone || booking.userPhone || booking.phoneNumber || '';
+      const bookingClientName = booking.name || booking.userName || 'Valued Client';
+      let smsFields: Record<string, any> = {};
+      if (bookingPhone && (nextStatus === 'agreed' || nextStatus === 'countered_by_admin')) {
+        const smsRes = await sendNegotiatedPriceApprovedSms({
+          phone: bookingPhone,
+          email: booking.email || booking.userEmail,
+          name: bookingClientName,
+          serviceTitle: booking.serviceTitle || 'Consultation',
+          agreedPrice: finalTotal,
+          originalPrice: summary.originalPrice,
+          proposedPrice: summary.proposedPrice ?? undefined,
+          orderNumber: booking.orderNumber || `GREF-BK-${String(booking.id).slice(0, 6).toUpperCase()}`,
+          actionType: nextStatus === 'agreed' ? 'approved' : 'counter_offer'
+        });
+        if (smsRes.success) {
+          smsFields = {
+            agreedSmsSentAt: new Date().toISOString(),
+            agreedSmsRecipient: bookingPhone,
+            agreedSmsMessage: smsRes.message
+          };
+        }
+      }
+
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        status: nextOrderStatus,
+        servicePrice: summary.originalPrice,
+        negotiatedPrice: finalTotal,
+        agreedPrice: nextAgreed,
+        adminCounterPrice: nextCounter,
+        totalPrice: finalTotal,
+        balanceDue,
+        paymentStatus,
+        negotiationStatus: nextStatus,
+        ...smsFields,
+        negotiationHistory: [
+          ...existingHistory.slice(-14),
+          {
+            actor: 'admin',
+            action,
+            amount: finalTotal,
+            note: action === 'accept_client_offer' ? `Admin accepted client offer of GH₵ ${finalTotal}` : `Admin counter-offered GH₵ ${finalTotal}`,
+            timestamp: new Date().toISOString()
+          }
+        ],
+        updatedAt: serverTimestamp()
+      });
+
+      if (booking.userId && booking.userId !== 'anonymous') {
+        await addDoc(collection(db, 'notifications'), {
+          userId: booking.userId,
+          title: nextStatus === 'agreed' ? 'Booking Price Agreed!' : 'Admin Counter-Offer on Your Booking',
+          message:
+            nextStatus === 'agreed'
+              ? `Your agreed price for ${booking.serviceTitle || 'Consultation'} (${booking.orderNumber || booking.id}) is GH₵ ${finalTotal.toLocaleString()}. You can now pay the agreed amount in your Client Portal.`
+              : `Admin sent a counter-offer of GH₵ ${finalTotal.toLocaleString()} for ${booking.serviceTitle || 'Consultation'} (${booking.orderNumber || booking.id}).`,
+          orderNumber: booking.orderNumber || null,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      toast.success(
+        nextStatus === 'agreed'
+          ? `Accepted client offer of GH₵ ${finalTotal.toLocaleString()}${smsFields.agreedSmsSentAt ? ` & SMS sent to ${bookingPhone}` : ''}!`
+          : `Counter-offer of GH₵ ${finalTotal.toLocaleString()} sent${smsFields.agreedSmsSentAt ? ` via SMS` : ''}!`
+      );
+    } catch (err) {
+      console.error('Failed to update booking negotiation:', err);
+      toast.error('Failed to update booking negotiation.');
+    }
+  };
+
+  const handleSaveBookingBilling = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBookingBilling) return;
+    setSavingBookingBilling(true);
+    try {
+      const sPrice = Math.max(0, Number(bookingBillingForm.servicePrice) || 0);
+      const dPercent = Math.min(100, Math.max(0, Number(bookingBillingForm.discountPercent) || 0));
+      const dFromPct = dPercent > 0 ? Math.round((sPrice * dPercent) / 100) : 0;
+      const dAmount = Math.max(dFromPct, Number(bookingBillingForm.discountAmount) || 0);
+      const paid = Math.max(0, Number(bookingBillingForm.amountPaid) || 0);
+
+      const hasAgreed = bookingBillingForm.agreedPrice !== '' && bookingBillingForm.agreedPrice !== null && !isNaN(Number(bookingBillingForm.agreedPrice));
+      const hasCounter = bookingBillingForm.adminCounterPrice !== '' && bookingBillingForm.adminCounterPrice !== null && !isNaN(Number(bookingBillingForm.adminCounterPrice));
+
+      const agreedVal = hasAgreed ? Math.max(0, Number(bookingBillingForm.agreedPrice)) : null;
+      const counterVal = hasCounter ? Math.max(0, Number(bookingBillingForm.adminCounterPrice)) : null;
+
+      const totalPrice =
+        agreedVal !== null
+          ? agreedVal
+          : bookingBillingForm.negotiationStatus === 'countered_by_admin' && counterVal !== null
+          ? counterVal
+          : Math.max(0, sPrice - dAmount);
+      const balanceDue = Math.max(0, totalPrice - paid);
+      const paymentStatus =
+        paid >= totalPrice && totalPrice > 0
+          ? 'paid'
+          : paid > 0
+          ? 'partial'
+          : totalPrice === 0
+          ? 'paid'
+          : 'unpaid';
+
+      const existingHistory = Array.isArray(editingBookingBilling.negotiationHistory) ? editingBookingBilling.negotiationHistory : [];
+      const nextOrderStatus =
+        bookingBillingForm.negotiationStatus === 'countered_by_admin' || bookingBillingForm.negotiationStatus === 'pending_admin'
+          ? 'Negotiation'
+          : bookingBillingForm.negotiationStatus === 'agreed' && (editingBookingBilling.status === 'Negotiation' || editingBookingBilling.status === 'negotiation')
+          ? 'pending'
+          : editingBookingBilling.status || 'pending';
+
+      const bPhone = editingBookingBilling.phone || editingBookingBilling.userPhone || editingBookingBilling.phoneNumber || '';
+      const bClientName = editingBookingBilling.name || editingBookingBilling.userName || 'Valued Client';
+      let billingSmsFields: Record<string, any> = {};
+      if (bPhone && (bookingBillingForm.negotiationStatus === 'agreed' || agreedVal !== null)) {
+        const smsRes = await sendNegotiatedPriceApprovedSms({
+          phone: bPhone,
+          email: editingBookingBilling.email || editingBookingBilling.userEmail,
+          name: bClientName,
+          serviceTitle: editingBookingBilling.serviceTitle || 'Consultation',
+          agreedPrice: totalPrice,
+          originalPrice: sPrice,
+          orderNumber: editingBookingBilling.orderNumber || `GREF-BK-${String(editingBookingBilling.id).slice(0, 6).toUpperCase()}`,
+          adminNote: bookingBillingForm.negotiationNotes.trim() || undefined,
+          actionType: 'approved'
+        });
+        if (smsRes.success) {
+          billingSmsFields = {
+            agreedSmsSentAt: new Date().toISOString(),
+            agreedSmsRecipient: bPhone,
+            agreedSmsMessage: smsRes.message
+          };
+        }
+      }
+
+      await updateDoc(doc(db, 'bookings', editingBookingBilling.id), {
+        status: nextOrderStatus,
+        servicePrice: sPrice,
+        discountPercent: dPercent,
+        discountAmount: dAmount,
+        negotiatedPrice: totalPrice,
+        agreedPrice: agreedVal !== null ? agreedVal : (bookingBillingForm.negotiationStatus === 'agreed' ? totalPrice : null),
+        adminCounterPrice: counterVal,
+        totalPrice,
+        amountPaid: paid,
+        balanceDue,
+        paymentStatus,
+        negotiationStatus: bookingBillingForm.negotiationStatus,
+        negotiationNotes: bookingBillingForm.negotiationNotes.trim(),
+        ...billingSmsFields,
+        negotiationHistory: [
+          ...existingHistory.slice(-14),
+          {
+            actor: 'admin',
+            action: bookingBillingForm.negotiationStatus,
+            amount: totalPrice,
+            note: bookingBillingForm.negotiationNotes.trim() || `Updated booking price to GH₵ ${totalPrice}`,
+            timestamp: new Date().toISOString()
+          }
+        ],
+        updatedAt: serverTimestamp()
+      });
+
+      if (editingBookingBilling.userId && editingBookingBilling.userId !== 'anonymous') {
+        await addDoc(collection(db, 'notifications'), {
+          userId: editingBookingBilling.userId,
+          title: 'Booking Price & Discount Updated',
+          message: `The price for your booking (${editingBookingBilling.serviceTitle || 'Consultation'}) is now GH₵ ${totalPrice.toLocaleString()}. Balance due: GH₵ ${balanceDue.toLocaleString()}.`,
+          orderNumber: editingBookingBilling.orderNumber || null,
+          read: false,
+          createdAt: serverTimestamp()
+        });
+      }
+
+      toast.success(`Updated price & billing for ${editingBookingBilling.userName}`);
+      setEditingBookingBilling(null);
+    } catch (error) {
+      console.error('Error updating booking billing:', error);
+      toast.error('Failed to update booking pricing.');
+    } finally {
+      setSavingBookingBilling(false);
+    }
+  };
+
   useEffect(() => {
     if (viewMode !== 'passes_report') return;
     setPassesLoading(true);
@@ -10172,9 +11141,13 @@ function ManageBookings() {
     const reportDate = format(new Date(), 'MMMM d, yyyy');
     const invoiceNumber = booking.orderNumber || `INV-${Math.floor(100000 + Math.random() * 900000)}`;
     
-    // Compute pricing based on service name
+    // Compute pricing based on agreed/discounted price or service default
     const serviceName = booking.serviceTitle || 'General Consultation';
-    const basePrice = serviceName.toLowerCase().includes('entertainment') ? 1200 : 450;
+    const summary = getRecordNegotiationSummary(
+      booking,
+      serviceName.toLowerCase().includes('entertainment') ? 1200 : 450
+    );
+    const basePrice = summary.finalTotal;
     const vat = parseFloat((basePrice * 0.15).toFixed(2));
     const total = basePrice + vat;
 
@@ -10986,6 +11959,7 @@ function ManageBookings() {
                     <div className={`mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase ${
                       booking.status === 'confirmed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
                       booking.status === 'cancelled' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                      booking.status === 'Negotiation' || booking.status === 'negotiation' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-500/30' :
                       'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
                     }`}>
                       {booking.status}
@@ -11022,10 +11996,89 @@ function ManageBookings() {
                       </div>
                       <div>
                         <p className="text-sm font-bold text-foreground">Service: {booking.serviceTitle || 'General Consultation'}</p>
+                        {(() => {
+                          const bSummary = getRecordNegotiationSummary(booking, Number(booking.servicePrice || 150));
+                          return (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs font-mono font-bold bg-muted px-2 py-0.5 rounded text-foreground">
+                                Agreed/Total: GH₵ {bSummary.finalTotal.toLocaleString()}
+                              </span>
+                              {bSummary.discountAmount > 0 && (
+                                <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded">
+                                  -GH₵ {bSummary.discountAmount.toLocaleString()} Disc.
+                                </span>
+                              )}
+                              {bSummary.proposedPrice !== null && (
+                                <span className="text-[11px] font-bold bg-amber-500/15 text-amber-600 border border-amber-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+                                  <Handshake className="h-3 w-3" /> Client Offer: GH₵ {bSummary.proposedPrice.toLocaleString()}
+                                </span>
+                              )}
+                              {bSummary.amountPaid > 0 && (
+                                <span className="text-[11px] font-mono font-bold bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded">
+                                  Paid: GH₵ {bSummary.amountPaid.toLocaleString()}
+                                </span>
+                              )}
+                              {bSummary.balanceDue > 0 && (
+                                <span className="text-[11px] font-mono font-bold bg-orange-500/10 text-orange-600 px-2 py-0.5 rounded">
+                                  Due: GH₵ {bSummary.balanceDue.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         <p className="mt-2 text-sm text-muted-foreground italic">"{booking.notes || 'No notes provided.'}"</p>
                       </div>
                     </div>
+
+                    {/* Client Negotiation Offer Banner on Booking */}
+                    {(booking.proposedPrice !== undefined && booking.proposedPrice !== null || booking.negotiatedPrice !== undefined && booking.negotiatedPrice !== null) && booking.negotiationStatus !== 'agreed' && (
+                      <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs">
+                          <span className="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                            <Handshake className="h-4 w-4" />
+                            Client Negotiated Price Offer: GH₵ {Number(booking.proposedPrice ?? booking.negotiatedPrice).toLocaleString()}
+                          </span>
+                          {(booking.clientNegotiationNote || booking.negotiationNote) && (
+                            <p className="text-[11px] text-muted-foreground italic mt-0.5">"{booking.clientNegotiationNote || booking.negotiationNote}"</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleQuickBookingNegotiation(booking, 'accept_client_offer')}
+                            className="h-7 px-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                          >
+                            <Check className="h-3.5 w-3.5 mr-1" /> Accept GH₵ {Number(booking.proposedPrice ?? booking.negotiatedPrice).toLocaleString()}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openBookingBillingModal(booking)}
+                            className="h-7 px-2.5 text-xs font-bold border-orange-500/40 text-orange-600 hover:bg-orange-500/10"
+                          >
+                            Counter / Discount
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="mt-6 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-emerald-600 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 flex items-center gap-1.5 font-bold"
+                        onClick={() => openBookingBillingModal(booking)}
+                      >
+                        <DollarSign className="h-4 w-4" /> Negotiate / Discount
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-amber-600 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/10"
+                        onClick={() => handleStatusChange(booking.id, 'Negotiation')}
+                      >
+                        Set Negotiation
+                      </Button>
                       <Button 
                         size="sm" 
                         variant="outline" 
@@ -11440,6 +12493,213 @@ function ManageBookings() {
           }}
           onCancel={() => setDeleteConfig(null)}
         />
+      )}
+
+      {/* Booking Price Negotiation & Discount Modal */}
+      {editingBookingBilling && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="p-5 border-b border-border flex items-center justify-between bg-muted/30">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
+                  <Handshake className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Booking Price Negotiation & Discount</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {editingBookingBilling.userName} • {editingBookingBilling.serviceTitle || 'Consultation'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingBookingBilling(null)}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBookingBilling} className="p-5 space-y-4">
+              {editingBookingBilling.proposedPrice !== undefined && editingBookingBilling.proposedPrice !== null && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold text-amber-600">
+                      Client Proposed: GH₵ {Number(editingBookingBilling.proposedPrice).toLocaleString()}
+                    </p>
+                    {editingBookingBilling.clientNegotiationNote && (
+                      <p className="text-[11px] text-muted-foreground italic">"{editingBookingBilling.clientNegotiationNote}"</p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() =>
+                      setBookingBillingForm({
+                        ...bookingBillingForm,
+                        agreedPrice: Number(editingBookingBilling.proposedPrice),
+                        negotiationStatus: 'agreed'
+                      })
+                    }
+                    className="h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    Accept Client Offer
+                  </Button>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                    Standard Price (GH₵)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={bookingBillingForm.servicePrice}
+                    onChange={(e) => setBookingBillingForm({ ...bookingBillingForm, servicePrice: Number(e.target.value) })}
+                    className="font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">
+                    Discount (%)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={bookingBillingForm.discountPercent}
+                    onChange={(e) => {
+                      const pct = Math.min(100, Math.max(0, Number(e.target.value) || 0));
+                      const amt = Math.round(((Number(bookingBillingForm.servicePrice) || 0) * pct) / 100);
+                      setBookingBillingForm({
+                        ...bookingBillingForm,
+                        discountPercent: pct,
+                        discountAmount: amt,
+                        agreedPrice: Math.max(0, (Number(bookingBillingForm.servicePrice) || 0) - amt),
+                        negotiationStatus: 'agreed'
+                      });
+                    }}
+                    className="font-mono font-bold text-emerald-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">
+                    Flat Discount (GH₵)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={bookingBillingForm.discountAmount}
+                    onChange={(e) => {
+                      const amt = Math.max(0, Number(e.target.value) || 0);
+                      setBookingBillingForm({
+                        ...bookingBillingForm,
+                        discountAmount: amt,
+                        agreedPrice: Math.max(0, (Number(bookingBillingForm.servicePrice) || 0) - amt),
+                        negotiationStatus: 'agreed'
+                      });
+                    }}
+                    className="font-mono font-bold text-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">
+                    Agreed Final Price (GH₵)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Agreed amount to pay"
+                    value={bookingBillingForm.agreedPrice}
+                    onChange={(e) =>
+                      setBookingBillingForm({
+                        ...bookingBillingForm,
+                        agreedPrice: e.target.value === '' ? '' : Number(e.target.value),
+                        negotiationStatus: e.target.value !== '' ? 'agreed' : bookingBillingForm.negotiationStatus
+                      })
+                    }
+                    className="font-mono font-bold border-emerald-500/40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-blue-600 mb-1">
+                    Or Counter-Offer (GH₵)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="Send counter-offer"
+                    value={bookingBillingForm.adminCounterPrice}
+                    onChange={(e) =>
+                      setBookingBillingForm({
+                        ...bookingBillingForm,
+                        adminCounterPrice: e.target.value === '' ? '' : Number(e.target.value),
+                        negotiationStatus: e.target.value !== '' ? 'countered_by_admin' : bookingBillingForm.negotiationStatus
+                      })
+                    }
+                    className="font-mono font-bold border-blue-500/40"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                    Amount Paid (GH₵)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={bookingBillingForm.amountPaid}
+                    onChange={(e) => setBookingBillingForm({ ...bookingBillingForm, amountPaid: Number(e.target.value) })}
+                    className="font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                    Negotiation Status
+                  </label>
+                  <select
+                    value={bookingBillingForm.negotiationStatus}
+                    onChange={(e) => setBookingBillingForm({ ...bookingBillingForm, negotiationStatus: e.target.value })}
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold"
+                  >
+                    <option value="none">Standard Pricing</option>
+                    <option value="pending_admin">Client Offer Pending</option>
+                    <option value="countered_by_admin">Counter-Offer Sent</option>
+                    <option value="agreed">Agreed Price Locked</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                  Admin Note to Client
+                </label>
+                <Textarea
+                  rows={2}
+                  placeholder="Optional note explaining the agreed amount or discount..."
+                  value={bookingBillingForm.negotiationNotes}
+                  onChange={(e) => setBookingBillingForm({ ...bookingBillingForm, negotiationNotes: e.target.value })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                <Button type="button" variant="outline" onClick={() => setEditingBookingBilling(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={savingBookingBilling} className="bg-orange-600 hover:bg-orange-700 text-white font-bold">
+                  {savingBookingBilling ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
+                  Save Agreed Price
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

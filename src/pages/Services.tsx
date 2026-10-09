@@ -23,6 +23,7 @@ import {
 import PaystackPop from '@paystack/inline-js';
 import { usePaystack } from '@/providers/PaystackProvider';
 import { calculateTransactionCharge, useTransactionFee } from '@/lib/transactionFees';
+import { mergeServicesWithDefaults, getServicePricing } from '@/lib/servicePricing';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
@@ -30,11 +31,12 @@ const artistImg = '/src/assets/images/service_artist_1782127476185.jpg';
 
 export default function Services() {
   const paystackContext = usePaystack();
-  const [services, setServices] = useState<any[]>([]);
+  const [rawServices, setRawServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('All');
   const [globalSettings, setGlobalSettings] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
+  const services = React.useMemo(() => mergeServicesWithDefaults(rawServices, globalSettings), [rawServices, globalSettings]);
   
   const [currentStep, setCurrentStep] = useState(1);
   const [draftInfo, setDraftInfo] = useState<{ savedAt: string; data: any } | null>(null);
@@ -60,11 +62,20 @@ export default function Services() {
   });
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [intakePrice, setIntakePrice] = useState<number>(50);
+  const [intakePricingMode, setIntakePricingMode] = useState<'standard' | 'negotiate'>('standard');
+  const [intakeProposedPrice, setIntakeProposedPrice] = useState<string>('');
+  const [intakeNegotiationNote, setIntakeNegotiationNote] = useState<string>('');
   
   const { calculateCharge: calculateFeeCharge } = useTransactionFee();
 
-  // Transaction fee calculation (dynamically controlled by admin settings)
-  const baseIntakePrice = Math.max(0, Number(intakePrice) || 50);
+  const castingServiceDoc = React.useMemo(
+    () => services.find((s) => s.id === 'movie-skit-casting' || s.intakeOnly) || { price: intakePrice, isNegotiable: true },
+    [services, intakePrice]
+  );
+  const castingPricing = React.useMemo(() => getServicePricing(castingServiceDoc), [castingServiceDoc]);
+
+  // Transaction fee calculation (dynamically controlled by admin settings & service discount)
+  const baseIntakePrice = Math.max(0, castingPricing.effectivePrice || Number(intakePrice) || 50);
   const intakeFeeBreakdown = calculateFeeCharge(baseIntakePrice, false);
   const intakeTransactionFee = intakeFeeBreakdown.feeAmount;
   const intakeTotalPayable = intakeFeeBreakdown.totalAmount;
@@ -1404,8 +1415,15 @@ export default function Services() {
       return;
     }
 
-    if (!priceConfirmed) {
-      toast.error('Please confirm and agree to the registration fee of GH₵ ' + intakePrice + ' before submitting.');
+    const isNegotiatingIntake = castingPricing.isNegotiable && intakePricingMode === 'negotiate';
+    const numProposedIntake = Number(intakeProposedPrice);
+    if (isNegotiatingIntake) {
+      if (!numProposedIntake || numProposedIntake <= 0) {
+        toast.error('Please enter a valid proposed casting fee greater than GH₵ 0.');
+        return;
+      }
+    } else if (!priceConfirmed) {
+      toast.error('Please confirm and agree to the registration fee of GH₵ ' + baseIntakePrice + ' before submitting.');
       return;
     }
 
@@ -1416,9 +1434,35 @@ export default function Services() {
         ...formData,
         userId: auth.currentUser?.uid || null,
         userEmail: auth.currentUser?.email || null,
-        status: 'Pending',
-        price: intakePrice,
-        priceConfirmed: true,
+        status: isNegotiatingIntake ? 'Negotiation' : 'Pending',
+        originalPrice: castingPricing.originalPrice,
+        servicePrice: castingPricing.effectivePrice,
+        discountType: castingPricing.discountType,
+        discountValue: castingPricing.discountValue,
+        discountPercent: castingPricing.discountPercent,
+        discountAmount: castingPricing.savingsAmount,
+        price: isNegotiatingIntake ? numProposedIntake : baseIntakePrice,
+        totalPrice: isNegotiatingIntake ? numProposedIntake : baseIntakePrice,
+        negotiatedPrice: isNegotiatingIntake ? numProposedIntake : null,
+        proposedPrice: isNegotiatingIntake ? numProposedIntake : null,
+        agreedPrice: isNegotiatingIntake ? null : baseIntakePrice,
+        negotiationStatus: isNegotiatingIntake ? 'pending_admin' : 'none',
+        clientNegotiationNote: isNegotiatingIntake ? intakeNegotiationNote.trim() : '',
+        negotiationHistory: isNegotiatingIntake
+          ? [
+              {
+                actor: 'client',
+                action: 'proposed_price',
+                amount: numProposedIntake,
+                note: intakeNegotiationNote.trim() || `Proposed GH₵ ${numProposedIntake.toLocaleString()} for Casting Intake`,
+                timestamp: new Date().toISOString()
+              }
+            ]
+          : [],
+        amountPaid: isNegotiatingIntake ? 0 : baseIntakePrice,
+        balanceDue: isNegotiatingIntake ? numProposedIntake : 0,
+        paymentStatus: isNegotiatingIntake ? 'Negotiating' : 'Paid',
+        priceConfirmed: !isNegotiatingIntake,
         createdAt: new Date().toISOString()
       };
 
@@ -1504,7 +1548,7 @@ export default function Services() {
   useEffect(() => {
     const q = query(collection(db, 'services'), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRawServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'services');
@@ -1692,7 +1736,9 @@ export default function Services() {
                   layout
                   className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
                 >
-                  {filteredServices.map((service, index) => (
+                  {filteredServices.map((service, index) => {
+                    const pricing = getServicePricing(service);
+                    return (
                     <motion.div
                       key={service.id}
                       layout
@@ -1710,6 +1756,18 @@ export default function Services() {
                             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
                             referrerPolicy="no-referrer"
                           />
+                          <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5 z-10">
+                            {pricing.hasDiscount && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-md">
+                                <LucideIcons.Tag className="h-3 w-3" /> {pricing.discountBadgeText}
+                              </span>
+                            )}
+                            {pricing.isNegotiable && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600/95 text-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-md">
+                                <LucideIcons.Handshake className="h-3 w-3" /> Negotiable
+                              </span>
+                            )}
+                          </div>
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex items-end p-4">
                             <span className="text-[10px] uppercase font-mono font-black tracking-wider bg-orange-600 text-white px-2.5 py-1 rounded shadow-sm">
                               {getServiceCategory(service)}
@@ -1751,23 +1809,49 @@ export default function Services() {
                           <p className="text-xs text-muted-foreground/80 leading-relaxed">
                             Tailored strategies and solutions engineered specifically to address local dynamics and power your strategic goals.
                           </p>
-                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/40">
-                            <span className="text-xs text-muted-foreground font-medium">Standard Price</span>
-                            <span className="text-sm font-black text-orange-600 bg-orange-600/5 px-2.5 py-1 rounded-md">
-                              GH₵ {(service.price !== undefined ? service.price : 150).toLocaleString()}
-                            </span>
+                          <div className="mt-4 pt-3 border-t border-border/40 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground font-medium">
+                                {pricing.hasDiscount ? 'Discounted Price' : 'Standard Price'}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                {pricing.hasDiscount && (
+                                  <span className="text-xs text-muted-foreground line-through font-mono">
+                                    GH₵ {pricing.originalPrice.toLocaleString()}
+                                  </span>
+                                )}
+                                <span className="text-sm font-black text-orange-600 bg-orange-600/10 px-2.5 py-1 rounded-md font-mono">
+                                  GH₵ {pricing.effectivePrice.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                            {pricing.hasDiscount && (
+                              <div className="flex items-center justify-between text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                                <span>{pricing.discountBadgeText} Applied</span>
+                                <span>Save GH₵ {pricing.savingsAmount.toLocaleString()}</span>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
-                        <CardFooter className="pt-0">
-                          <Link to={`/services/${service.id}`} className="w-full">
-                            <Button variant="outline" className="w-full border-orange-600/20 text-orange-600 hover:bg-orange-600 hover:text-white cursor-pointer">
-                              Learn More
+                        <CardFooter className="pt-0 flex gap-2">
+                          <Link to={`/services/${service.id}`} className="flex-1">
+                            <Button variant="outline" className="w-full border-orange-600/20 text-orange-600 hover:bg-orange-600 hover:text-white cursor-pointer text-xs font-bold">
+                              {pricing.isNegotiable ? 'Details / Negotiate' : 'Learn More'}
+                            </Button>
+                          </Link>
+                          <Link
+                            to={service.intakeOnly ? '#service-consultation-intake-card' : `/booking?serviceId=${encodeURIComponent(service.id)}`}
+                            className="flex-1"
+                          >
+                            <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white cursor-pointer text-xs font-bold">
+                              Book Now
                             </Button>
                           </Link>
                         </CardFooter>
                       </Card>
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </motion.div>
               ) : (
                 <motion.div 
@@ -2598,18 +2682,129 @@ export default function Services() {
                               <div className="bg-orange-600 text-white p-3 rounded-xl shrink-0 shadow-md">
                                 <LucideIcons.ShieldCheck className="h-6 w-6 animate-pulse" />
                               </div>
-                              <div className="space-y-1">
-                                <h4 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 flex-wrap">
-                                  <span>Official Registration & Processing Fee</span>
-                                  <span className="text-xs font-black bg-orange-600 text-white px-2.5 py-0.5 rounded-full">GH₵ {intakePrice.toLocaleString()}</span>
-                                </h4>
+                              <div className="space-y-1 flex-1">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <h4 className="font-extrabold text-sm text-foreground flex items-center gap-1.5 flex-wrap">
+                                    <span>Official Registration & Processing Fee</span>
+                                    {castingPricing.hasDiscount && (
+                                      <span className="text-xs font-bold text-muted-foreground line-through font-mono">
+                                        GH₵ {castingPricing.originalPrice.toLocaleString()}
+                                      </span>
+                                    )}
+                                    <span className="text-xs font-black bg-orange-600 text-white px-2.5 py-0.5 rounded-full font-mono">
+                                      GH₵ {baseIntakePrice.toLocaleString()}
+                                    </span>
+                                  </h4>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {castingPricing.hasDiscount && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 text-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
+                                        <LucideIcons.Tag className="h-3 w-3" /> {castingPricing.discountBadgeText}
+                                      </span>
+                                    )}
+                                    {castingPricing.isNegotiable && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
+                                        <LucideIcons.Handshake className="h-3 w-3" /> Negotiable
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
-                                  An official casting and demographic intake processing fee of <strong className="text-foreground">GH₵ {intakePrice}</strong> is required to submit your audition profile to Grefas Entertainment casting directory. This covers administrative roster logging, database storage, and immediate contact setup with our movie directors.
+                                  An official casting and demographic intake processing fee of <strong className="text-foreground">GH₵ {baseIntakePrice.toLocaleString()}</strong>
+                                  {castingPricing.hasDiscount ? ` (discounted from GH₵ ${castingPricing.originalPrice.toLocaleString()})` : ''} is required to submit your audition profile to Grefas Entertainment casting directory.
                                 </p>
                               </div>
                             </div>
 
+                            {castingPricing.isNegotiable && !priceConfirmed && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setIntakePricingMode('standard')}
+                                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                    intakePricingMode === 'standard'
+                                      ? 'border-orange-600 bg-orange-600/10 text-foreground'
+                                      : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-extrabold">Pay Listed Price Now</span>
+                                    <span className="text-xs font-mono font-black text-orange-600">GH₵ {baseIntakePrice.toLocaleString()}</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">Instant confirmation via Paystack</p>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIntakePricingMode('negotiate');
+                                    if (!intakeProposedPrice) {
+                                      setIntakeProposedPrice(String(Math.max(10, Math.round(baseIntakePrice * 0.8))));
+                                    }
+                                  }}
+                                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                    intakePricingMode === 'negotiate'
+                                      ? 'border-indigo-600 bg-indigo-600/10 text-foreground'
+                                      : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-extrabold flex items-center gap-1 text-indigo-600 dark:text-indigo-400">
+                                      <LucideIcons.Handshake className="h-3.5 w-3.5" /> Negotiate Fee
+                                    </span>
+                                    <span className="text-[10px] font-black uppercase bg-indigo-500/15 text-indigo-600 px-2 py-0.5 rounded-full">Custom Offer</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">Propose an amount for admin review before paying</p>
+                                </button>
+                              </div>
+                            )}
+
+                            {castingPricing.isNegotiable && intakePricingMode === 'negotiate' && !priceConfirmed ? (
+                              <div className="border-t border-indigo-500/20 pt-4 space-y-3 bg-indigo-500/5 p-4 rounded-xl">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">
+                                      Your Proposed Casting Fee (GH₵) *
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      step="any"
+                                      value={intakeProposedPrice}
+                                      onChange={(e) => setIntakeProposedPrice(e.target.value)}
+                                      placeholder={String(baseIntakePrice)}
+                                      className="w-full h-10 rounded-xl border border-indigo-500/40 bg-background px-3 text-sm font-mono font-black text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                                      Reason / Note for Admin (Optional)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={intakeNegotiationNote}
+                                      onChange={(e) => setIntakeNegotiationNote(e.target.value)}
+                                      placeholder="e.g., Student discount request..."
+                                      className="w-full h-10 rounded-xl border border-border bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    />
+                                  </div>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground">
+                                  Submitting with a proposed fee sets your application status to <strong className="text-indigo-600">Negotiation</strong>. Once admin accepts or counters your offer, you can pay the agreed amount.
+                                </p>
+                              </div>
+                            ) : (
                             <div className="border-t border-border/40 pt-4 space-y-2">
+                              {castingPricing.hasDiscount && (
+                                <div className="flex justify-between items-center text-xs font-medium text-muted-foreground">
+                                  <span>Original Listed Fee:</span>
+                                  <span className="line-through font-mono">GH₵ {castingPricing.originalPrice.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {castingPricing.hasDiscount && (
+                                <div className="flex justify-between items-center text-xs font-bold text-emerald-600">
+                                  <span>Service Discount ({castingPricing.discountBadgeText}):</span>
+                                  <span className="font-mono">- GH₵ {castingPricing.savingsAmount.toFixed(2)}</span>
+                                </div>
+                              )}
                               <div className="flex justify-between items-center text-xs font-medium text-muted-foreground">
                                 <span>Registration Base Fee:</span>
                                 <span className="text-foreground font-mono font-bold">GH₵ {baseIntakePrice.toFixed(2)}</span>
@@ -2816,6 +3011,7 @@ export default function Services() {
                                 </div>
                               )}
                             </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2841,32 +3037,42 @@ export default function Services() {
                         <LucideIcons.Save className="h-4 w-4" />
                         <span>Save as Draft</span>
                       </Button>
-                      <Button
-                        type="submit"
-                        disabled={submitting || !priceConfirmed}
-                        className={`ml-auto font-bold h-11 px-6 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all ${
-                          priceConfirmed 
-                            ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-md' 
-                            : 'bg-muted border border-border text-muted-foreground cursor-not-allowed shadow-none hover:bg-muted'
-                        }`}
-                      >
-                        {submitting ? (
-                          <>
-                            <LucideIcons.Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Transmitting...</span>
-                          </>
-                        ) : !priceConfirmed ? (
-                          <>
-                            <LucideIcons.Lock className="h-4 w-4 text-muted-foreground/60" />
-                            <span>Payment Required</span>
-                          </>
-                        ) : (
-                          <>
-                            <LucideIcons.Film className="h-5 w-5 animate-pulse" />
-                            <span>Submit Film Intake</span>
-                          </>
-                        )}
-                      </Button>
+                      {(() => {
+                        const canSubmitIntake = priceConfirmed || (castingPricing.isNegotiable && intakePricingMode === 'negotiate' && Number(intakeProposedPrice) > 0);
+                        return (
+                          <Button
+                            type="submit"
+                            disabled={submitting || !canSubmitIntake}
+                            className={`ml-auto font-bold h-11 px-6 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                              canSubmitIntake 
+                                ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-md' 
+                                : 'bg-muted border border-border text-muted-foreground cursor-not-allowed shadow-none hover:bg-muted'
+                            }`}
+                          >
+                            {submitting ? (
+                              <>
+                                <LucideIcons.Loader2 className="h-5 w-5 animate-spin" />
+                                <span>Transmitting...</span>
+                              </>
+                            ) : (castingPricing.isNegotiable && intakePricingMode === 'negotiate') ? (
+                              <>
+                                <LucideIcons.Handshake className="h-5 w-5" />
+                                <span>Submit with Price Proposal (GH₵ {Number(intakeProposedPrice || 0).toLocaleString()})</span>
+                              </>
+                            ) : !priceConfirmed ? (
+                              <>
+                                <LucideIcons.Lock className="h-4 w-4 text-muted-foreground/60" />
+                                <span>Payment Required</span>
+                              </>
+                            ) : (
+                              <>
+                                <LucideIcons.Film className="h-5 w-5 animate-pulse" />
+                                <span>Submit Film Intake</span>
+                              </>
+                            )}
+                          </Button>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 )}

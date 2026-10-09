@@ -287,3 +287,114 @@ export async function sendArkeselSms(
     };
   }
 }
+
+export interface NegotiationSmsPayload {
+  phone: string;
+  email?: string;
+  name: string;
+  serviceTitle: string;
+  agreedPrice: number;
+  originalPrice?: number;
+  proposedPrice?: number;
+  orderNumber?: string;
+  adminNote?: string;
+  actionType?: "approved" | "counter_offer" | "declined";
+  customSmsMessage?: string;
+}
+
+export function buildNegotiationSmsMessage(payload: NegotiationSmsPayload): string {
+  if (payload.customSmsMessage && payload.customSmsMessage.trim()) {
+    return payload.customSmsMessage.trim();
+  }
+  const clientName = String(payload.name || "Valued Client").trim();
+  const serviceName = String(payload.serviceTitle || "Service Order").trim();
+  const numAgreed = Number(payload.agreedPrice || 0);
+  const numOriginal = Number(payload.originalPrice || 0);
+  const formattedAgreed = numAgreed.toLocaleString("en-GH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const orderRefPart = payload.orderNumber ? ` (Ref: ${payload.orderNumber})` : "";
+  const savingsAmount = numOriginal > numAgreed && numAgreed > 0 ? numOriginal - numAgreed : 0;
+  const savingsPart =
+    savingsAmount > 0
+      ? ` You save GHc ${savingsAmount.toLocaleString("en-GH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })} off the standard rate.`
+      : "";
+  const notePart = payload.adminNote ? ` Note: "${String(payload.adminNote).trim()}"` : "";
+  const action = payload.actionType || "approved";
+
+  if (action === "counter_offer") {
+    return `GREFAS CONSULT: Dear ${clientName}, Administration has reviewed your budget request for "${serviceName}"${orderRefPart} and proposed a counter-offer of GHc ${formattedAgreed}.${notePart} Visit our booking portal to review and accept.`;
+  }
+  if (action === "declined") {
+    return `GREFAS CONSULT: Dear ${clientName}, regarding your budget proposal for "${serviceName}"${orderRefPart}, Administration is unable to approve the proposed amount at this time.${notePart} Please contact us or visit our portal for options.`;
+  }
+  return `GREFAS CONSULT: Dear ${clientName}, your agreed budget of GHc ${formattedAgreed} for "${serviceName}"${orderRefPart} has been APPROVED by Administration!${savingsPart}${notePart} Please visit our booking portal to proceed with your service. Thank you!`;
+}
+
+export async function sendNegotiatedPriceApprovedSms(
+  payload: NegotiationSmsPayload
+): Promise<{ success: boolean; simulated?: boolean; message: string; error?: string }> {
+  const message = buildNegotiationSmsMessage(payload);
+  const cleanPhone = String(payload.phone || "").trim();
+  if (!cleanPhone) {
+    return {
+      success: false,
+      message,
+      error: "No client phone number provided for SMS dispatch.",
+    };
+  }
+
+  try {
+    const res = await fetch("/api/notifications/negotiation-approved", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        phone: cleanPhone,
+        customSmsMessage: message,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.smsDispatched || data.success) {
+        return {
+          success: true,
+          simulated: Boolean(data.smsSimulated),
+          message: data.message || message,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("Primary negotiation-approved endpoint failed, falling back to /api/sms/send:", err);
+  }
+
+  try {
+    const fallbackRes = await fetch("/api/sms/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: cleanPhone,
+        message,
+      }),
+    });
+    const fallbackData = await fallbackRes.json().catch(() => ({}));
+    return {
+      success: Boolean(fallbackRes.ok && fallbackData.success),
+      simulated: Boolean(fallbackData.raw?.simulated),
+      message,
+      error: fallbackData.error,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message,
+      error: err?.message || "SMS network error",
+    };
+  }
+}
+
