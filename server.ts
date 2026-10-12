@@ -2512,7 +2512,7 @@ Sitemap: ${domain}/sitemap.xml`);
       try {
         const smsResult = await sendArkeselSms(String(phone).trim(), smsText);
         smsDispatched = smsResult.success;
-        smsSimulated = Boolean((smsResult.raw as any)?.simulated);
+        smsSimulated = Boolean((smsResult as any)?.raw?.simulated);
         if (!smsResult.success) {
           smsError = smsResult.error;
         }

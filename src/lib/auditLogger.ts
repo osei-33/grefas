@@ -2,12 +2,13 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/firebase';
 
 export interface AuditLogParams {
-  type: 'create' | 'update' | 'delete' | 'login' | 'status_change' | 'policy_update' | 'sms_sent' | 'role_change' | 'system' | string;
-  module: string; // e.g., 'Services', 'Portfolio', 'Gallery', 'Blog', 'Bookings', 'Team', 'Users', 'Payroll', 'Settings', 'Applications'
+  type?: 'create' | 'update' | 'delete' | 'login' | 'status_change' | 'policy_update' | 'sms_sent' | 'role_change' | 'system' | string;
+  module?: string; // e.g., 'Services', 'Portfolio', 'Gallery', 'Blog', 'Bookings', 'Team', 'Users', 'Payroll', 'Settings', 'Applications'
   action: string; // e.g., 'CREATED_SERVICE', 'DELETED_BLOG', 'UPDATED_ROLE'
   description: string;
   targetId?: string;
   targetName?: string;
+  category?: string;
   metadata?: Record<string, any>;
   actorEmail?: string;
   actorName?: string;
@@ -25,8 +26,8 @@ export async function logAuditActivity(params: AuditLogParams): Promise<void> {
     const userId = user?.uid || 'unauthenticated';
 
     const logPayload = {
-      type: params.type,
-      module: params.module,
+      type: params.type || 'update',
+      module: params.module || params.category || 'Operations',
       action: params.action,
       actionType: params.action || params.type,
       description: params.description,

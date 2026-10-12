@@ -258,7 +258,7 @@ service cloud.firestore {
 
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     match /reviews/{reviewId} {

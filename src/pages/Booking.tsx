@@ -2835,7 +2835,7 @@ export default function Booking() {
                               </div>
 
                               {/* Admin Counter-Offer Response Controls */}
-                              {(negSummary.negotiationStatus === 'admin_countered' || negSummary.negotiationStatus === 'countered_by_admin') && (
+                              {negSummary.negotiationStatus === 'countered_by_admin' && (
                                 <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-4 space-y-3">
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                     <div>

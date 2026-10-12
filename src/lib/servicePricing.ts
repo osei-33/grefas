@@ -104,19 +104,120 @@ export const DEFAULT_SERVICES: ServiceItem[] = [
   }
 ];
 
+const LOCAL_DELETED_SERVICES_KEY = 'grefas_deleted_services_v1';
+
+export function getLocallyDeletedServiceKeys(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_DELETED_SERVICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((k) => String(k).trim()).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function markServiceKeysLocallyDeleted(keys: (string | undefined | null)[]): string[] {
+  const cleanKeys = keys
+    .map((k) => (k ? String(k).trim() : ''))
+    .filter(Boolean);
+  if (typeof window === 'undefined') return cleanKeys;
+  try {
+    const existing = new Set(getLocallyDeletedServiceKeys());
+    cleanKeys.forEach((k) => {
+      existing.add(k);
+      existing.add(k.toLowerCase());
+    });
+    const next = Array.from(existing);
+    window.localStorage.setItem(LOCAL_DELETED_SERVICES_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent('grefas-services-deleted', { detail: { keys: next } }));
+    return next;
+  } catch {
+    return cleanKeys;
+  }
+}
+
+export function unmarkServiceKeysLocallyDeleted(keys: (string | undefined | null)[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    const removeSet = new Set(
+      keys
+        .map((k) => (k ? String(k).trim() : ''))
+        .filter(Boolean)
+        .flatMap((k) => [k, k.toLowerCase()])
+    );
+    const remaining = getLocallyDeletedServiceKeys().filter(
+      (k) => !removeSet.has(k) && !removeSet.has(k.toLowerCase())
+    );
+    window.localStorage.setItem(LOCAL_DELETED_SERVICES_KEY, JSON.stringify(remaining));
+    window.dispatchEvent(new CustomEvent('grefas-services-deleted', { detail: { keys: remaining } }));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 /**
  * Merges Firestore service documents with the 5 canonical DEFAULT_SERVICES
  * so that all default services remain available and editable by Admin
- * alongside any custom services added to Firestore.
+ * alongside any custom services added to Firestore, while permanently
+ * excluding any service that has been deleted by Admin.
  */
-export function mergeServicesWithDefaults(firestoreDocs: any[]): ServiceItem[] {
+export function mergeServicesWithDefaults(firestoreDocs: any[], globalSettings?: any): ServiceItem[] {
   const byId = new Map<string, any>();
   const matchedDefaultIds = new Set<string>();
+  const deletedKeys = new Set<string>();
 
+  // 1. Collect locally deleted service keys
+  for (const key of getLocallyDeletedServiceKeys()) {
+    deletedKeys.add(key);
+    deletedKeys.add(key.toLowerCase());
+  }
+
+  // 2. Collect globally persisted deleted service keys from settings/global
+  if (globalSettings && Array.isArray(globalSettings.deletedServiceIds)) {
+    for (const key of globalSettings.deletedServiceIds) {
+      if (key) {
+        const s = String(key).trim();
+        deletedKeys.add(s);
+        deletedKeys.add(s.toLowerCase());
+      }
+    }
+  }
+
+  // 3. Collect tombstone docs (isDeleted === true) from Firestore services collection
   for (const doc of firestoreDocs) {
     if (!doc) continue;
     byId.set(doc.id, doc);
+    if (doc.isDeleted) {
+      if (doc.id) {
+        deletedKeys.add(String(doc.id).trim());
+        deletedKeys.add(String(doc.id).trim().toLowerCase());
+      }
+      if (doc.defaultId) {
+        deletedKeys.add(String(doc.defaultId).trim());
+        deletedKeys.add(String(doc.defaultId).trim().toLowerCase());
+      }
+      if (doc.slug) {
+        deletedKeys.add(String(doc.slug).trim().toLowerCase());
+      }
+      if (doc.title) {
+        deletedKeys.add(String(doc.title).trim().toLowerCase());
+      }
+    }
   }
+
+  const isServiceDeleted = (item: any): boolean => {
+    if (!item) return true;
+    if (item.isDeleted) return true;
+    const idStr = item.id ? String(item.id).trim() : '';
+    const slugStr = item.slug ? String(item.slug).trim().toLowerCase() : '';
+    const titleStr = item.title ? String(item.title).trim().toLowerCase() : '';
+    if (idStr && (deletedKeys.has(idStr) || deletedKeys.has(idStr.toLowerCase()))) return true;
+    if (slugStr && deletedKeys.has(slugStr)) return true;
+    if (titleStr && deletedKeys.has(titleStr)) return true;
+    return false;
+  };
 
   const result: ServiceItem[] = [];
 
@@ -126,16 +227,21 @@ export function mergeServicesWithDefaults(firestoreDocs: any[]): ServiceItem[] {
     if (!match) {
       match = firestoreDocs.find(
         (d) =>
-          (d.slug && d.slug === def.slug) ||
-          (d.title && String(d.title).trim().toLowerCase() === def.title.toLowerCase())
+          d &&
+          ((d.slug && d.slug === def.slug) ||
+            (d.title && String(d.title).trim().toLowerCase() === def.title.toLowerCase()))
       );
     }
 
     if (match) {
       matchedDefaultIds.add(match.id);
-      if (match.isDeleted) {
-        continue;
-      }
+    }
+
+    if (isServiceDeleted(def) || (match && isServiceDeleted(match))) {
+      continue;
+    }
+
+    if (match) {
       const dPercent = match.discountPercent !== undefined ? Number(match.discountPercent) : (match.discountType === 'percentage' ? Number(match.discountValue || 0) : 0);
       const dAmount = match.discountAmount !== undefined ? Number(match.discountAmount) : (match.discountType === 'fixed' ? Number(match.discountValue || 0) : 0);
       const dType: 'percentage' | 'fixed' = match.discountType === 'fixed' || (dAmount > 0 && dPercent === 0) ? 'fixed' : 'percentage';
@@ -159,10 +265,10 @@ export function mergeServicesWithDefaults(firestoreDocs: any[]): ServiceItem[] {
 
   // Append any custom services from Firestore that were not matched to defaults
   for (const doc of firestoreDocs) {
-    if (!doc || matchedDefaultIds.has(doc.id) || doc.isDeleted) continue;
+    if (!doc || matchedDefaultIds.has(doc.id) || isServiceDeleted(doc)) continue;
     const dPercent = doc.discountPercent !== undefined ? Number(doc.discountPercent) : (doc.discountType === 'percentage' ? Number(doc.discountValue || 0) : 0);
     const dAmount = doc.discountAmount !== undefined ? Number(doc.discountAmount) : (doc.discountType === 'fixed' ? Number(doc.discountValue || 0) : 0);
-    const dType: 'percentage' | 'fixed' = doc.discountType === 'fixed' || (dAmount > 0 && dPercent === 0) ? 'fixed' : 'percentage';
+    const dType: 'percentage' | 'fixed' = doc.discountType === 'fixed' || (doc.discountAmount > 0 && dPercent === 0) ? 'fixed' : 'percentage';
     const dVal = doc.discountValue !== undefined ? Number(doc.discountValue) : (dType === 'fixed' ? dAmount : dPercent);
     result.push({
       id: doc.id,
@@ -336,18 +442,23 @@ export function getRecordNegotiationSummary(record: any, fallbackPrice: number =
 
   const amountPaid = Math.max(0, Number(record?.amountPaid ?? record?.paidAmount ?? 0));
   const balanceDue = Math.max(0, Math.round((effectiveTotal - amountPaid) * 100) / 100);
-  const negotiationStatus: string =
-    record?.negotiationStatus ||
-    (agreedPrice !== null
+  const rawNegStatus = String(record?.negotiationStatus || '').toLowerCase();
+  const validStatusList = ['none', 'pending_admin', 'countered_by_admin', 'agreed', 'rejected'] as const;
+  const negotiationStatus: 'none' | 'pending_admin' | 'countered_by_admin' | 'agreed' | 'rejected' =
+    (validStatusList as readonly string[]).includes(rawNegStatus)
+      ? (rawNegStatus as 'none' | 'pending_admin' | 'countered_by_admin' | 'agreed' | 'rejected')
+      : rawNegStatus === 'countered' || rawNegStatus === 'admin_countered'
+      ? 'countered_by_admin'
+      : agreedPrice !== null
       ? 'agreed'
       : record?.status === 'Negotiation' || proposedPrice !== null
       ? 'pending_admin'
-      : 'none');
+      : 'none';
 
   const negotiationLabel =
     negotiationStatus === 'agreed'
       ? 'Price Agreed'
-      : negotiationStatus === 'countered_by_admin' || negotiationStatus === 'admin_countered'
+      : negotiationStatus === 'countered_by_admin'
       ? 'Admin Counter-Offer'
       : negotiationStatus === 'pending_admin' || record?.status === 'Negotiation'
       ? 'Under Negotiation'

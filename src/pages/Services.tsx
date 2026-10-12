@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import * as LucideIcons from 'lucide-react';
 import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { sendArkeselSms } from '@/lib/arkeselSms';
-import { collection, onSnapshot, query, orderBy, addDoc, where, getDocs, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, where, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
@@ -23,8 +23,8 @@ import {
 } from '@/lib/paystack';
 import PaystackPayment from '@/components/PaystackPayment';
 import { usePaystack } from '@/providers/PaystackProvider';
-import { calculateTransactionCharge, useTransactionFee } from '@/lib/transactionFees';
-import { mergeServicesWithDefaults, getServicePricing } from '@/lib/servicePricing';
+import { calculateTransactionCharge, useTransactionFee, setLocalTransactionFeeConfig } from '@/lib/transactionFees';
+import { mergeServicesWithDefaults, getServicePricing, DEFAULT_SERVICES, markServiceKeysLocallyDeleted, getLocallyDeletedServiceKeys } from '@/lib/servicePricing';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
@@ -37,7 +37,14 @@ export default function Services() {
   const [activeTab, setActiveTab] = useState<string>('All');
   const [globalSettings, setGlobalSettings] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
-  const services = React.useMemo(() => mergeServicesWithDefaults(rawServices, globalSettings), [rawServices, globalSettings]);
+  const [deletedVersion, setDeletedVersion] = useState(0);
+  const [isAdminUser, setIsAdminUser] = useState(false);
+  const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
+  const [confirmDeleteService, setConfirmDeleteService] = useState<any | null>(null);
+  const services = React.useMemo(
+    () => mergeServicesWithDefaults(rawServices, globalSettings),
+    [rawServices, globalSettings, deletedVersion]
+  );
   
   const [currentStep, setCurrentStep] = useState(1);
   const [draftInfo, setDraftInfo] = useState<{ savedAt: string; data: any } | null>(null);
@@ -67,16 +74,71 @@ export default function Services() {
   const [intakeProposedPrice, setIntakeProposedPrice] = useState<string>('');
   const [intakeNegotiationNote, setIntakeNegotiationNote] = useState<string>('');
   
-  const { calculateCharge: calculateFeeCharge } = useTransactionFee();
+  const { calculateCharge: calculateFeeCharge, config: activeFeeConfig } = useTransactionFee();
 
-  const castingServiceDoc = React.useMemo(
-    () => services.find((s) => s.id === 'movie-skit-casting' || s.intakeOnly) || { price: intakePrice, isNegotiable: true },
-    [services, intakePrice]
-  );
+  // Admin inline editor state for Official Registration & Processing Fee
+  const [isEditingOfficialFee, setIsEditingOfficialFee] = useState(false);
+  const [adminRegFeeInput, setAdminRegFeeInput] = useState<string>('50');
+  const [adminProcFeeMode, setAdminProcFeeMode] = useState<'percentage' | 'fixed' | 'waived'>('percentage');
+  const [adminProcFeeRate, setAdminProcFeeRate] = useState<string>('1');
+  const [adminProcFeeFixed, setAdminProcFeeFixed] = useState<string>('0');
+  const [adminDiscountPercent, setAdminDiscountPercent] = useState<string>('0');
+  const [adminIsNegotiable, setAdminIsNegotiable] = useState<boolean>(true);
+  const [isSavingOfficialFee, setIsSavingOfficialFee] = useState(false);
+
+  const castingServiceDoc = React.useMemo(() => {
+    const matchedCastingService = services.find(
+      (s) =>
+        s.id === 'movie-skit-casting' ||
+        s.id === 'default-1' ||
+        s.slug === 'audition-casting-form' ||
+        (s.title && String(s.title).toLowerCase().includes('audition casting'))
+    );
+    const hasGlobalIntakePrice =
+      globalSettings &&
+      globalSettings.intakePrice !== undefined &&
+      globalSettings.intakePrice !== null &&
+      globalSettings.intakePrice !== '';
+    const resolvedPrice = hasGlobalIntakePrice
+      ? Number(globalSettings.intakePrice)
+      : matchedCastingService?.price !== undefined
+      ? Number(matchedCastingService.price)
+      : intakePrice;
+    const resolvedDiscountPercent =
+      globalSettings?.intakeDiscountPercent !== undefined
+        ? Number(globalSettings.intakeDiscountPercent)
+        : Number(matchedCastingService?.discountPercent || 0);
+    const resolvedDiscountAmount =
+      globalSettings?.intakeDiscountAmount !== undefined
+        ? Number(globalSettings.intakeDiscountAmount)
+        : Number(matchedCastingService?.discountAmount || 0);
+    const resolvedDiscountLabel =
+      globalSettings?.intakeDiscountLabel !== undefined
+        ? String(globalSettings.intakeDiscountLabel)
+        : matchedCastingService?.discountLabel || '';
+    const resolvedNegotiable =
+      globalSettings?.intakeIsNegotiable !== undefined
+        ? Boolean(globalSettings.intakeIsNegotiable)
+        : matchedCastingService?.isNegotiable !== undefined
+        ? Boolean(matchedCastingService.isNegotiable)
+        : true;
+
+    return {
+      ...(matchedCastingService || {}),
+      price: resolvedPrice,
+      discountPercent: resolvedDiscountPercent,
+      discountAmount: resolvedDiscountAmount,
+      discountLabel: resolvedDiscountLabel,
+      isNegotiable: resolvedNegotiable,
+    };
+  }, [services, globalSettings, intakePrice]);
   const castingPricing = React.useMemo(() => getServicePricing(castingServiceDoc), [castingServiceDoc]);
 
   // Transaction fee calculation (dynamically controlled by admin settings & service discount)
-  const listedIntakePrice = Math.max(0, castingPricing.effectivePrice || Number(intakePrice) || 50);
+  const listedIntakePrice = Math.max(
+    0,
+    castingPricing.effectivePrice !== undefined ? castingPricing.effectivePrice : Number(intakePrice) || 50
+  );
   const isNegotiatingIntakePrice = Boolean(
     castingPricing.isNegotiable &&
     intakePricingMode === 'negotiate' &&
@@ -85,9 +147,99 @@ export default function Services() {
   const baseIntakePrice = isNegotiatingIntakePrice
     ? Math.max(1, Number(intakeProposedPrice))
     : listedIntakePrice;
-  const intakeFeeBreakdown = calculateFeeCharge(baseIntakePrice, false);
+
+  const standardFeeBreakdown = calculateFeeCharge(baseIntakePrice, false);
+  const intakeFeeBreakdown = React.useMemo(() => {
+    const mode = globalSettings?.intakeProcessingFeeMode;
+    if (mode === 'waived') {
+      return {
+        ...standardFeeBreakdown,
+        feeRate: 0,
+        feePercentageDisplay: '0% (Waived)',
+        feeAmount: 0,
+        totalAmount: baseIntakePrice,
+        isDisabled: true,
+      };
+    }
+    if (mode === 'fixed' && globalSettings?.intakeProcessingFeeFixed !== undefined) {
+      const fixedFee = Math.max(0, Math.round((Number(globalSettings.intakeProcessingFeeFixed) || 0) * 100) / 100);
+      return {
+        ...standardFeeBreakdown,
+        feeAmount: fixedFee,
+        totalAmount: Math.round((baseIntakePrice + fixedFee) * 100) / 100,
+        feePercentageDisplay: fixedFee > 0 ? `Flat GH₵ ${fixedFee.toFixed(2)}` : '0% (Waived)',
+        isDisabled: fixedFee === 0,
+      };
+    }
+    return standardFeeBreakdown;
+  }, [globalSettings, standardFeeBreakdown, baseIntakePrice]);
+
   const intakeTransactionFee = intakeFeeBreakdown.feeAmount;
   const intakeTotalPayable = intakeFeeBreakdown.totalAmount;
+
+  const handleSaveOfficialFeeFromServices = async () => {
+    setIsSavingOfficialFee(true);
+    try {
+      const cleanBase = Math.max(0, Number(adminRegFeeInput) || 0);
+      const cleanDisc = Math.min(100, Math.max(0, Number(adminDiscountPercent) || 0));
+      const cleanRate = Math.max(0, Number(adminProcFeeRate) || 0);
+      const cleanFixed = Math.max(0, Number(adminProcFeeFixed) || 0);
+      const feeEnabled = adminProcFeeMode !== 'waived';
+
+      await setDoc(
+        doc(db, 'settings', 'global'),
+        {
+          intakePrice: cleanBase,
+          intakeDiscountPercent: cleanDisc,
+          intakeDiscountLabel: cleanDisc > 0 ? `${cleanDisc}% OFF` : '',
+          intakeIsNegotiable: adminIsNegotiable,
+          intakeProcessingFeeMode: adminProcFeeMode,
+          intakeProcessingFeeFixed: cleanFixed,
+          transactionFeeEnabled: feeEnabled,
+          transactionFeeRate: adminProcFeeMode === 'percentage' ? cleanRate : activeFeeConfig.ratePercent,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      try {
+        await setDoc(
+          doc(db, 'services', 'default-1'),
+          {
+            title: 'Audition Casting Form',
+            slug: 'audition-casting-form',
+            category: 'Entertainment',
+            description:
+              'Official actor & crew registration for upcoming Grefas feature films, comedy skits, and commercial casting calls across Ghana.',
+            iconName: 'Clapperboard',
+            color: 'bg-orange-100 text-orange-600',
+            intakeOnly: true,
+            price: cleanBase,
+            discountPercent: cleanDisc,
+            discountLabel: cleanDisc > 0 ? `${cleanDisc}% OFF` : '',
+            isNegotiable: adminIsNegotiable,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch {
+        // non-blocking
+      }
+
+      setLocalTransactionFeeConfig({
+        enabled: feeEnabled,
+        ratePercent: adminProcFeeMode === 'percentage' ? cleanRate : activeFeeConfig.ratePercent,
+      });
+
+      setIntakePrice(cleanBase);
+      setIsEditingOfficialFee(false);
+      toast.success(`Official Registration & Processing Fee updated to GH₵ ${cleanBase.toLocaleString()}!`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/global');
+    } finally {
+      setIsSavingOfficialFee(false);
+    }
+  };
 
   const [priceConfirmed, setPriceConfirmed] = useState<boolean>(false);
   const [paymentProvider, setPaymentProvider] = useState<'mtn' | 'telecel' | 'at' | 'card'>('mtn');
@@ -1608,15 +1760,152 @@ export default function Services() {
   };
 
   useEffect(() => {
-    const q = query(collection(db, 'services'), orderBy('createdAt', 'asc'));
+    const handleDeletedEvent = () => setDeletedVersion((v) => v + 1);
+    window.addEventListener('grefas-services-deleted', handleDeletedEvent);
+    return () => window.removeEventListener('grefas-services-deleted', handleDeletedEvent);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        setIsAdminUser(false);
+        return;
+      }
+      const emailLower = (user.email || '').trim().toLowerCase();
+      const hardcoded = [
+        'serwaahlinda1995@gmail.com',
+        'asantegrice@gmail.com',
+        'asantegrifice@gmail.com',
+        'oseikwameemmanuel33@gmail.com'
+      ];
+      if (hardcoded.includes(emailLower)) {
+        setIsAdminUser(true);
+        return;
+      }
+      try {
+        const uSnap = await getDoc(doc(db, 'users', user.uid));
+        if (uSnap.exists() && (uSnap.data().role === 'admin' || uSnap.data().role === 'editor')) {
+          setIsAdminUser(true);
+        } else {
+          setIsAdminUser(false);
+        }
+      } catch {
+        setIsAdminUser(false);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'services'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setRawServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+      docs.sort((a: any, b: any) => {
+        const tA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime() || 0;
+        const tB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime() || 0;
+        return tA - tB;
+      });
+      setRawServices(docs);
       setLoading(false);
     }, (error) => {
+      setLoading(false);
       handleFirestoreError(error, OperationType.LIST, 'services');
     });
     return () => unsubscribe();
   }, []);
+
+  const handlePermanentDeleteServiceCard = async (service: any) => {
+    if (!service) return;
+    setDeletingServiceId(service.id);
+    try {
+      const matchedDef = DEFAULT_SERVICES.find(
+        (d) =>
+          d.id === service.id ||
+          (d.slug && service.slug && d.slug === service.slug) ||
+          d.title.trim().toLowerCase() === String(service.title || '').trim().toLowerCase()
+      );
+      const keysToBlock = [
+        service.id,
+        matchedDef?.id,
+        service.slug,
+        matchedDef?.slug,
+        String(service.title || '').trim().toLowerCase(),
+        matchedDef?.title ? matchedDef.title.trim().toLowerCase() : null
+      ].filter(Boolean) as string[];
+
+      // 1. Immediately mark locally deleted so UI updates with zero lag
+      markServiceKeysLocallyDeleted(keysToBlock);
+      setRawServices((prev) =>
+        prev
+          .filter((item) => item.id !== service.id)
+          .concat([{ id: matchedDef?.id || service.id, title: service.title, isDeleted: true }])
+      );
+      setDeletedVersion((v) => v + 1);
+
+      // 2. Persist tombstone & remove custom docs in Firestore
+      const nowIso = new Date().toISOString();
+      if (matchedDef) {
+        await setDoc(
+          doc(db, 'services', matchedDef.id),
+          {
+            ...matchedDef,
+            isDeleted: true,
+            deletedAt: nowIso,
+            createdAt: nowIso
+          },
+          { merge: true }
+        );
+      }
+      if (service.id && (!matchedDef || service.id !== matchedDef.id)) {
+        try {
+          await deleteDoc(doc(db, 'services', service.id));
+        } catch {
+          await setDoc(
+            doc(db, 'services', service.id),
+            { isDeleted: true, deletedAt: nowIso, createdAt: nowIso },
+            { merge: true }
+          );
+        }
+      }
+
+      // Also delete any duplicate Firestore docs with the same title
+      const duplicateDocs = rawServices.filter(
+        (d) =>
+          d &&
+          d.id !== service.id &&
+          d.id !== matchedDef?.id &&
+          d.title &&
+          String(d.title).trim().toLowerCase() === String(service.title || '').trim().toLowerCase()
+      );
+      for (const dup of duplicateDocs) {
+        try {
+          await deleteDoc(doc(db, 'services', dup.id));
+        } catch {
+          // ignore
+        }
+      }
+
+      // 3. Persist in settings/global deletedServiceIds
+      try {
+        const existingGlobalDeleted = Array.isArray(globalSettings?.deletedServiceIds)
+          ? globalSettings.deletedServiceIds
+          : [];
+        const mergedDeleted = Array.from(
+          new Set([...existingGlobalDeleted, ...getLocallyDeletedServiceKeys(), ...keysToBlock])
+        );
+        await setDoc(doc(db, 'settings', 'global'), { deletedServiceIds: mergedDeleted }, { merge: true });
+      } catch {
+        // non-blocking if editor role
+      }
+
+      toast.success(`"${service.title}" has been permanently deleted.`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `services/${service.id}`);
+    } finally {
+      setDeletingServiceId(null);
+      setConfirmDeleteService(null);
+    }
+  };
 
   // Fetch reviews for service cards
   useEffect(() => {
@@ -1895,20 +2184,42 @@ export default function Services() {
                             )}
                           </div>
                         </CardContent>
-                        <CardFooter className="pt-0 flex gap-2">
-                          <Link to={`/services/${service.id}`} className="flex-1">
+                        <CardFooter className="pt-0 flex flex-wrap gap-2">
+                          <Link to={`/services/${service.id}`} className="flex-1 min-w-[110px]">
                             <Button variant="outline" className="w-full border-orange-600/20 text-orange-600 hover:bg-orange-600 hover:text-white cursor-pointer text-xs font-bold">
                               {pricing.isNegotiable ? 'Details / Negotiate' : 'Learn More'}
                             </Button>
                           </Link>
                           <Link
                             to={service.intakeOnly ? '#service-consultation-intake-card' : `/booking?serviceId=${encodeURIComponent(service.id)}`}
-                            className="flex-1"
+                            className="flex-1 min-w-[100px]"
                           >
                             <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white cursor-pointer text-xs font-bold">
                               Book Now
                             </Button>
                           </Link>
+                          {isAdminUser && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled={deletingServiceId === service.id}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setConfirmDeleteService(service);
+                              }}
+                              className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white cursor-pointer text-xs font-bold px-3"
+                              title="Permanently delete this service (Admin)"
+                            >
+                              {deletingServiceId === service.id ? (
+                                <LucideIcons.Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                              ) : (
+                                <LucideIcons.Trash2 className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              Delete
+                            </Button>
+                          )}
                         </CardFooter>
                       </Card>
                     </motion.div>
@@ -2768,6 +3079,41 @@ export default function Services() {
                                         <LucideIcons.Handshake className="h-3 w-3" /> Negotiable
                                       </span>
                                     )}
+                                    {isAdminUser && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (!isEditingOfficialFee) {
+                                            setAdminRegFeeInput(String(castingPricing.originalPrice || intakePrice || 50));
+                                            setAdminProcFeeMode(
+                                              globalSettings?.intakeProcessingFeeMode ||
+                                                (globalSettings?.transactionFeeEnabled === false ? 'waived' : 'percentage')
+                                            );
+                                            setAdminProcFeeRate(
+                                              String(
+                                                globalSettings?.transactionFeeRate !== undefined
+                                                  ? globalSettings.transactionFeeRate
+                                                  : activeFeeConfig.ratePercent
+                                              )
+                                            );
+                                            setAdminProcFeeFixed(
+                                              String(
+                                                globalSettings?.intakeProcessingFeeFixed !== undefined
+                                                  ? globalSettings.intakeProcessingFeeFixed
+                                                  : intakeTransactionFee
+                                              )
+                                            );
+                                            setAdminDiscountPercent(String(castingPricing.discountPercent || 0));
+                                            setAdminIsNegotiable(Boolean(castingPricing.isNegotiable));
+                                          }
+                                          setIsEditingOfficialFee(!isEditingOfficialFee);
+                                        }}
+                                        className="inline-flex items-center gap-1 rounded-full bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 text-[10px] font-black uppercase tracking-wider shadow-xs cursor-pointer transition-all"
+                                      >
+                                        <LucideIcons.Edit className="h-3 w-3" />
+                                        {isEditingOfficialFee ? 'Close Editor' : 'Edit Fee (Admin)'}
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -2776,6 +3122,138 @@ export default function Services() {
                                 </p>
                               </div>
                             </div>
+
+                            {isAdminUser && isEditingOfficialFee && (
+                              <div className="p-4 rounded-xl bg-card border-2 border-orange-500/40 space-y-3 shadow-md">
+                                <div className="flex items-center justify-between border-b border-border pb-2">
+                                  <span className="text-xs font-black uppercase tracking-wider text-orange-600 flex items-center gap-1.5">
+                                    <LucideIcons.Sliders className="h-3.5 w-3.5" />
+                                    Admin: Edit Official Registration &amp; Processing Fee
+                                  </span>
+                                  <span className="text-[10px] font-semibold text-muted-foreground">
+                                    Live Global Update
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                  <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                                      Registration Base Fee (GH₵)
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="any"
+                                      value={adminRegFeeInput}
+                                      onChange={(e) => setAdminRegFeeInput(e.target.value)}
+                                      className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs font-mono font-bold text-foreground"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                                      Processing Fee Type
+                                    </label>
+                                    <select
+                                      value={adminProcFeeMode}
+                                      onChange={(e) =>
+                                        setAdminProcFeeMode(e.target.value as 'percentage' | 'fixed' | 'waived')
+                                      }
+                                      className="w-full h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-bold text-foreground"
+                                    >
+                                      <option value="percentage">Percentage Rate (%)</option>
+                                      <option value="fixed">Flat Fee (GH₵)</option>
+                                      <option value="waived">Waived (GH₵ 0.00)</option>
+                                    </select>
+                                  </div>
+                                  {adminProcFeeMode === 'percentage' && (
+                                    <div>
+                                      <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                                        Processing Fee Rate (%)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        step="0.1"
+                                        value={adminProcFeeRate}
+                                        onChange={(e) => setAdminProcFeeRate(e.target.value)}
+                                        className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs font-mono font-bold text-foreground"
+                                      />
+                                    </div>
+                                  )}
+                                  {adminProcFeeMode === 'fixed' && (
+                                    <div>
+                                      <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                                        Flat Processing Fee (GH₵)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        value={adminProcFeeFixed}
+                                        onChange={(e) => setAdminProcFeeFixed(e.target.value)}
+                                        className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs font-mono font-bold text-foreground"
+                                      />
+                                    </div>
+                                  )}
+                                  {adminProcFeeMode === 'waived' && (
+                                    <div>
+                                      <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                                        Processing Fee
+                                      </label>
+                                      <div className="h-9 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 flex items-center text-xs font-bold text-emerald-600">
+                                        0% Waived
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                                      Discount (%) &amp; Negotiable
+                                    </label>
+                                    <div className="flex items-center gap-1.5">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={adminDiscountPercent}
+                                        onChange={(e) => setAdminDiscountPercent(e.target.value)}
+                                        className="w-16 h-9 rounded-lg border border-border bg-background px-2 text-xs font-mono font-bold text-foreground"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setAdminIsNegotiable(!adminIsNegotiable)}
+                                        className={`h-9 px-2.5 rounded-lg border text-[10px] font-black uppercase flex-1 cursor-pointer ${
+                                          adminIsNegotiable
+                                            ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600'
+                                            : 'border-border bg-muted text-muted-foreground'
+                                        }`}
+                                      >
+                                        {adminIsNegotiable ? 'Negotiable' : 'Fixed'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex justify-end gap-2 pt-1">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setIsEditingOfficialFee(false)}
+                                    className="h-8 text-xs font-bold"
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={isSavingOfficialFee}
+                                    onClick={handleSaveOfficialFeeFromServices}
+                                    className="h-8 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold cursor-pointer"
+                                  >
+                                    {isSavingOfficialFee ? 'Saving...' : 'Save Official Fee & Processing Charge'}
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
 
                             {castingPricing.isNegotiable && !priceConfirmed && (
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
@@ -3389,6 +3867,63 @@ export default function Services() {
                   className="sm:w-32 border-border/80 text-muted-foreground hover:bg-muted font-bold h-12 rounded-xl cursor-pointer"
                 >
                   Close Preview
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Permanent Service Deletion Confirmation Modal (Admin) */}
+      <AnimatePresence>
+        {confirmDeleteService && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-full bg-red-500/10 text-red-600 shrink-0">
+                  <LucideIcons.Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Permanently Delete Service?</h3>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Are you sure you want to permanently delete{' '}
+                    <span className="font-bold text-foreground">"{confirmDeleteService.title}"</span>? This service will be removed immediately and will not reappear.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setConfirmDeleteService(null)}
+                  disabled={Boolean(deletingServiceId)}
+                  className="cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => handlePermanentDeleteServiceCard(confirmDeleteService)}
+                  disabled={Boolean(deletingServiceId)}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer"
+                >
+                  {deletingServiceId ? (
+                    <>
+                      <LucideIcons.Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <LucideIcons.Trash2 className="h-4 w-4 mr-1.5" />
+                      Delete Permanently
+                    </>
+                  )}
                 </Button>
               </div>
             </motion.div>

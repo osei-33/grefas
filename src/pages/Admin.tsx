@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Minus, Percent, Sliders, ToggleLeft, ToggleRight, Sparkles, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt, Package, Handshake, Tag } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Minus, Percent, Sliders, ToggleLeft, ToggleRight, Sparkles, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, UserPlus, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt, Package, Handshake, Tag } from 'lucide-react';
 import { setLocalTransactionFeeConfig } from '@/lib/transactionFees';
-import { mergeServicesWithDefaults, getServicePricing, getRecordNegotiationSummary, DEFAULT_SERVICES } from '@/lib/servicePricing';
+import { mergeServicesWithDefaults, getServicePricing, getRecordNegotiationSummary, DEFAULT_SERVICES, markServiceKeysLocallyDeleted } from '@/lib/servicePricing';
 import { sendNegotiatedPriceApprovedSms } from '@/lib/arkeselSms';
 import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
@@ -50,6 +50,8 @@ const ManageSitemap = React.lazy(() => import('./ManageSitemap'));
 const ManageSponsorships = React.lazy(() => import('@/components/admin/ManageSponsorships'));
 const ManageCompanyAssets = React.lazy(() => import('@/components/admin/ManageCompanyAssets'));
 const ManageNegotiatedPrices = React.lazy(() => import('@/components/admin/ManageNegotiatedPrices'));
+const ClientManagement = React.lazy(() => import('@/components/admin/ClientManagement'));
+const EmployeeRegistration = React.lazy(() => import('@/components/admin/EmployeeRegistration'));
 import ClientInteractionsFeed from '@/components/admin/ClientInteractionsFeed';
 
 import SEO from '@/components/SEO';
@@ -722,6 +724,23 @@ export default function Admin() {
               </Link>
 
               <Link
+                to="/admin/employee-registration"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/employee-registration') || isActive('/admin/employees-registration'))
+                    ? 'bg-orange-600 text-white shadow-sm font-bold' 
+                    : 'bg-orange-500/10 text-orange-600 dark:bg-orange-950/30 hover:bg-orange-500/20'
+                }`}
+                id="admin-nav-employee-registration-finance"
+              >
+                <UserPlus className={`h-4 w-4 ${(isActive('/admin/employee-registration') || isActive('/admin/employees-registration')) ? 'text-white' : 'text-orange-600'}`} />
+                <span className="font-bold">Employee Registration</span>
+                <span className={`ml-auto text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider ${(isActive('/admin/employee-registration') || isActive('/admin/employees-registration')) ? 'bg-white/20 text-white' : 'bg-orange-600 text-white'}`}>
+                  Staff
+                </span>
+              </Link>
+
+              <Link
                 to="/admin/payroll"
                 onClick={() => setIsSidebarOpen(false)}
                 className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
@@ -772,11 +791,45 @@ export default function Admin() {
 
           {/* 3. OPERATIONS & BOOKINGS */}
           {(!menuFilter || 
-            'operations services negotiations negotiated prices budgets intakes bookings appointments careers jobs tasks'.includes(menuFilter.toLowerCase())) && (
+            'operations services negotiations negotiated prices budgets intakes bookings appointments careers jobs tasks clients client management crm employee registration employees staff onboarding'.includes(menuFilter.toLowerCase())) && (
             <div className="space-y-1">
               <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground/70">
                 Operations & Clients
               </div>
+
+              <Link
+                to="/admin/employee-registration"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/employee-registration') || isActive('/admin/employees-registration'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-employee-registration"
+              >
+                <UserPlus className={`h-4 w-4 ${(isActive('/admin/employee-registration') || isActive('/admin/employees-registration')) ? 'text-orange-600' : ''}`} />
+                <span>Employee Registration</span>
+                <span className="ml-auto text-[9px] font-black px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 border border-orange-500/25 uppercase">
+                  HR
+                </span>
+              </Link>
+
+              <Link
+                to="/admin/clients"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/clients') || isActive('/admin/client-management'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-clients"
+              >
+                <UserCheck className={`h-4 w-4 ${(isActive('/admin/clients') || isActive('/admin/client-management')) ? 'text-orange-600' : ''}`} />
+                <span>Client Management</span>
+                <span className="ml-auto text-[9px] font-black px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-600 border border-orange-500/25 uppercase">
+                  360° CRM
+                </span>
+              </Link>
 
               <Link
                 to="/admin/services"
@@ -1147,11 +1200,16 @@ export default function Admin() {
         }>
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/employee-registration" element={<EmployeeRegistration />} />
+            <Route path="/employees-registration" element={<EmployeeRegistration />} />
+            <Route path="/clients" element={<ClientManagement />} />
+            <Route path="/client-management" element={<ClientManagement />} />
             <Route path="/services" element={<ManageServices />} />
             <Route path="/negotiations" element={<ManageNegotiatedPrices />} />
             <Route path="/negotiated-prices" element={<ManageNegotiatedPrices />} />
             <Route path="/agreed-budgets" element={<ManageNegotiatedPrices />} />
             <Route path="/intakes" element={<AdminServiceRequests />} />
+            <Route path="/service-requests" element={<AdminServiceRequests />} />
             <Route path="/careers" element={<ManageCareerApplications />} />
             <Route path="/career-applications" element={<ManageCareerApplications />} />
             <Route path="/gallery" element={<ManageGallery />} />
@@ -2011,20 +2069,37 @@ function Dashboard() {
             </div>
           </Link>
 
-          {/* 6. CLIENT INTAKES */}
+          {/* 6. CLIENT MANAGEMENT (360 CRM) */}
           <Link
-            to="/admin/intakes"
-            className="group p-3 rounded-xl border border-border bg-card hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+            to="/admin/clients"
+            className="group p-3 rounded-xl border border-orange-500/30 bg-orange-500/5 hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
           >
             <div className="flex items-center justify-between mb-2">
-              <div className="h-8 w-8 rounded-lg bg-muted group-hover:bg-white group-hover:text-orange-600 text-foreground flex items-center justify-center transition-colors">
-                <FileText className="h-4 w-4" />
+              <div className="h-8 w-8 rounded-lg bg-orange-600 text-white group-hover:bg-white group-hover:text-orange-600 flex items-center justify-center transition-colors">
+                <UserCheck className="h-4 w-4" />
               </div>
-              <span className="text-[9px] font-bold text-muted-foreground group-hover:text-white/80">Intakes</span>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-600 group-hover:bg-white/20 group-hover:text-white">360° CRM</span>
             </div>
             <div>
-              <p className="text-xs font-bold text-foreground group-hover:text-white">Client Intakes</p>
-              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Plans & submissions</p>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Client Management</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Interactions, bookings & payments</p>
+            </div>
+          </Link>
+
+          {/* 7. EMPLOYEE REGISTRATION */}
+          <Link
+            to="/admin/employee-registration"
+            className="group p-3 rounded-xl border border-orange-500/40 bg-orange-500/10 hover:bg-orange-600 hover:text-white transition-all text-left flex flex-col justify-between shadow-xs hover:shadow-md"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="h-8 w-8 rounded-lg bg-orange-600 text-white group-hover:bg-white group-hover:text-orange-600 flex items-center justify-center transition-colors">
+                <UserPlus className="h-4 w-4" />
+              </div>
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-600 text-white group-hover:bg-white/20">HR & Staff</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-foreground group-hover:text-white">Employee Registration</p>
+              <p className="text-[10px] text-muted-foreground group-hover:text-white/80 line-clamp-1">Register staff, IDs & fees</p>
             </div>
           </Link>
         </div>
@@ -4528,6 +4603,7 @@ function ManageServices() {
     discountLabel: ''
   });
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [bulkDiscountPercent, setBulkDiscountPercent] = useState<string>('');
   const [bulkDiscountLabel, setBulkDiscountLabel] = useState<string>('');
   const [isApplyingBulk, setIsApplyingBulk] = useState(false);
@@ -4535,17 +4611,110 @@ function ManageServices() {
   const [categoryType, setCategoryType] = useState('Consulting');
   const [customCategory, setCustomCategory] = useState('');
 
+  // Official Registration & Processing Fee states in ManageServices
+  const [globalSettings, setGlobalSettings] = useState<any>(null);
+  const [officialRegFee, setOfficialRegFee] = useState<string>('50');
+  const [officialProcMode, setOfficialProcMode] = useState<'percentage' | 'fixed' | 'waived'>('percentage');
+  const [officialProcRate, setOfficialProcRate] = useState<string>('1');
+  const [officialProcFixed, setOfficialProcFixed] = useState<string>('0');
+  const [officialRegDiscount, setOfficialRegDiscount] = useState<string>('0');
+  const [officialRegNegotiable, setOfficialRegNegotiable] = useState<boolean>(true);
+  const [isSavingOfficialFee, setIsSavingOfficialFee] = useState(false);
+
   useEffect(() => {
-    const q = query(collection(db, 'services'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setServices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setGlobalSettings(data);
+        setOfficialRegFee(String(data.intakePrice !== undefined ? data.intakePrice : 50));
+        setOfficialProcMode(
+          data.intakeProcessingFeeMode ||
+            (data.transactionFeeEnabled === false ? 'waived' : 'percentage')
+        );
+        setOfficialProcRate(String(data.transactionFeeRate !== undefined ? data.transactionFeeRate : 1.0));
+        setOfficialProcFixed(String(data.intakeProcessingFeeFixed !== undefined ? data.intakeProcessingFeeFixed : 0));
+        setOfficialRegDiscount(String(data.intakeDiscountPercent !== undefined ? data.intakeDiscountPercent : 0));
+        setOfficialRegNegotiable(data.intakeIsNegotiable !== undefined ? Boolean(data.intakeIsNegotiable) : true);
+      }
+    });
+    return () => unsubSettings();
+  }, []);
+
+  const handleSaveOfficialRegAndProcessingFee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingOfficialFee(true);
+    try {
+      const cleanBase = Math.max(0, Number(officialRegFee) || 0);
+      const cleanDisc = Math.min(100, Math.max(0, Number(officialRegDiscount) || 0));
+      const cleanRate = Math.max(0, Number(officialProcRate) || 0);
+      const cleanFixed = Math.max(0, Number(officialProcFixed) || 0);
+      const feeEnabled = officialProcMode !== 'waived';
+
+      await setDoc(
+        doc(db, 'settings', 'global'),
+        {
+          intakePrice: cleanBase,
+          intakeDiscountPercent: cleanDisc,
+          intakeDiscountLabel: cleanDisc > 0 ? `${cleanDisc}% OFF` : '',
+          intakeIsNegotiable: officialRegNegotiable,
+          intakeProcessingFeeMode: officialProcMode,
+          intakeProcessingFeeFixed: cleanFixed,
+          transactionFeeEnabled: feeEnabled,
+          transactionFeeRate: officialProcMode === 'percentage' ? cleanRate : (Number(globalSettings?.transactionFeeRate) || 1.0),
+          updatedAt: new Date().toISOString()
+        },
+        { merge: true }
+      );
+
+      await setDoc(
+        doc(db, 'services', 'default-1'),
+        {
+          title: 'Audition Casting Form',
+          slug: 'audition-casting-form',
+          category: 'Entertainment',
+          description: 'Official actor & crew registration for upcoming Grefas feature films, comedy skits, and commercial casting calls across Ghana.',
+          iconName: 'Clapperboard',
+          color: 'bg-orange-100 text-orange-600',
+          intakeOnly: true,
+          price: cleanBase,
+          discountPercent: cleanDisc,
+          discountLabel: cleanDisc > 0 ? `${cleanDisc}% OFF` : '',
+          isNegotiable: officialRegNegotiable,
+          updatedAt: new Date().toISOString()
+        },
+        { merge: true }
+      );
+
+      setLocalTransactionFeeConfig({
+        enabled: feeEnabled,
+        ratePercent: officialProcMode === 'percentage' ? cleanRate : (Number(globalSettings?.transactionFeeRate) || 1.0)
+      });
+
+      toast.success(`Official Registration & Processing Fee updated to GH₵ ${cleanBase.toLocaleString()}!`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/global');
+    } finally {
+      setIsSavingOfficialFee(false);
+    }
+  };
+
+  useEffect(() => {
+    // Query without orderBy('createdAt') so default service tombstones without createdAt are never excluded
+    const unsubscribe = onSnapshot(collection(db, 'services'), (snapshot) => {
+      const docs = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as any));
+      docs.sort((a, b) => {
+        const tA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || a.updatedAt || 0).getTime();
+        const tB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || b.updatedAt || 0).getTime();
+        return tB - tA;
+      });
+      setServices(docs);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'services');
     });
     return () => unsubscribe();
   }, []);
 
-  const allServices = mergeServicesWithDefaults(services);
+  const allServices = mergeServicesWithDefaults(services, globalSettings);
 
   const handleEditClick = (service: any) => {
     setEditingId(service.id);
@@ -4668,6 +4837,27 @@ function ManageServices() {
 
       if (editingId) {
         await setDoc(doc(db, 'services', editingId), serviceData, { merge: true });
+        if (
+          editingId === 'default-1' ||
+          serviceData.title.trim().toLowerCase().includes('audition casting')
+        ) {
+          try {
+            await setDoc(
+              doc(db, 'settings', 'global'),
+              {
+                intakePrice: serviceData.price,
+                intakeDiscountPercent: serviceData.discountPercent,
+                intakeDiscountAmount: serviceData.discountAmount,
+                intakeDiscountLabel: serviceData.discountLabel,
+                intakeIsNegotiable: serviceData.isNegotiable,
+                updatedAt: new Date().toISOString()
+              },
+              { merge: true }
+            );
+          } catch {
+            // non-blocking
+          }
+        }
         toast.success('Service updated successfully');
       } else {
         await addDoc(collection(db, 'services'), {
@@ -4752,17 +4942,92 @@ function ManageServices() {
 
   const confirmDelete = async () => {
     if (!deleteId) return;
+    const targetId = deleteId;
+    const targetService = allServices.find(s => s.id === targetId);
+    const targetTitle = (targetService?.title || '').trim();
+    setDeletingId(targetId);
+
     try {
-      const isDefault = DEFAULT_SERVICES.some(d => d.id === deleteId);
-      if (isDefault) {
-        await setDoc(doc(db, 'services', deleteId), { isDeleted: true }, { merge: true });
-      } else {
-        await deleteDoc(doc(db, 'services', deleteId));
+      const matchingDefault = DEFAULT_SERVICES.find(
+        d => d.id === targetId || (targetTitle && d.title.toLowerCase() === targetTitle.toLowerCase())
+      );
+
+      const keysToBlock = [
+        targetId,
+        targetTitle,
+        ...(matchingDefault ? [matchingDefault.id, matchingDefault.title] : []),
+      ].filter(Boolean);
+
+      // 1. Immediately mark as permanently deleted in localStorage so UI never re-adds it
+      markServiceKeysLocallyDeleted(keysToBlock);
+
+      // 2. Optimistically update local state immediately
+      setServices(prev => [
+        ...prev.filter(s => s.id !== targetId && (!targetTitle || (s.title || '').trim().toLowerCase() !== targetTitle.toLowerCase())),
+        { id: targetId, title: targetTitle, isDeleted: true, deletedAt: new Date().toISOString() },
+        ...(matchingDefault ? [{ id: matchingDefault.id, title: matchingDefault.title, isDeleted: true, deletedAt: new Date().toISOString() }] : []),
+      ]);
+
+      // 3. Persist permanent tombstone for any matching default service in Firestore
+      if (matchingDefault) {
+        await setDoc(
+          doc(db, 'services', matchingDefault.id),
+          {
+            id: matchingDefault.id,
+            title: matchingDefault.title,
+            isDeleted: true,
+            deletedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
       }
-      toast.success('Service deleted');
+
+      // 4. Delete or tombstone the target service document in Firestore
+      if (!matchingDefault || matchingDefault.id !== targetId) {
+        try {
+          await deleteDoc(doc(db, 'services', targetId));
+        } catch {
+          await setDoc(
+            doc(db, 'services', targetId),
+            { isDeleted: true, deletedAt: new Date().toISOString(), createdAt: new Date().toISOString() },
+            { merge: true }
+          );
+        }
+      }
+
+      // 5. Also delete any duplicate Firestore docs with the same title
+      if (targetTitle) {
+        const sameTitleDocs = services.filter(
+          s => s.id !== targetId && s.id !== matchingDefault?.id && (s.title || '').trim().toLowerCase() === targetTitle.toLowerCase()
+        );
+        for (const dup of sameTitleDocs) {
+          try {
+            await deleteDoc(doc(db, 'services', dup.id));
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      // 6. Also persist to global settings so all browsers/visitors see the deletion
+      try {
+        const globalRef = doc(db, 'settings', 'global');
+        const globalSnap = await getDoc(globalRef);
+        const existingDeleted: string[] = Array.isArray(globalSnap.data()?.deletedServiceIds)
+          ? globalSnap.data()!.deletedServiceIds
+          : [];
+        const mergedDeleted = Array.from(new Set([...existingDeleted, ...keysToBlock]));
+        await setDoc(globalRef, { deletedServiceIds: mergedDeleted, updatedAt: new Date().toISOString() }, { merge: true });
+      } catch {
+        // non-fatal
+      }
+
+      toast.success(`"${targetTitle || 'Service'}" permanently deleted.`);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `services/${deleteId}`);
+      handleFirestoreError(error, OperationType.DELETE, `services/${targetId}`);
     } finally {
+      setDeletingId(null);
       setDeleteId(null);
     }
   };
@@ -4791,6 +5056,159 @@ function ManageServices() {
           {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add Service</>}
         </Button>
       </div>
+
+      {/* Dedicated Official Registration & Processing Fee Control Panel */}
+      <Card className="border-2 border-orange-500/40 bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-emerald-500/5 shadow-sm">
+        <CardContent className="p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <ShieldCheck className="h-5 w-5 text-orange-600" />
+                <h2 className="text-base font-extrabold text-foreground">
+                  Official Registration &amp; Processing Fee Control
+                </h2>
+                <span className="text-xs font-black bg-orange-600 text-white px-2.5 py-0.5 rounded-full font-mono">
+                  Registration Fee: GH₵ {Number(officialRegFee || 0).toLocaleString()}
+                </span>
+                <span className="text-xs font-black bg-emerald-600 text-white px-2.5 py-0.5 rounded-full font-mono">
+                  {officialProcMode === 'waived'
+                    ? 'Processing Fee: 0% (Waived)'
+                    : officialProcMode === 'fixed'
+                    ? `Processing Fee: Flat GH₵ ${Number(officialProcFixed || 0).toFixed(2)}`
+                    : `Processing Fee: ${Number(officialProcRate || 0)}%`}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Directly edit the price of the Official Registration &amp; Processing Fee displayed on the Movie &amp; Skit Casting Registration Form and Employers Registration desk.
+              </p>
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleSaveOfficialRegAndProcessingFee}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-card/90 p-4 rounded-xl border border-border"
+          >
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground block mb-1">
+                Official Registration Fee (GH₵) *
+              </label>
+              <Input
+                type="number"
+                min={0}
+                step="any"
+                value={officialRegFee}
+                onChange={(e) => setOfficialRegFee(e.target.value)}
+                className="h-9 text-xs font-mono font-bold bg-background"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground block mb-1">
+                Processing Fee Mode
+              </label>
+              <select
+                value={officialProcMode}
+                onChange={(e) =>
+                  setOfficialProcMode(e.target.value as 'percentage' | 'fixed' | 'waived')
+                }
+                className="w-full h-9 rounded-md border border-border bg-background px-2.5 text-xs font-bold text-foreground"
+              >
+                <option value="percentage">Percentage Rate (%)</option>
+                <option value="fixed">Flat Fee Amount (GH₵)</option>
+                <option value="waived">Waived (GH₵ 0.00 / 0%)</option>
+              </select>
+            </div>
+
+            {officialProcMode === 'percentage' && (
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground block mb-1">
+                  Processing Fee Rate (%)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.1"
+                  value={officialProcRate}
+                  onChange={(e) => setOfficialProcRate(e.target.value)}
+                  className="h-9 text-xs font-mono font-bold bg-background"
+                />
+              </div>
+            )}
+
+            {officialProcMode === 'fixed' && (
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground block mb-1">
+                  Flat Processing Fee (GH₵)
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={officialProcFixed}
+                  onChange={(e) => setOfficialProcFixed(e.target.value)}
+                  className="h-9 text-xs font-mono font-bold bg-background"
+                />
+              </div>
+            )}
+
+            {officialProcMode === 'waived' && (
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground block mb-1">
+                  Processing Fee Status
+                </label>
+                <div className="h-9 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 flex items-center text-xs font-bold text-emerald-600">
+                  0% Waived (No Charge)
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-wider text-muted-foreground block mb-1">
+                Discount (%) &amp; Negotiable
+              </label>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={officialRegDiscount}
+                  onChange={(e) => setOfficialRegDiscount(e.target.value)}
+                  placeholder="0%"
+                  className="h-9 text-xs font-mono w-20 bg-background"
+                />
+                <button
+                  type="button"
+                  onClick={() => setOfficialRegNegotiable(!officialRegNegotiable)}
+                  className={`h-9 px-2.5 rounded-md border text-[10px] font-black uppercase flex-1 cursor-pointer ${
+                    officialRegNegotiable
+                      ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600'
+                      : 'border-border bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {officialRegNegotiable ? 'Negotiable: ON' : 'Fixed Only'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-end">
+              <Button
+                type="submit"
+                disabled={isSavingOfficialFee}
+                className="w-full h-9 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold cursor-pointer"
+              >
+                {isSavingOfficialFee ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                ) : (
+                  <Save className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                Save Registration &amp; Fee
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
       {/* Global Discount & Negotiation Control Bar */}
       <Card className="bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-transparent border-orange-500/20">
@@ -5106,11 +5524,38 @@ function ManageServices() {
                       </select>
                     </div>
 
-                    <Button variant="ghost" size="sm" onClick={() => handleEditClick(service)} className="text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 hover:text-orange-700 h-8">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleEditClick(service);
+                      }}
+                      className="text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 hover:text-orange-700 h-8 cursor-pointer font-bold"
+                    >
                       <Edit className="h-4 w-4 mr-1" /> Edit
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(service.id)} className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-700 h-8">
-                      <Trash2 className="h-4 w-4" />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={deletingId === service.id}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDelete(service.id);
+                      }}
+                      className="bg-red-600 hover:bg-red-700 text-white h-8 px-3 cursor-pointer font-bold text-xs shadow-xs"
+                      title="Permanently delete this service"
+                    >
+                      {deletingId === service.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      Delete
                     </Button>
                   </div>
                 </div>
@@ -8638,20 +9083,69 @@ function ManageSettings() {
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2 text-foreground">
-                <CreditCard className="h-4 w-4 text-muted-foreground" /> Casting Intake Registration Fee (GH₵)
+            <div className="p-4 rounded-2xl border border-orange-500/30 bg-orange-500/5 space-y-3">
+              <label className="text-sm font-extrabold flex items-center gap-2 text-foreground">
+                <CreditCard className="h-4 w-4 text-orange-600" /> Official Registration &amp; Processing Fee (GH₵)
               </label>
-              <Input
-                type="number"
-                value={settings.intakePrice !== undefined ? settings.intakePrice : ''}
-                onChange={(e) => setSettings({ ...settings, intakePrice: Number(e.target.value) })}
-                placeholder="50"
-                className="bg-muted/50 border-border"
-                min="0"
-              />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <span className="text-[11px] font-bold uppercase text-muted-foreground block mb-1">
+                    Official Registration Base Fee (GH₵)
+                  </span>
+                  <Input
+                    type="number"
+                    value={settings.intakePrice !== undefined ? settings.intakePrice : ''}
+                    onChange={(e) => setSettings({ ...settings, intakePrice: Number(e.target.value) })}
+                    placeholder="50"
+                    className="bg-background border-border font-mono font-bold"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase text-muted-foreground block mb-1">
+                    Processing Fee Rate (%)
+                  </span>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={settings.transactionFeeRate !== undefined ? settings.transactionFeeRate : 1.0}
+                    onChange={(e) => setSettings({ ...settings, transactionFeeRate: Number(e.target.value) })}
+                    className="bg-background border-border font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase text-muted-foreground block mb-1">
+                    Processing Fee Status
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettings({
+                        ...settings,
+                        transactionFeeEnabled: settings.transactionFeeEnabled === false ? true : false
+                      })
+                    }
+                    className={`w-full h-10 rounded-md border px-3 text-xs font-bold flex items-center justify-between cursor-pointer ${
+                      settings.transactionFeeEnabled !== false
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600'
+                        : 'bg-rose-500/10 border-rose-500/40 text-rose-600'
+                    }`}
+                  >
+                    <span>
+                      {settings.transactionFeeEnabled !== false ? 'Processing Fee Active' : 'Processing Fee Waived (0%)'}
+                    </span>
+                    <span className="font-mono">
+                      {settings.transactionFeeEnabled !== false
+                        ? `${Number(settings.transactionFeeRate ?? 1.0)}%`
+                        : '0%'}
+                    </span>
+                  </button>
+                </div>
+              </div>
               <p className="text-xs text-muted-foreground">
-                The standard registration fee shown to clients on the Movie & Skit registration form, which they must confirm before submitting.
+                Controls the live Official Registration &amp; Processing Fee shown on the Movie &amp; Skit registration form and Employers Registration portal.
               </p>
             </div>
 
@@ -13488,12 +13982,24 @@ function ManageUsers() {
         <CardContent>
           <div className="space-y-4">
             {users.map((u) => (
-              <div key={u.id} className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/50">
+              <div key={u.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-border rounded-lg bg-muted/50 gap-3">
                 <div className="overflow-hidden">
-                  <p className="font-bold text-foreground truncate">{u.email}</p>
+                  <p className="font-bold text-foreground truncate">{u.displayName || u.fullName || u.email}</p>
+                  <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                   <p className="text-[10px] text-muted-foreground truncate">ID: {u.id}</p>
                 </div>
-                <div className="flex items-center gap-4 shrink-0 px-2">
+                <div className="flex flex-wrap items-center gap-3 shrink-0 px-2">
+                  <Link to="/admin/clients">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs font-bold border-orange-500/30 text-orange-600 hover:bg-orange-500/10 cursor-pointer"
+                    >
+                      <UserCheck className="h-3.5 w-3.5 mr-1.5" />
+                      View Client History
+                    </Button>
+                  </Link>
                   <select
                     className="rounded-md border border-border bg-background text-foreground px-3 py-1 text-sm focus:ring-2 focus:ring-orange-500 outline-none"
                     value={u.role}
@@ -13503,7 +14009,7 @@ function ManageUsers() {
                     <option value="editor">Editor</option>
                     <option value="guest">Guest (No Access)</option>
                   </select>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10" onClick={() => handleDeleteUser(u.id)}>
+                  <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 cursor-pointer" onClick={() => handleDeleteUser(u.id)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>

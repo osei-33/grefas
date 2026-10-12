@@ -25,7 +25,7 @@ import Breadcrumbs from '@/components/Breadcrumbs';
 import AuthDialog from '@/components/AuthDialog';
 import { toast } from 'sonner';
 import { format, addDays } from 'date-fns';
-import { DEFAULT_SERVICES, getServicePricing } from '@/lib/servicePricing';
+import { DEFAULT_SERVICES, getServicePricing, getLocallyDeletedServiceKeys } from '@/lib/servicePricing';
 
 export default function ServiceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -62,14 +62,25 @@ export default function ServiceDetail() {
       setLoading(false);
       return;
     }
+    const localDeleted = new Set(getLocallyDeletedServiceKeys());
     const defaultMatch = DEFAULT_SERVICES.find((s) => s.id === id);
+    if (localDeleted.has(id.toLowerCase()) || (defaultMatch && localDeleted.has(defaultMatch.title.toLowerCase()))) {
+      setService(null);
+      setLoading(false);
+      return;
+    }
     const docRef = doc(db, 'services', id);
     const unsubscribe = onSnapshot(
       docRef,
       (docSnap) => {
         if (docSnap.exists()) {
-          setService({ ...(defaultMatch || {}), id: docSnap.id, ...docSnap.data() });
-        } else if (defaultMatch) {
+          const data = docSnap.data();
+          if (data?.isDeleted || data?.deleted || data?.status === 'deleted') {
+            setService(null);
+          } else {
+            setService({ ...(defaultMatch || {}), id: docSnap.id, ...data });
+          }
+        } else if (defaultMatch && !localDeleted.has(id.toLowerCase()) && !localDeleted.has(defaultMatch.title.toLowerCase())) {
           setService(defaultMatch);
         } else {
           setService(null);
@@ -77,7 +88,7 @@ export default function ServiceDetail() {
         setLoading(false);
       },
       (error) => {
-        if (defaultMatch) {
+        if (defaultMatch && !localDeleted.has(id.toLowerCase())) {
           setService(defaultMatch);
         } else {
           handleFirestoreError(error, OperationType.GET, `services/${id}`);

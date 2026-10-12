@@ -108,7 +108,13 @@
         "transactionFeeEnabled": { "type": "boolean", "description": "Whether platform transaction processing fee is enabled or disabled completely" },
         "transactionFeeRate": { "type": "number", "description": "The transaction fee rate in percentage, e.g. 1.0 for 1%" },
         "transactionFeeLabel": { "type": "string", "description": "Display label for the transaction processing charge" },
-        "transactionFeeExemptSponsorship": { "type": "boolean", "description": "Whether sponsorships and donations are strictly 0% fee exempt" }
+        "transactionFeeExemptSponsorship": { "type": "boolean", "description": "Whether sponsorships and donations are strictly 0% fee exempt" },
+        "intakePrice": { "type": "number", "description": "Official registration base fee in GH₵" },
+        "intakeDiscountPercent": { "type": "number", "description": "Promotional discount percentage on official registration fee" },
+        "intakeDiscountLabel": { "type": "string", "description": "Discount badge text for official registration fee" },
+        "intakeIsNegotiable": { "type": "boolean", "description": "Whether clients can propose a custom fee on the official registration form" },
+        "intakeProcessingFeeMode": { "type": "string", "enum": ["percentage", "fixed", "waived"], "description": "Processing fee calculation mode for official registration" },
+        "intakeProcessingFeeFixed": { "type": "number", "description": "Fixed flat processing fee in GH₵ when mode is fixed" }
       }
     },
     "User": {
@@ -491,6 +497,36 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["assetTag", "name", "category"]
+    },
+    "Employee": {
+      "title": "Employee Registration",
+      "description": "Company staff, consultant, creative talent, or intern registration and payroll record.",
+      "type": "object",
+      "properties": {
+        "employeeCode": { "type": "string", "description": "Unique employee badge/registration code" },
+        "fullName": { "type": "string", "description": "Employee full legal name" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "role": { "type": "string", "description": "Job title or designation" },
+        "department": { "type": "string", "description": "Assigned department" },
+        "employmentType": { "type": "string", "description": "Employment classification (Full-Time, Part-Time, Contract, etc.)" },
+        "baseSalary": { "type": "number", "description": "Base salary or retainer in GH₵" },
+        "payFrequency": { "type": "string", "enum": ["Monthly", "Weekly", "Contract"] },
+        "bankName": { "type": "string", "description": "Bank or Mobile Money provider" },
+        "accountNumber": { "type": "string", "description": "Bank account or MoMo number" },
+        "ghanaCardOrId": { "type": "string", "description": "National ID or Ghana Card number" },
+        "address": { "type": "string", "description": "Residential address" },
+        "emergencyContactName": { "type": "string" },
+        "emergencyContactPhone": { "type": "string" },
+        "joiningDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["Active", "On Leave", "Probation", "Inactive"] },
+        "photoUrl": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "role", "status"]
     }
   },
   "firestore": {
@@ -597,6 +633,10 @@
     "/assets/{assetId}": {
       "schema": "Asset",
       "description": "Collection of physical equipment, production cameras, sound systems, vehicles, and assets owned by Grefas"
+    },
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Collection of registered company employees, staff, consultants, and creative talent"
     }
   }
 }
