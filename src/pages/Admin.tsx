@@ -8678,9 +8678,11 @@ function ManagePortfolio() {
 
 function ManageSettings() {
   const [settings, setSettings] = useState<any>({
-    address: '',
-    phone: '',
-    email: '',
+    address: 'Nyinahin-Ashanti, Ashanti Region, Ghana',
+    phone: '+233 24 412 3456 / +233 50 123 4567',
+    email: 'info@grefasconsultandentertainment.com',
+    website: 'grefasconsultandentertainment.com',
+    registrationNumber: 'Reg. No: CS-289412024 • TIN: C0048192837',
     aboutContent: '',
     aboutImageUrl: '',
     dailyQuote: '',
@@ -8917,9 +8919,11 @@ function ManageSettings() {
       if (doc.exists()) {
         const data = doc.data();
         setSettings({
-          address: data.address || '',
-          phone: data.phone || '',
-          email: data.email || '',
+          address: data.address || 'Nyinahin-Ashanti, Ashanti Region, Ghana',
+          phone: data.phone || '+233 24 412 3456 / +233 50 123 4567',
+          email: data.email || 'info@grefasconsultandentertainment.com',
+          website: data.website || 'grefasconsultandentertainment.com',
+          registrationNumber: data.registrationNumber || 'Reg. No: CS-289412024 • TIN: C0048192837',
           aboutContent: data.aboutContent || '',
           aboutImageUrl: data.aboutImageUrl || '',
           dailyQuote: data.dailyQuote || '',
@@ -9023,7 +9027,18 @@ function ManageSettings() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleUpdate} className="space-y-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2 text-foreground">
+                  <Globe className="h-4 w-4 text-orange-600" /> Official Website URL
+                </label>
+                <Input
+                  value={settings.website || ''}
+                  onChange={(e) => setSettings({ ...settings, website: e.target.value })}
+                  placeholder="grefasconsultandentertainment.com"
+                  className="bg-muted/50 border-border font-medium text-orange-600 dark:text-orange-400 font-mono text-xs"
+                />
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-2 text-foreground">
                   <Mail className="h-4 w-4 text-muted-foreground" /> Email Address
@@ -9032,7 +9047,7 @@ function ManageSettings() {
                   value={settings.email}
                   onChange={(e) => setSettings({ ...settings, email: e.target.value })}
                   placeholder="info@grefasconsultandentertainment.com"
-                  className="bg-muted/50 border-border"
+                  className="bg-muted/50 border-border text-xs"
                 />
               </div>
               <div className="space-y-2">
@@ -9042,8 +9057,8 @@ function ManageSettings() {
                 <Input
                   value={settings.phone}
                   onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
-                  placeholder="+233 123 456 789"
-                  className="bg-muted/50 border-border"
+                  placeholder="+233 24 412 3456 / +233 50 123 4567"
+                  className="bg-muted/50 border-border text-xs"
                 />
               </div>
               <div className="space-y-2">
@@ -9053,10 +9068,22 @@ function ManageSettings() {
                 <Input
                   value={settings.address}
                   onChange={(e) => setSettings({ ...settings, address: e.target.value })}
-                  placeholder="Accra, Ghana"
-                  className="bg-muted/50 border-border"
+                  placeholder="Nyinahin-Ashanti, Ashanti Region, Ghana"
+                  className="bg-muted/50 border-border text-xs"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2 text-foreground">
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" /> Corporate Registration & TIN (Letterheads & Invoices)
+              </label>
+              <Input
+                value={settings.registrationNumber || ''}
+                onChange={(e) => setSettings({ ...settings, registrationNumber: e.target.value })}
+                placeholder="Reg. No: CS-289412024 • TIN: C0048192837"
+                className="bg-muted/50 border-border font-mono text-xs"
+              />
             </div>
 
             <div className="space-y-2">

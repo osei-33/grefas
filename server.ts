@@ -2559,7 +2559,7 @@ Sitemap: ${domain}/sitemap.xml`);
   });
 
   app.post("/api/letters/generate", async (req, res) => {
-    const { recipientName, recipientType, recipientAddress, subject, additionalContext, tone } = req.body || {};
+    const { recipientName, recipientType, recipientAddress, subject, additionalContext, tone, letterheadType, referenceNumber } = req.body || {};
     
     if (!recipientName || !subject) {
       return res.status(400).json({ error: "Missing required fields: recipientName or subject" });
@@ -2569,24 +2569,25 @@ Sitemap: ${domain}/sitemap.xml`);
       const cleanRecipient = String(recipientName).trim();
       const cleanSubject = String(subject).trim();
       const cleanContext = additionalContext ? String(additionalContext).trim() : "";
-      const selectedTone = String(tone || "Professional").toLowerCase();
+      const selectedTone = String(tone || "Professional, formal, and authoritative").toLowerCase();
 
-      let openingParagraph = `We are writing to formally address ${cleanRecipient} on behalf of Grefas Entertainment & Consult regarding ${cleanSubject}. Our management board values our professional relationship and wishes to communicate the key details and strategic expectations surrounding this matter.`;
-      if (selectedTone.includes("friendly") || selectedTone.includes("warm")) {
-        openingParagraph = `It is a pleasure to reach out to ${cleanRecipient} on behalf of the entire team at Grefas Entertainment & Consult regarding ${cleanSubject}. We truly appreciate our ongoing connection and are delighted to share the following updates and opportunities with you.`;
-      } else if (selectedTone.includes("urgent") || selectedTone.includes("strict")) {
-        openingParagraph = `This official correspondence is directed to ${cleanRecipient} from Grefas Entertainment & Consult requiring prompt attention regarding ${cleanSubject}. Please review the operational directives and timeline requirements outlined below.`;
-      } else if (selectedTone.includes("celebratory") || selectedTone.includes("congrat")) {
-        openingParagraph = `On behalf of the leadership and creative board at Grefas Entertainment & Consult, we are thrilled to write to ${cleanRecipient} regarding ${cleanSubject}. It gives us immense pride to recognize this milestone and formally outline the details below.`;
+      let openingParagraph = `We write on behalf of the Executive Directorate and Management Board of Grefas Consult & Entertainment to formally address you regarding ${cleanSubject}. As a corporate institution registered in the Republic of Ghana, committed to the highest tenets of professional integrity and strategic excellence, we consider this engagement of paramount significance.`;
+      
+      if (selectedTone.includes("warm") || selectedTone.includes("collaborative") || selectedTone.includes("friendly")) {
+        openingParagraph = `It gives the Executive Directorate and creative management of Grefas Consult & Entertainment immense pleasure to formally convey our compliments and address you concerning ${cleanSubject}. We hold our mutual professional association in the highest esteem and welcome this opportunity to advance our collaborative endeavors.`;
+      } else if (selectedTone.includes("strict") || selectedTone.includes("warning") || selectedTone.includes("urgent")) {
+        openingParagraph = `This constitutes formal and urgent corporate notice served on behalf of Grefas Consult & Entertainment concerning ${cleanSubject}. You are hereby officially notified of the operational parameters, timeline directives, and regulatory requirements set forth herein, which demand your immediate and comprehensive attention.`;
+      } else if (selectedTone.includes("persuasive") || selectedTone.includes("pitch")) {
+        openingParagraph = `The Executive Directorate of Grefas Consult & Entertainment is honored to present this formal strategic proposal regarding ${cleanSubject}. Having meticulously evaluated the scope and potential of this initiative, we are firmly persuaded that our combined expertise will yield extraordinary mutual value, regional prominence, and sustainable outcomes.`;
       }
 
       const bodyParagraph = cleanContext
-        ? `Specifically, in relation to ${cleanContext}, our executive and operations divisions have thoroughly reviewed all relevant requirements to ensure seamless execution. We remain committed to upholding the highest standards of corporate governance, creative excellence, and mutual accountability throughout every phase of this engagement.`
-        : `Our executive and operations divisions have thoroughly reviewed the scope and objectives associated with ${cleanSubject}. We remain committed to upholding the highest standards of corporate governance, creative excellence, and mutual accountability throughout every phase of this engagement.`;
+        ? `Regarding ${cleanContext}, our designated operational division has conducted an exhaustive assessment to ensure that all administrative protocols, fiduciary responsibilities, and execution milestones are scrupulously fulfilled. We reaffirm our unyielding commitment to delivering superior service standards, transparent accountability, and rigorous governance throughout each phase of this undertaking.`
+        : `Our corporate divisions have completed a thorough review of the strategic parameters and operational deliverables associated with ${cleanSubject}. We reaffirm our unyielding commitment to delivering superior service standards, transparent accountability, and rigorous governance throughout each phase of this undertaking.`;
 
-      const closingParagraph = `To ensure a smooth and timely progression, we kindly request that you review these details and confirm your alignment or availability at your earliest convenience. Should you require any additional clarification or supporting documentation, please contact our administrative desk directly so we may assist you promptly.`;
+      const concludingParagraph = `In light of the foregoing, we respectfully request that you examine the specifics of this communication and transmit your formal acknowledgment or scheduling availability at your earliest convenience. Should you require further procedural elucidation or supplementary documentation, please direct your inquiries to our Corporate Secretariat (Tel: +233 24 412 3456 | Email: info@grefasconsultandentertainment.com | Web: www.grefasconsultandentertainment.com).`;
 
-      return `${openingParagraph}\n\n${bodyParagraph}\n\n${closingParagraph}`;
+      return `${openingParagraph}\n\n${bodyParagraph}\n\n${concludingParagraph}`;
     };
 
     if (!process.env.GEMINI_API_KEY) {
@@ -2604,13 +2605,20 @@ Sitemap: ${domain}/sitemap.xml`);
         }
       });
 
-      const prompt = `Write a professional official business letter from "Grefas Entertainment & Productions" (also known as Grefas Consult) to an ${recipientType || "individual/organisation"} named "${recipientName}" located at "${recipientAddress || "N/A"}".
-The letter subject is "${subject}".
-${additionalContext ? `Additional background context and key points to cover: "${additionalContext}"` : ""}
-${tone ? `Tone: ${tone}` : "Tone: Professional, authoritative, and polite"}
+      const prompt = `You are the Senior Executive Corporate Secretary for "Grefas Consult & Entertainment Ltd" (headquartered in Nyinahin-Ashanti, Ghana; website: grefasconsultandentertainment.com).
+Write an impeccably formal, dignified, and authoritative official business letter to:
+Recipient: "${recipientName}" (${recipientType || "Corporate/Individual"})
+Location/Address: "${recipientAddress || "Ghana"}"
+Subject: "${subject}"
+${referenceNumber ? `Official Ref: "${referenceNumber}"` : ""}
+${additionalContext ? `Core Background & Key Operational Points to Cover: "${additionalContext}"` : ""}
+Tone: ${tone || "Professional, formal, diplomatic, and authoritative"}
 
-Please generate ONLY the letter body paragraphs. DO NOT generate any letterhead, date, recipient address, salutation (like "Dear ..."), or sign-off (like "Sincerely ...") as these will be added automatically by the system.
-Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and fully developed.`;
+CRITICAL FORMATTING INSTRUCTIONS:
+- Generate ONLY the letter body paragraphs (2 to 4 elegant, well-developed paragraphs).
+- DO NOT generate letterhead, headers, dates, addresses, salutations (e.g., "Dear ..."), or sign-offs (e.g., "Yours sincerely ...") as these are dynamically embedded by our secure letterhead generator.
+- Write in flawless, elegant British / Commonwealth English appropriate for high-level Ghanaian corporate, diplomatic, legal, and entertainment correspondence.
+- Employ sophisticated, dignified, and courteous phrasing.`;
 
       let responseText = "";
       try {
@@ -2788,8 +2796,8 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
     }
 
     // Determine titles & subtitles based on letterheadType
-    let headerTitle = "GREFAS ENTERTAINMENT & CONSULT";
-    let headerSubtitle = "Theatre, Film Casting, Artiste Management, Production & Business Consulting";
+    let headerTitle = "GREFAS CONSULT & ENTERTAINMENT";
+    let headerSubtitle = "Corporate Advisory • Film & Skit Production • Artiste Management • Logistics";
 
     if (letterheadType === 'entertainment') {
       headerTitle = settings?.letterheadEntTitle || "GREFAS ENTERTAINMENT & PRODUCTIONS";
@@ -2798,106 +2806,171 @@ Provide 2 to 4 elegant, well-structured paragraphs. Keep it professional and ful
       headerTitle = settings?.letterheadConsultTitle || "GREFAS BUSINESS & STRATEGY CONSULT";
       headerSubtitle = settings?.letterheadConsultSubtitle || "Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting";
     } else {
-      headerTitle = settings?.letterheadJointTitle || "GREFAS ENTERTAINMENT & CONSULT";
-      headerSubtitle = settings?.letterheadJointSubtitle || "Theatre, Film Casting, Artiste Management, Production & Business Consulting";
+      headerTitle = settings?.letterheadJointTitle || "GREFAS CONSULT & ENTERTAINMENT";
+      headerSubtitle = settings?.letterheadJointSubtitle || "Corporate Advisory, Film Production, Artiste Management & Strategic Consulting";
     }
 
-    const companyAddress = settings?.address || "Accra, Ghana";
-    const companyPhone = settings?.phone || "+233 24 412 3456";
-    const companyEmail = settings?.email || "info@grefas.com";
+    const companyAddress = settings?.officeAddress || settings?.address || "Nyinahin-Ashanti, Ashanti Region, Ghana (GPS: AI-0008-9223)";
+    const companyPhone = settings?.officePhone || settings?.phone || "+233 24 412 3456 / +233 50 123 4567";
+    const companyEmail = settings?.officeEmail || settings?.email || "info@grefasconsultandentertainment.com";
+    const companyWebsite = settings?.website || "www.grefasconsultandentertainment.com";
+    const registrationNumber = settings?.registrationNumber || "Reg. No: CS-289412024 • TIN: C0048192837";
+
+    const { referenceNumber, classification, valediction, showSeal } = req.body || {};
+    const refLine = referenceNumber || `GREFAS/CORP/${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`;
+    const docClassification = classification || "OFFICIAL CORRESPONDENCE";
+    const formalValediction = valediction || "Yours faithfully,";
 
     const formattedDate = date 
-      ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      ? new Date(date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     // Format paragraphs
     const formattedParagraphs = body
       .split('\n\n')
       .map((p: string) => p.trim())
       .filter((p: string) => p.length > 0)
-      .map((p: string) => `<p style="margin: 0 0 16px 0; text-align: justify; text-indent: 24px; line-height: 1.6;">${p.replace(/\n/g, '<br/>')}</p>`)
+      .map((p: string) => `<p style="margin: 0 0 16px 0; text-align: justify; text-indent: 28px; line-height: 1.7; font-size: 14px; color: #1c1917;">${p.replace(/\n/g, '<br/>')}</p>`)
       .join('');
 
     const logoHtml = logoUrl 
-      ? `<img src="${logoUrl}" style="max-height: 70px; max-width: 130px; object-fit: contain; margin-bottom: 8px;" alt="Grefas Logo" />`
-      : `<div style="font-size: 20px; font-weight: 800; color: #ea580c; border: 2px solid #ea580c; padding: 4px 10px; display: inline-block; letter-spacing: 1px; font-family: sans-serif; margin-bottom: 8px;">GREFAS</div>`;
+      ? `<img src="${logoUrl}" style="max-height: 75px; max-width: 140px; object-fit: contain; margin-bottom: 8px;" alt="Grefas Corporate Logo" />`
+      : `<div style="font-size: 20px; font-weight: 900; color: #ea580c; border: 3px double #ea580c; padding: 4px 12px; display: inline-block; letter-spacing: 2px; font-family: sans-serif; margin-bottom: 8px;">GREFAS</div>`;
+
+    const sealHtml = showSeal !== false ? `
+      <div style="display: inline-block; margin-left: 24px; vertical-align: middle; border: 2px dashed #dc2626; border-radius: 50%; width: 96px; height: 96px; text-align: center; padding: 6px; box-sizing: border-box; background: rgba(254, 242, 242, 0.6); transform: rotate(-8deg);">
+        <div style="border: 1px solid #dc2626; border-radius: 50%; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box;">
+          <span style="font-size: 7px; font-weight: 800; color: #dc2626; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1;">GREFAS CONSULT</span>
+          <span style="font-size: 6px; color: #b91c1c; margin: 2px 0;">★ OFFICIAL SEAL ★</span>
+          <span style="font-size: 6px; font-weight: 700; color: #dc2626; text-transform: uppercase; line-height: 1;">REPUBLIC OF GHANA</span>
+          <span style="font-size: 5px; color: #7f1d1d; margin-top: 2px;">NYINAHIN-ASHANTI</span>
+        </div>
+      </div>
+    ` : '';
 
     try {
       await resend.emails.send({
         from: getFromEmail("Grefas Consult"),
         to: recipientEmail,
-        subject: `OFFICIAL CORRESPONDENCE: ${subject}`,
+        subject: `[${docClassification}] RE: ${subject} (Ref: ${refLine})`,
         html: `
-          <div style="font-family: 'Times New Roman', Times, Georgia, serif; color: #1c1917; max-width: 650px; margin: 20px auto; border: 1px solid #e7e5e4; border-radius: 8px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-            <!-- Branded Header Letterhead -->
-            <div style="border-bottom: 3px solid #ea580c; padding: 24px; background-color: #fcfcfc;">
+          <div style="font-family: 'Times New Roman', Times, Georgia, serif; color: #1c1917; max-width: 680px; margin: 20px auto; border: 1px solid #d6d3d1; border-radius: 6px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);">
+            
+            <!-- Formal Top Security Strip -->
+            <div style="background-color: #1c1917; color: #f5f5f4; padding: 6px 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; display: flex; justify-content: space-between; border-bottom: 2px solid #ea580c;">
+              <span>Republic of Ghana • Corporate Instrument</span>
+              <span style="color: #ea580c;">${docClassification}</span>
+            </div>
+
+            <!-- Executive Dual-Rule Letterhead -->
+            <div style="border-bottom: 2px solid #ea580c; padding: 24px 28px 18px 28px; background-color: #fafaf9;">
               <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
                 <tr>
                   <td width="30%" valign="top">
                     ${logoHtml}
                   </td>
                   <td width="70%" align="right" valign="top" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-                    <h2 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 800; color: #1c1917; text-transform: uppercase; letter-spacing: -0.2px;">${headerTitle}</h2>
-                    <p style="margin: 0 0 8px 0; font-size: 8px; font-weight: 700; color: #ea580c; text-transform: uppercase; letter-spacing: 0.5px;">${headerSubtitle}</p>
-                    <p style="margin: 0; font-size: 9px; color: #57534e; line-height: 1.4;">
-                      ${companyAddress}<br/>
-                      Phone: ${companyPhone} | Email: ${companyEmail}<br/>
-                      Website: <a href="https://grefas.com" style="color: #ea580c; text-decoration: none;">www.grefas.com</a>
+                    <h1 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 900; color: #1c1917; text-transform: uppercase; letter-spacing: -0.3px;">${headerTitle}</h1>
+                    <p style="margin: 0 0 6px 0; font-size: 8px; font-weight: 700; color: #ea580c; text-transform: uppercase; letter-spacing: 0.8px;">${headerSubtitle}</p>
+                    <p style="margin: 0 0 4px 0; font-size: 8px; color: #78716c; font-family: monospace;">
+                      ${registrationNumber}
+                    </p>
+                    <p style="margin: 0; font-size: 9px; color: #44403c; line-height: 1.45;">
+                      Headquarters: ${companyAddress}<br/>
+                      Tel: ${companyPhone} | Email: ${companyEmail}<br/>
+                      Official Portal: <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}" style="color: #ea580c; text-decoration: none; font-weight: bold;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}</a>
                     </p>
                   </td>
                 </tr>
               </table>
+              <div style="border-top: 1px solid #fed7aa; margin-top: 14px; padding-top: 4px;"></div>
             </div>
 
             <!-- Letter Sheet Body -->
-            <div style="padding: 40px; font-size: 14px; line-height: 1.6;">
-              <!-- Metadata Block -->
-              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 24px;">
+            <div style="padding: 36px 36px 28px 36px; font-size: 14px; line-height: 1.65;">
+              
+              <!-- Official Reference & Date Bar -->
+              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px;">
                 <tr>
-                  <td width="60%" valign="top">
-                    <p style="margin: 0 0 4px 0; font-size: 11px; font-weight: bold; color: #ea580c; text-transform: uppercase; font-family: sans-serif;">To Recipient</p>
-                    <h3 style="margin: 0 0 4px 0; font-size: 15px; font-weight: bold; color: #1c1917;">${recipientName}</h3>
-                    <p style="margin: 0; font-size: 12px; color: #44403c; white-space: pre-line; line-height: 1.4;">${recipientAddress || 'Address N/A'}</p>
+                  <td width="55%" valign="top" style="color: #1c1917;">
+                    <div style="font-family: monospace; font-size: 11px; font-weight: bold; color: #44403c;">
+                      Our Ref: <span style="color: #ea580c; font-weight: 900;">${refLine}</span>
+                    </div>
+                    <div style="color: #78716c; font-size: 10px; margin-top: 2px;">
+                      Classification: <strong style="color: #1c1917;">${docClassification}</strong>
+                    </div>
                   </td>
-                  <td width="40%" align="right" valign="top" style="font-family: sans-serif; font-size: 12px; color: #57534e;">
-                    <strong>Date:</strong> ${formattedDate}
+                  <td width="45%" align="right" valign="top" style="color: #44403c;">
+                    <strong>Date of Dispatch:</strong><br/>
+                    ${formattedDate}
                   </td>
                 </tr>
               </table>
 
-              <!-- Subject Header -->
-              <div style="border-top: 1px solid #d6d3d1; border-bottom: 1px solid #d6d3d1; padding: 10px 0; text-align: center; font-weight: bold; font-size: 15px; text-transform: uppercase; color: #1c1917; margin-bottom: 24px; background-color: #fafaf9; letter-spacing: 0.5px;">
-                RE: ${subject}
+              <!-- Formal Recipient Hierarchy Block -->
+              <div style="margin-bottom: 24px; padding: 12px 16px; background-color: #fafaf9; border-left: 3px solid #ea580c; border-radius: 0 6px 6px 0;">
+                <p style="margin: 0 0 3px 0; font-size: 9px; font-weight: bold; color: #ea580c; text-transform: uppercase; font-family: sans-serif; letter-spacing: 0.8px;">Addressee</p>
+                <h3 style="margin: 0 0 3px 0; font-size: 14px; font-weight: bold; color: #1c1917;">${recipientName}</h3>
+                <p style="margin: 0; font-size: 12px; color: #44403c; white-space: pre-line; line-height: 1.45;">${recipientAddress || 'Corporate Address on Record, Ghana'}</p>
+              </div>
+
+              <!-- Formal Subject Line Banner -->
+              <div style="border-top: 2px solid #1c1917; border-bottom: 2px solid #1c1917; padding: 8px 12px; text-align: center; font-weight: bold; font-size: 14px; text-transform: uppercase; color: #1c1917; margin-bottom: 24px; background-color: #fafaf9; letter-spacing: 0.8px;">
+                SUBJECT: RE: ${subject.toUpperCase()}
               </div>
 
               <!-- Salutation -->
-              <div style="font-weight: bold; margin-bottom: 16px; font-size: 14px;">
+              <div style="font-weight: bold; margin-bottom: 16px; font-size: 14px; color: #1c1917;">
                 ${salutation || 'Dear Sir/Madam,'}
               </div>
 
-              <!-- Paragraphs -->
+              <!-- Main Body Paragraphs -->
               <div style="color: #292524; font-size: 14px;">
                 ${formattedParagraphs}
               </div>
 
-              <!-- Sign-off Block -->
-              <div style="margin-top: 36px; padding-top: 12px; page-break-inside: avoid;">
-                <p style="margin: 0 0 12px 0;">Yours sincerely,</p>
-                ${signatorySignature ? `<div style="margin: 8px 0;"><img src="${signatorySignature}" style="max-height: 55px; max-width: 170px; object-fit: contain;" alt="Signature" /></div>` : '<div style="height: 35px;"></div>'}
-                <p style="margin: 0; font-weight: bold; color: #1c1917;">${signatoryName || 'Grice Asante'}</p>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: #57534e;">${signatoryTitle || 'CEO & Founder'}</p>
+              <!-- Formal Sign-off and Seal Block -->
+              <div style="margin-top: 36px; padding-top: 14px; border-top: 1px solid #f5f5f4; page-break-inside: avoid;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; color: #1c1917;">${formalValediction}</p>
+                
+                <table cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+                  <tr>
+                    <td valign="middle">
+                      ${signatorySignature ? `<div style="margin: 6px 0;"><img src="${signatorySignature}" style="max-height: 60px; max-width: 180px; object-fit: contain;" alt="Digital Signature" /></div>` : '<div style="height: 38px;"></div>'}
+                      <p style="margin: 0; font-weight: bold; font-size: 13px; color: #1c1917;">${signatoryName || 'Grice Asante'}</p>
+                      <p style="margin: 2px 0 0 0; font-size: 11px; color: #57534e; font-family: sans-serif;">${signatoryTitle || 'Chief Executive Officer & Founder'}</p>
+                      <p style="margin: 2px 0 0 0; font-size: 10px; color: #a8a29e; font-family: sans-serif; font-weight: bold;">Grefas Consult & Entertainment Ltd.</p>
+                    </td>
+                    <td valign="middle" align="center" style="padding-left: 24px;">
+                      ${sealHtml}
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Security Document Verification Notice -->
+              <div style="margin-top: 32px; padding: 10px 14px; background-color: #fafaf9; border: 1px solid #e7e5e4; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; color: #78716c; line-height: 1.4;">
+                <strong style="color: #1c1917;">DOCUMENT INTEGRITY VERIFICATION:</strong> This communication is an official, tamper-evident corporate instrument dispatched by Grefas Consult & Entertainment Ltd under Ref: <span style="font-family: monospace; font-weight: bold; color: #ea580c;">${refLine}</span>. Verification may be confirmed online at <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}" style="color: #ea580c; text-decoration: none;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}</a>.
               </div>
             </div>
 
-            <!-- Footer Section -->
-            <div style="background-color: #fafaf9; border-top: 1px solid #f5f5f4; padding: 16px; text-align: center; font-family: sans-serif; font-size: 10px; color: #a8a29e;">
-              This is an official document of ${headerTitle}. All rights reserved. Registered in Ghana.
+            <!-- Formal Corporate Footer -->
+            <div style="background-color: #1c1917; color: #a8a29e; padding: 16px 24px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; line-height: 1.5; border-top: 2px solid #ea580c;">
+              <p style="margin: 0 0 3px 0; color: #f5f5f4; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+                ${headerTitle} • Republic of Ghana
+              </p>
+              <p style="margin: 0;">
+                Corporate Headquarters: AI-0008-9223, Nyinahin-Ashanti, Ashanti Region, Ghana | Official Portal: <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}" style="color: #ea580c; text-decoration: none;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}</a>
+              </p>
+              <p style="margin: 4px 0 0 0; color: #78716c; font-size: 8px;">
+                © ${new Date().getFullYear()} Grefas Consult & Entertainment Ltd. All rights reserved under the laws of Ghana.
+              </p>
             </div>
           </div>
         `
       });
 
-      res.json({ status: "ok", message: "Branded official email sent successfully via Resend!" });
+      res.json({ status: "ok", message: "Formal executive letter emailed successfully via Resend!" });
     } catch (error: any) {
       console.error("Resend official letter failure:", error);
       res.status(500).json({ error: error.message || "Failed to dispatch official email via Resend." });
