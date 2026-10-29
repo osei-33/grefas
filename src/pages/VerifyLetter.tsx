@@ -34,6 +34,7 @@ import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firesto
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import { formatLetterBodyHtml } from '@/lib/letterFormatter';
+import QRCode from 'qrcode';
 
 interface VerifiedLetter {
   id: string;
@@ -64,6 +65,22 @@ export default function VerifyLetter() {
   const [hasSearched, setHasSearched] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [settings, setSettings] = useState<any>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+
+  // Generate QR Code when a document is verified
+  useEffect(() => {
+    if (verifiedDoc) {
+      const targetRef = verifiedDoc.referenceNumber || verifiedDoc.id;
+      const verifyUrl = `${window.location.origin}/verify-letter?ref=${encodeURIComponent(targetRef)}`;
+      QRCode.toDataURL(verifyUrl, {
+        width: 240,
+        margin: 2,
+        color: { dark: '#111827', light: '#ffffff' }
+      }).then(setQrDataUrl).catch(() => {});
+    } else {
+      setQrDataUrl('');
+    }
+  }, [verifiedDoc]);
 
   // Load global settings for corporate registration and website
   useEffect(() => {
@@ -461,6 +478,46 @@ export default function VerifyLetter() {
                           </span>
                         </div>
                       </div>
+
+                      {/* Document Verification QR Code Box */}
+                      {qrDataUrl && (
+                        <div className="bg-orange-50/25 dark:bg-orange-950/20 p-4 rounded-xl border border-orange-200/70 dark:border-orange-900/40 flex flex-col sm:flex-row items-center gap-4 text-left">
+                          <div className="bg-white p-2 rounded-lg border border-border shadow-xs shrink-0">
+                            <img src={qrDataUrl} alt="Document QR Code" className="w-24 h-24 rounded" />
+                          </div>
+                          <div className="space-y-1 text-center sm:text-left flex-1">
+                            <div className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-600 bg-orange-100 dark:bg-orange-900/40 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              <QrCode className="h-3 w-3" /> Digital Authentication QR
+                            </div>
+                            <h4 className="text-xs font-bold text-foreground">Official Direct Verification Link</h4>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                              This tamper-evident QR code directly links to this authenticated record. Scan with any camera or copy the URL to verify credentials on any third-party device.
+                            </p>
+                            <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const targetRef = verifiedDoc.referenceNumber || verifiedDoc.id;
+                                  const verifyUrl = `${window.location.origin}/verify-letter?ref=${encodeURIComponent(targetRef)}`;
+                                  navigator.clipboard.writeText(verifyUrl);
+                                  toast.success('Direct verification URL copied to clipboard!');
+                                }}
+                                className="h-7 text-[10px] font-bold px-2.5 flex items-center gap-1"
+                              >
+                                <Copy className="h-3 w-3" /> Copy Direct Link
+                              </Button>
+                              <a
+                                href={qrDataUrl}
+                                download={`Grefas-Verification-QR-${(verifiedDoc.referenceNumber || verifiedDoc.id).replace(/[^a-zA-Z0-9]/g, '_')}.png`}
+                                className="inline-flex items-center gap-1 h-7 text-[10px] font-bold px-2.5 rounded-md border border-border bg-background hover:bg-muted text-foreground transition-colors"
+                              >
+                                <QrCode className="h-3 w-3 text-orange-600" /> Save QR Code
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Security Verification Hash */}
                       <div className="bg-muted/40 p-3 rounded-lg border border-border/80 flex flex-col sm:flex-row items-center justify-between text-[11px] text-muted-foreground font-mono">

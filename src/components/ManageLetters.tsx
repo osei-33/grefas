@@ -49,8 +49,10 @@ import {
   Minus,
   DollarSign,
   Calendar as CalendarIcon,
-  CaseUpper
+  CaseUpper,
+  QrCode
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { 
   formatLetterBodyHtml, 
   getWordAndCharCount, 
@@ -196,12 +198,71 @@ export default function ManageLetters() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editingLetterId, setEditingLetterId] = useState<string | null>(null);
 
+  // QR Code Modal states
+  const [selectedLetterForQr, setSelectedLetterForQr] = useState<Letter | null>(null);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [modalQrDataUrl, setModalQrDataUrl] = useState<string>('');
+  const [composerQrDataUrl, setComposerQrDataUrl] = useState<string>('');
+  const [isCopiedQrUrl, setIsCopiedQrUrl] = useState(false);
+
   // Helper to generate professional corporate reference numbers
   const generateReferenceNumber = (type: string = letterheadType) => {
     const prefix = type === 'entertainment' ? 'ENT' : type === 'consult' ? 'CON' : 'JOINT';
     const year = new Date().getFullYear();
     const serial = Math.floor(100 + Math.random() * 900);
     return `GREFAS/${prefix}/${year}/${serial}`;
+  };
+
+  // Generate live QR code for the composer right-hand sheet
+  useEffect(() => {
+    const currentRef = referenceNumber.trim() || generateReferenceNumber(letterheadType);
+    const verifyUrl = `${window.location.origin}/verify-letter?ref=${encodeURIComponent(currentRef)}`;
+    QRCode.toDataURL(verifyUrl, {
+      width: 160,
+      margin: 1,
+      color: { dark: '#111827', light: '#ffffff' }
+    }).then(setComposerQrDataUrl).catch(() => {});
+  }, [referenceNumber, letterheadType]);
+
+  const handleOpenQrModal = async (letter: Letter) => {
+    const refNum = letter.referenceNumber || `GREFAS/GEN/${new Date().getFullYear()}/${letter.id.substring(0, 5).toUpperCase()}`;
+    const verifyUrl = `${window.location.origin}/verify-letter?ref=${encodeURIComponent(refNum)}`;
+    try {
+      const url = await QRCode.toDataURL(verifyUrl, {
+        width: 320,
+        margin: 2,
+        color: { dark: '#111827', light: '#ffffff' }
+      });
+      setModalQrDataUrl(url);
+      setSelectedLetterForQr(letter);
+      setQrModalOpen(true);
+      setIsCopiedQrUrl(false);
+    } catch (err) {
+      console.error('Error generating QR code:', err);
+      toast.error('Failed to generate verification QR code');
+    }
+  };
+
+  const handleDownloadQrCode = (letter: Letter) => {
+    if (!modalQrDataUrl) return;
+    const refNum = letter.referenceNumber || `GREFAS-${letter.id.substring(0, 5)}`;
+    const cleanFilename = `Grefas-Verify-QR-${refNum.replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+    const link = document.createElement('a');
+    link.href = modalQrDataUrl;
+    link.download = cleanFilename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Verification QR Code downloaded: ${cleanFilename}`);
+  };
+
+  const handleCopyQrVerifyUrl = (letter: Letter) => {
+    const refNum = letter.referenceNumber || `GREFAS/GEN/${new Date().getFullYear()}/${letter.id.substring(0, 5).toUpperCase()}`;
+    const verifyUrl = `${window.location.origin}/verify-letter?ref=${encodeURIComponent(refNum)}`;
+    navigator.clipboard.writeText(verifyUrl);
+    setIsCopiedQrUrl(true);
+    toast.success('Verification URL copied to clipboard with prefilled reference!');
+    setTimeout(() => setIsCopiedQrUrl(false), 2500);
   };
 
   // Selection & text formatting tools for letter body
@@ -878,7 +939,7 @@ We take this opportunity to convey our profound gratitude for your exemplary con
     }
   };
 
-  const triggerSafePrint = (letter: Letter) => {
+  const triggerSafePrint = async (letter: Letter) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       toast.error('Print window blocked! Please allow pop-ups for this domain.');
@@ -919,6 +980,19 @@ We take this opportunity to convey our profound gratitude for your exemplary con
     const refNum = letter.referenceNumber || `GREFAS/GEN/${new Date().getFullYear()}/${letter.id.substring(0, 5).toUpperCase()}`;
     const classificationTag = letter.classification || 'OFFICIAL CORRESPONDENCE';
     const valedictionText = letter.valediction || 'Yours faithfully,';
+
+    // Generate high-resolution Verification QR Code for print/PDF
+    const verifyUrl = `${window.location.origin}/verify-letter?ref=${encodeURIComponent(refNum)}`;
+    let qrCodeDataUrl = '';
+    try {
+      qrCodeDataUrl = await QRCode.toDataURL(verifyUrl, {
+        width: 180,
+        margin: 1,
+        color: { dark: '#111827', light: '#ffffff' }
+      });
+    } catch (qrErr) {
+      console.warn('Print QR generation warning:', qrErr);
+    }
 
     // Convert formatted markdown and structured clauses in letter body to executive HTML
     const formattedBody = formatLetterBodyHtml(letter.body);
@@ -1256,7 +1330,59 @@ We take this opportunity to convey our profound gratitude for your exemplary con
             }
             .official-seal-box {
               text-align: center;
-              padding-right: 15px;
+              padding-right: 10px;
+            }
+            .seal-and-qr-group {
+              display: flex;
+              align-items: center;
+              gap: 14px;
+            }
+            .verification-qr-box {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              border: 1px solid #d1d5db;
+              background: #f9fafb;
+              padding: 5px 9px;
+              border-radius: 4px;
+            }
+            .qr-code-img {
+              width: 52px;
+              height: 52px;
+              display: block;
+              border: 1px solid #e5e7eb;
+              background: #fff;
+              padding: 2px;
+            }
+            .qr-code-meta {
+              font-family: Arial, sans-serif;
+              font-size: 6.8pt;
+              line-height: 1.25;
+              color: #4b5563;
+              text-align: left;
+            }
+            .qr-code-title {
+              font-weight: 800;
+              color: #111827;
+              display: block;
+              letter-spacing: 0.5px;
+            }
+            .qr-code-instruction {
+              color: #c2410c;
+              font-weight: 700;
+              display: block;
+            }
+            .qr-code-ref {
+              font-family: "Courier New", monospace;
+              color: #1f2937;
+              display: block;
+              font-size: 6.5pt;
+              font-weight: bold;
+            }
+            .qr-code-url {
+              color: #6b7280;
+              font-size: 6pt;
+              display: block;
             }
 
             /* Footer & Security Verification Notice */
@@ -1356,7 +1482,7 @@ We take this opportunity to convey our profound gratitude for your exemplary con
                 ${formattedBody}
               </div>
 
-              <!-- Sign-off & Corporate Seal -->
+              <!-- Sign-off, Corporate Seal & Verification QR -->
               <div class="sign-off-section">
                 <div class="sign-off-block">
                   <div class="sign-off-valediction">${valedictionText}</div>
@@ -1368,7 +1494,20 @@ We take this opportunity to convey our profound gratitude for your exemplary con
                   <p class="signatory-company">For: Grefas Consult &amp; Entertainment Limited</p>
                 </div>
 
-                ${corporateSealHtml}
+                <div class="seal-and-qr-group">
+                  ${corporateSealHtml}
+                  ${qrCodeDataUrl ? `
+                    <div class="verification-qr-box">
+                      <img src="${qrCodeDataUrl}" class="qr-code-img" alt="Official Verification QR Code" />
+                      <div class="qr-code-meta">
+                        <span class="qr-code-title">DIGITAL AUTHENTICATION</span>
+                        <span class="qr-code-instruction">Scan camera to verify</span>
+                        <span class="qr-code-ref">Ref: ${refNum}</span>
+                        <span class="qr-code-url">www.${cleanWebsite}/verify-letter</span>
+                      </div>
+                    </div>
+                  ` : ''}
+                </div>
               </div>
             </div>
 
@@ -1718,7 +1857,7 @@ For: Grefas Consult & Entertainment Limited`;
                       <th className="p-4">Recipient Info</th>
                       <th className="p-4">Subject</th>
                       <th className="p-4 w-36">Classification</th>
-                      <th className="p-4 w-40 text-right">Actions</th>
+                      <th className="p-4 w-48 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -1775,11 +1914,21 @@ For: Grefas Consult & Entertainment Limited`;
                               id={`btn-print-${letter.id}`}
                               size="icon"
                               variant="outline"
-                              title="Print / Save PDF (with Official Seal)"
+                              title="Print / Save PDF (with Official Seal & QR Code)"
                               onClick={() => triggerSafePrint(letter)}
                               className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-200"
                             >
                               <Printer className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              id={`btn-qr-${letter.id}`}
+                              size="icon"
+                              variant="outline"
+                              title="Document Verification QR Code (Direct Link)"
+                              onClick={() => handleOpenQrModal(letter)}
+                              className="h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50 border-purple-200"
+                            >
+                              <QrCode className="h-4 w-4" />
                             </Button>
                             <Button
                               id={`btn-dispatch-${letter.id}`}
@@ -1806,6 +1955,7 @@ For: Grefas Consult & Entertainment Limited`;
                             </Button>
                           </div>
                         </td>
+
                       </tr>
                     ))}
                   </tbody>
@@ -2976,10 +3126,28 @@ Please sign and return a duplicate of this engagement letter to our administrati
                     )}
                   </div>
 
-                  {/* Verification micro-print */}
-                  <div className="pt-2 border-t border-neutral-100 flex justify-between text-[7px] text-neutral-400 font-sans">
-                    <span>SECURITY REF: {referenceNumber || 'GREFAS-REF-2025'}</span>
-                    <span>VERIFY AT: WWW.{cleanWebsiteDisplay.toUpperCase()}/VERIFY-LETTER</span>
+                  {/* Verification micro-print with live QR */}
+                  <div className="pt-2 border-t border-neutral-100 flex items-center justify-between text-[7.5px] text-neutral-500 font-sans">
+                    <div className="flex items-center gap-2">
+                      {composerQrDataUrl ? (
+                        <img 
+                          src={composerQrDataUrl} 
+                          className="w-9 h-9 rounded border border-neutral-200 bg-white p-0.5 shrink-0" 
+                          alt="Live Verification QR Code" 
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded border border-dashed border-neutral-300 flex items-center justify-center text-[7px] text-neutral-400 font-mono shrink-0">
+                          QR
+                        </div>
+                      )}
+                      <div>
+                        <span className="font-bold text-neutral-800 block font-mono">OUR REF: {referenceNumber || 'GREFAS-REF-2025'}</span>
+                        <span className="text-[7px] text-orange-600 font-semibold">VERIFY AT: WWW.{cleanWebsiteDisplay.toUpperCase()}/VERIFY-LETTER</span>
+                      </div>
+                    </div>
+                    <span className="text-[7px] uppercase tracking-wider text-neutral-400 font-bold border border-neutral-200 px-1.5 py-0.5 rounded">
+                      DIGITAL LEDGER
+                    </span>
                   </div>
                 </div>
               </div>
@@ -3369,6 +3537,134 @@ Please sign and return a duplicate of this engagement letter to our administrati
                 className="text-xs font-semibold"
               >
                 Close Hub
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Verification QR Code Modal */}
+      {qrModalOpen && selectedLetterForQr && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in">
+          <div className="bg-card border border-border rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200 text-left">
+            <div className="flex justify-between items-center border-b border-border pb-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                  <QrCode className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">Document Verification QR</h3>
+                  <p className="text-[11px] text-muted-foreground">Scan or share direct tamper-evident verification link</p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setQrModalOpen(false);
+                  setSelectedLetterForQr(null);
+                }}
+                className="h-8 w-8 p-0"
+              >
+                ✕
+              </Button>
+            </div>
+
+            {/* Document Details Pill Card */}
+            <div className="p-3 bg-muted/40 rounded-xl border border-border/80 space-y-1.5 mb-4 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-mono font-bold text-orange-600 text-[11px]">
+                  {selectedLetterForQr.referenceNumber || `Ref: ${selectedLetterForQr.id.substring(0, 8).toUpperCase()}`}
+                </span>
+                <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300">
+                  {selectedLetterForQr.classification || 'OFFICIAL'}
+                </span>
+              </div>
+              <p className="font-bold text-foreground line-clamp-1">{selectedLetterForQr.subject}</p>
+              <p className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                <span>Addressee: {selectedLetterForQr.recipientName}</span>
+                <span>•</span>
+                <span>{new Date(selectedLetterForQr.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              </p>
+            </div>
+
+            {/* QR Code Presentation Canvas */}
+            <div className="bg-white p-5 rounded-2xl border-2 border-dashed border-orange-200 dark:border-orange-900/50 flex flex-col items-center justify-center text-center shadow-inner mb-4">
+              {modalQrDataUrl ? (
+                <div className="relative group">
+                  <img
+                    src={modalQrDataUrl}
+                    alt="Official Verification QR Code"
+                    className="w-56 h-56 rounded-lg object-contain"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 rounded-lg transition-opacity">
+                    <span className="text-[11px] font-bold text-white bg-black/70 px-3 py-1 rounded-full">
+                      Scan with Phone Camera
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-56 h-56 flex items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
+                </div>
+              )}
+              <p className="text-[10px] text-neutral-600 font-sans mt-3 font-semibold flex items-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5 text-green-600" /> Authentic Grefas Corporate Instrument
+              </p>
+            </div>
+
+            {/* Direct Verification Link Display & Copy */}
+            <div className="space-y-1.5 mb-5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                Direct Verification URL (Pre-filled):
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  readOnly
+                  value={`${window.location.origin}/verify-letter?ref=${encodeURIComponent(selectedLetterForQr.referenceNumber || selectedLetterForQr.id)}`}
+                  className="bg-muted/30 text-[11px] font-mono h-9 select-all"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleCopyQrVerifyUrl(selectedLetterForQr)}
+                  className="h-9 px-3 shrink-0 text-xs font-bold flex items-center gap-1.5"
+                >
+                  {isCopiedQrUrl ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-green-600" /> Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" /> Copy
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDownloadQrCode(selectedLetterForQr)}
+                className="text-xs font-bold flex items-center justify-center gap-1.5 h-9"
+              >
+                <Download className="h-3.5 w-3.5" /> Download PNG
+              </Button>
+              <Button
+                asChild
+                size="sm"
+                className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 h-9"
+              >
+                <a
+                  href={`${window.location.origin}/verify-letter?ref=${encodeURIComponent(selectedLetterForQr.referenceNumber || selectedLetterForQr.id)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Open Verification
+                </a>
               </Button>
             </div>
           </div>

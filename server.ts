@@ -20,6 +20,7 @@ import {
   type PaystackWebhookEvent
 } from "./src/lib/paystackWebhookHandler";
 import { formatLetterBodyHtml } from "./src/lib/letterFormatter";
+import QRCode from "qrcode";
 
 // Node version check
 const nodeVersion = process.versions.node.split(".")[0];
@@ -2775,6 +2776,8 @@ CRITICAL FORMATTING INSTRUCTIONS:
     const {
       recipientEmail,
       recipientName,
+      recipientDesignation,
+      recipientCompany,
       recipientAddress,
       date,
       subject,
@@ -2844,134 +2847,298 @@ CRITICAL FORMATTING INSTRUCTIONS:
       </div>
     ` : '';
 
+    const hostHeader = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+    const protoHeader = (req.headers['x-forwarded-proto'] as string) || 'https';
+    const baseUrl = hostHeader 
+      ? `${protoHeader}://${hostHeader}` 
+      : `https://${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}`;
+    const verifyUrl = `${baseUrl}/verify-letter?ref=${encodeURIComponent(refLine)}`;
+
+    // Generate high-resolution Verification QR Code for email
+    let qrCodeDataUrl = '';
+    try {
+      qrCodeDataUrl = await QRCode.toDataURL(verifyUrl, {
+        width: 180,
+        margin: 1,
+        color: { dark: '#1c1917', light: '#ffffff' }
+      });
+    } catch (qrErr) {
+      console.warn("Could not generate QR code for email dispatch:", qrErr);
+    }
+
     try {
       await resend.emails.send({
         from: getFromEmail("Grefas Consult"),
         to: recipientEmail,
         subject: `[${docClassification}] RE: ${subject} (Ref: ${refLine})`,
         html: `
-          <div style="font-family: 'Times New Roman', Times, Georgia, serif; color: #1c1917; max-width: 680px; margin: 20px auto; border: 1px solid #d6d3d1; border-radius: 6px; overflow: hidden; background-color: #ffffff; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);">
-            
-            <!-- Formal Top Security Strip -->
-            <div style="background-color: #1c1917; color: #f5f5f4; padding: 6px 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; display: flex; justify-content: space-between; border-bottom: 2px solid #ea580c;">
-              <span>Republic of Ghana • Corporate Instrument</span>
-              <span style="color: #ea580c;">${docClassification}</span>
-            </div>
-
-            <!-- Executive Dual-Rule Letterhead -->
-            <div style="border-bottom: 2px solid #ea580c; padding: 24px 28px 18px 28px; background-color: #fafaf9;">
-              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
-                <tr>
-                  <td width="30%" valign="top">
-                    ${logoHtml}
-                  </td>
-                  <td width="70%" align="right" valign="top" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-                    <h1 style="margin: 0 0 4px 0; font-size: 15px; font-weight: 900; color: #1c1917; text-transform: uppercase; letter-spacing: -0.3px;">${headerTitle}</h1>
-                    <p style="margin: 0 0 6px 0; font-size: 8px; font-weight: 700; color: #ea580c; text-transform: uppercase; letter-spacing: 0.8px;">${headerSubtitle}</p>
-                    <p style="margin: 0 0 4px 0; font-size: 8px; color: #78716c; font-family: monospace;">
-                      ${registrationNumber}
-                    </p>
-                    <p style="margin: 0; font-size: 9px; color: #44403c; line-height: 1.45;">
-                      Headquarters: ${companyAddress}<br/>
-                      Tel: ${companyPhone} | Email: ${companyEmail}<br/>
-                      Official Portal: <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}" style="color: #ea580c; text-decoration: none; font-weight: bold;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}</a>
-                    </p>
-                  </td>
-                </tr>
-              </table>
-              <div style="border-top: 1px solid #fed7aa; margin-top: 14px; padding-top: 4px;"></div>
-            </div>
-
-            <!-- Letter Sheet Body -->
-            <div style="padding: 36px 36px 28px 36px; font-size: 14px; line-height: 1.65;">
+          <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+          <html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+          <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <meta name="x-apple-disable-message-reformatting" />
+            <title>[${docClassification}] RE: ${subject}</title>
+            <style type="text/css">
+              /* Client resets */
+              body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+              table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+              img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+              body { margin: 0; padding: 0; width: 100% !important; background-color: #f3f4f6; }
               
-              <!-- Official Reference & Date Bar -->
-              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px;">
-                <tr>
-                  <td width="55%" valign="top" style="color: #1c1917;">
-                    <div style="font-family: monospace; font-size: 11px; font-weight: bold; color: #44403c;">
-                      Our Ref: <span style="color: #ea580c; font-weight: 900;">${refLine}</span>
-                    </div>
-                    <div style="color: #78716c; font-size: 10px; margin-top: 2px;">
-                      Classification: <strong style="color: #1c1917;">${docClassification}</strong>
-                    </div>
-                  </td>
-                  <td width="45%" align="right" valign="top" style="color: #44403c;">
-                    <strong>Date of Dispatch:</strong><br/>
-                    ${formattedDate}
-                  </td>
-                </tr>
-              </table>
+              /* Mobile responsive overrides */
+              @media only screen and (max-width: 620px) {
+                .email-container {
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  border-radius: 0 !important;
+                  border-left: none !important;
+                  border-right: none !important;
+                }
+                .mobile-stack {
+                  display: block !important;
+                  width: 100% !important;
+                  box-sizing: border-box !important;
+                  text-align: left !important;
+                }
+                .mobile-center {
+                  text-align: center !important;
+                  margin-left: auto !important;
+                  margin-right: auto !important;
+                }
+                .mobile-hide {
+                  display: none !important;
+                }
+                .mobile-p-16 {
+                  padding: 20px 16px !important;
+                }
+                .mobile-p-12 {
+                  padding: 14px 14px !important;
+                }
+                .header-info-col {
+                  text-align: left !important;
+                  margin-top: 14px !important;
+                  padding-top: 12px !important;
+                  border-top: 1px solid #fed7aa !important;
+                }
+                .ref-col-left {
+                  display: block !important;
+                  width: 100% !important;
+                  text-align: left !important;
+                  margin-bottom: 8px !important;
+                }
+                .ref-col-right {
+                  display: block !important;
+                  width: 100% !important;
+                  text-align: left !important;
+                }
+                .sign-seal-stack td {
+                  display: block !important;
+                  width: 100% !important;
+                  text-align: left !important;
+                  padding-left: 0 !important;
+                }
+                .sign-seal-cell {
+                  margin-top: 16px !important;
+                  text-align: left !important;
+                }
+                .qr-stack td {
+                  display: block !important;
+                  width: 100% !important;
+                  text-align: center !important;
+                  padding-left: 0 !important;
+                  padding-right: 0 !important;
+                }
+                .qr-text-col {
+                  text-align: center !important;
+                  margin-top: 12px !important;
+                }
+              }
+            </style>
+          </head>
+          <body style="margin: 0; padding: 20px 0; background-color: #f3f4f6; font-family: 'Times New Roman', Times, Georgia, serif; color: #1c1917;">
+            
+            <!-- Outer wrapper table for email clients -->
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f3f4f6" style="background-color: #f3f4f6;">
+              <tr>
+                <td align="center" style="padding: 10px 8px;">
+                  
+                  <!-- Main responsive document container -->
+                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 640px; background-color: #ffffff; border: 1px solid #d6d3d1; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);" class="email-container">
+                    
+                    <!-- Top Diplomatic Security Strip -->
+                    <tr>
+                      <td bgcolor="#1c1917" style="background-color: #1c1917; border-bottom: 2px solid #ea580c; padding: 7px 18px;">
+                        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                          <tr>
+                            <td align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #f5f5f4;">
+                              Republic of Ghana • Corporate Instrument
+                            </td>
+                            <td align="right" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #ea580c;">
+                              ${docClassification}
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
 
-              <!-- Formal Recipient Hierarchy Block -->
-              <div style="margin-bottom: 24px; padding: 12px 16px; background-color: #fafaf9; border-left: 3px solid #ea580c; border-radius: 0 6px 6px 0;">
-                <p style="margin: 0 0 3px 0; font-size: 9px; font-weight: bold; color: #ea580c; text-transform: uppercase; font-family: sans-serif; letter-spacing: 0.8px;">Addressee</p>
-                <h3 style="margin: 0 0 3px 0; font-size: 14px; font-weight: bold; color: #1c1917;">${recipientName}</h3>
-                <p style="margin: 0; font-size: 12px; color: #44403c; white-space: pre-line; line-height: 1.45;">${recipientAddress || 'Corporate Address on Record, Ghana'}</p>
-              </div>
+                    <!-- Executive Dual-Rule Letterhead -->
+                    <tr>
+                      <td bgcolor="#fafaf9" style="background-color: #fafaf9; border-bottom: 2px solid #ea580c; padding: 22px 24px 16px 24px;" class="mobile-p-12">
+                        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                          <tr>
+                            <!-- Logo Column -->
+                            <td width="32%" valign="middle" class="mobile-stack mobile-center">
+                              ${logoHtml}
+                            </td>
+                            <!-- Corporate Info Column -->
+                            <td width="68%" align="right" valign="middle" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;" class="mobile-stack header-info-col">
+                              <h1 style="margin: 0 0 3px 0; font-size: 15px; font-weight: 900; color: #1c1917; text-transform: uppercase; letter-spacing: -0.3px; font-family: 'Times New Roman', serif;">${headerTitle}</h1>
+                              <p style="margin: 0 0 5px 0; font-size: 8.5px; font-weight: 700; color: #ea580c; text-transform: uppercase; letter-spacing: 0.8px;">${headerSubtitle}</p>
+                              <p style="margin: 0 0 4px 0; font-size: 8px; color: #78716c; font-family: monospace;">
+                                ${registrationNumber}
+                              </p>
+                              <p style="margin: 0; font-size: 9px; color: #44403c; line-height: 1.45;">
+                                Headquarters: ${companyAddress}<br/>
+                                Tel: ${companyPhone} | Email: ${companyEmail}<br/>
+                                Official Portal: <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}" style="color: #ea580c; text-decoration: none; font-weight: bold;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}</a>
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
 
-              <!-- Formal Subject Line Banner -->
-              <div style="border-top: 2px solid #1c1917; border-bottom: 2px solid #1c1917; padding: 8px 12px; text-align: center; font-weight: bold; font-size: 14px; text-transform: uppercase; color: #1c1917; margin-bottom: 24px; background-color: #fafaf9; letter-spacing: 0.8px;">
-                SUBJECT: RE: ${subject.toUpperCase()}
-              </div>
+                    <!-- Letter Sheet Body -->
+                    <tr>
+                      <td style="padding: 30px 32px 24px 32px; font-size: 14px; line-height: 1.65;" class="mobile-p-16">
+                        
+                        <!-- Official Reference & Date Bar -->
+                        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 22px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px;">
+                          <tr>
+                            <td width="55%" valign="top" class="ref-col-left">
+                              <div style="font-family: monospace; font-size: 11px; font-weight: bold; color: #44403c;">
+                                Our Ref: <span style="color: #ea580c; font-weight: 900;">${refLine}</span>
+                              </div>
+                              <div style="color: #78716c; font-size: 10px; margin-top: 2px;">
+                                Classification: <strong style="color: #1c1917;">${docClassification}</strong>
+                              </div>
+                            </td>
+                            <td width="45%" align="right" valign="top" style="color: #44403c;" class="ref-col-right">
+                              <strong>Date of Dispatch:</strong><br/>
+                              ${formattedDate}
+                            </td>
+                          </tr>
+                        </table>
 
-              <!-- Salutation -->
-              <div style="font-weight: bold; margin-bottom: 16px; font-size: 14px; color: #1c1917;">
-                ${salutation || 'Dear Sir/Madam,'}
-              </div>
+                        <!-- Formal Recipient Hierarchy Block -->
+                        <div style="margin-bottom: 22px; padding: 12px 16px; background-color: #fafaf9; border-left: 3px solid #ea580c; border-radius: 0 6px 6px 0;">
+                          <p style="margin: 0 0 3px 0; font-size: 9px; font-weight: bold; color: #ea580c; text-transform: uppercase; font-family: -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: 0.8px;">Addressee</p>
+                          <h3 style="margin: 0 0 3px 0; font-size: 14px; font-weight: bold; color: #1c1917;">${recipientName}</h3>
+                          ${recipientDesignation || recipientCompany ? `<p style="margin: 0 0 2px 0; font-size: 11.5px; color: #57534e; font-style: italic;">${[recipientDesignation, recipientCompany].filter(Boolean).join(' • ')}</p>` : ''}
+                          <p style="margin: 0; font-size: 11.5px; color: #44403c; white-space: pre-line; line-height: 1.45;">${recipientAddress || 'Corporate Address on Record, Ghana'}</p>
+                        </div>
 
-              <!-- Main Body Paragraphs -->
-              <div style="color: #292524; font-size: 14px;">
-                ${formattedParagraphs}
-              </div>
+                        <!-- Formal Subject Line Banner -->
+                        <div style="border-top: 2px solid #1c1917; border-bottom: 2px solid #1c1917; padding: 8px 12px; text-align: center; font-weight: bold; font-size: 13.5px; text-transform: uppercase; color: #1c1917; margin-bottom: 22px; background-color: #fafaf9; letter-spacing: 0.8px;">
+                          SUBJECT: RE: ${subject.toUpperCase()}
+                        </div>
 
-              <!-- Formal Sign-off and Seal Block -->
-              <div style="margin-top: 36px; padding-top: 14px; border-top: 1px solid #f5f5f4; page-break-inside: avoid;">
-                <p style="margin: 0 0 10px 0; font-size: 14px; color: #1c1917;">${formalValediction}</p>
-                
-                <table cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
-                  <tr>
-                    <td valign="middle">
-                      ${signatorySignature ? `<div style="margin: 6px 0;"><img src="${signatorySignature}" style="max-height: 60px; max-width: 180px; object-fit: contain;" alt="Digital Signature" /></div>` : '<div style="height: 38px;"></div>'}
-                      <p style="margin: 0; font-weight: bold; font-size: 13px; color: #1c1917;">${signatoryName || 'Grice Asante'}</p>
-                      <p style="margin: 2px 0 0 0; font-size: 11px; color: #57534e; font-family: sans-serif;">${signatoryTitle || 'Chief Executive Officer & Founder'}</p>
-                      <p style="margin: 2px 0 0 0; font-size: 10px; color: #a8a29e; font-family: sans-serif; font-weight: bold;">Grefas Consult & Entertainment Ltd.</p>
-                    </td>
-                    <td valign="middle" align="center" style="padding-left: 24px;">
-                      ${sealHtml}
-                    </td>
-                  </tr>
-                </table>
-              </div>
+                        <!-- Salutation -->
+                        <div style="font-weight: bold; margin-bottom: 16px; font-size: 14px; color: #1c1917;">
+                          ${salutation || 'Dear Sir/Madam,'}
+                        </div>
 
-              <!-- Security Document Verification Notice -->
-              <div style="margin-top: 32px; padding: 10px 14px; background-color: #fafaf9; border: 1px solid #e7e5e4; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; color: #78716c; line-height: 1.4;">
-                <strong style="color: #1c1917;">DOCUMENT INTEGRITY VERIFICATION:</strong> This communication is an official, tamper-evident corporate instrument dispatched by Grefas Consult & Entertainment Ltd under Ref: <span style="font-family: monospace; font-weight: bold; color: #ea580c;">${refLine}</span>. Authenticity can be verified online at <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}/verify-letter?ref=${encodeURIComponent(refLine)}" style="color: #ea580c; text-decoration: underline; font-weight: bold;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}/verify-letter</a>.
-              </div>
-            </div>
+                        <!-- Main Body Paragraphs -->
+                        <div style="color: #292524; font-size: 14px;">
+                          ${formattedParagraphs}
+                        </div>
 
-            <!-- Formal Corporate Footer -->
-            <div style="background-color: #1c1917; color: #a8a29e; padding: 16px 24px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; line-height: 1.5; border-top: 2px solid #ea580c;">
-              <p style="margin: 0 0 3px 0; color: #f5f5f4; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
-                ${headerTitle} • Republic of Ghana
-              </p>
-              <p style="margin: 0;">
-                Corporate Headquarters: AI-0008-9223, Nyinahin-Ashanti, Ashanti Region, Ghana | Official Portal: <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}" style="color: #ea580c; text-decoration: none;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}</a>
-              </p>
-              <p style="margin: 4px 0 0 0; color: #78716c; font-size: 8px;">
-                © ${new Date().getFullYear()} Grefas Consult & Entertainment Ltd. All rights reserved under the laws of Ghana.
-              </p>
-            </div>
-          </div>
+                        <!-- Formal Sign-off and Seal Block -->
+                        <div style="margin-top: 32px; padding-top: 14px; border-top: 1px solid #f5f5f4;">
+                          <p style="margin: 0 0 8px 0; font-size: 14px; color: #1c1917;">${formalValediction}</p>
+                          
+                          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" class="sign-seal-stack">
+                            <tr>
+                              <td valign="middle" align="left">
+                                ${signatorySignature ? `<div style="margin: 6px 0;"><img src="${signatorySignature}" style="max-height: 55px; max-width: 170px; object-fit: contain;" alt="Digital Signature" /></div>` : '<div style="height: 32px;"></div>'}
+                                <p style="margin: 0; font-weight: bold; font-size: 13px; color: #1c1917;">${signatoryName || 'Grice Asante'}</p>
+                                <p style="margin: 2px 0 0 0; font-size: 11px; color: #57534e; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">${signatoryTitle || 'Chief Executive Officer & Founder'}</p>
+                                <p style="margin: 2px 0 0 0; font-size: 10px; color: #a8a29e; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-weight: bold;">Grefas Consult & Entertainment Ltd.</p>
+                              </td>
+                              ${sealHtml ? `
+                                <td valign="middle" align="right" class="sign-seal-cell">
+                                  ${sealHtml}
+                                </td>
+                              ` : ''}
+                            </tr>
+                          </table>
+                        </div>
+
+                        <!-- Security Verification Card with QR Code -->
+                        <div style="margin-top: 30px; background-color: #fafaf9; border: 1px solid #e7e5e4; border-radius: 8px; padding: 14px 16px;">
+                          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" class="qr-stack">
+                            <tr>
+                              ${qrCodeDataUrl ? `
+                                <td width="112" align="center" valign="middle" style="padding-right: 14px;">
+                                  <a href="${verifyUrl}" target="_blank" style="text-decoration: none; display: inline-block;">
+                                    <img src="${qrCodeDataUrl}" width="102" height="102" style="display: block; border-radius: 6px; border: 1px solid #d6d3d1; background: #ffffff; padding: 2px;" alt="Scan to Verify Document" />
+                                  </a>
+                                  <span style="font-size: 8px; color: #ea580c; font-weight: bold; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: block; margin-top: 4px; text-transform: uppercase;">Scan to Verify</span>
+                                </td>
+                              ` : ''}
+                              <td valign="middle" align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;" class="qr-text-col">
+                                <div style="display: inline-block; background-color: #ea580c; color: #ffffff; font-size: 8.5px; font-weight: 800; padding: 2px 7px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 5px;">
+                                  AUTHENTICITY VERIFICATION
+                                </div>
+                                <h4 style="margin: 0 0 4px 0; font-size: 12.5px; font-weight: 800; color: #1c1917;">Instant Document Verification</h4>
+                                <p style="margin: 0 0 10px 0; font-size: 10.5px; color: #57534e; line-height: 1.45;">
+                                  This correspondence is registered in our official corporate ledger under Ref: <strong style="font-family: monospace; color: #ea580c;">${refLine}</strong>. Scan the QR code or click the button below to verify genuine origin and transcript.
+                                </p>
+                                <a href="${verifyUrl}" target="_blank" style="background-color: #1c1917; color: #ffffff; font-size: 10.5px; font-weight: 700; text-decoration: none; padding: 6px 14px; border-radius: 4px; display: inline-block; border-bottom: 2px solid #ea580c;">
+                                  Verify Document Online →
+                                </a>
+                              </td>
+                            </tr>
+                          </table>
+                        </div>
+
+                      </td>
+                    </tr>
+
+                    <!-- Formal Corporate Footer -->
+                    <tr>
+                      <td bgcolor="#1c1917" style="background-color: #1c1917; color: #a8a29e; padding: 18px 24px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; line-height: 1.5; border-top: 2px solid #ea580c;">
+                        <p style="margin: 0 0 4px 0; color: #f5f5f4; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+                          ${headerTitle} • Republic of Ghana
+                        </p>
+                        <p style="margin: 0; color: #a8a29e;">
+                          Headquarters: AI-0008-9223, Nyinahin-Ashanti, Ashanti Region, Ghana | Official Portal: <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}" style="color: #ea580c; text-decoration: none;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}</a>
+                        </p>
+                        <p style="margin: 5px 0 0 0; color: #78716c; font-size: 8px;">
+                          © ${new Date().getFullYear()} Grefas Consult & Entertainment Ltd. All rights reserved under the laws of the Republic of Ghana.
+                        </p>
+                      </td>
+                    </tr>
+
+                  </table>
+
+                </td>
+              </tr>
+            </table>
+
+          </body>
+          </html>
         `
       });
 
-      res.json({ status: "ok", message: "Formal executive letter emailed successfully via Resend!" });
+      res.json({ status: "ok", message: "Formal executive letter emailed successfully via Resend with responsive layout and verification QR code!" });
     } catch (error: any) {
       console.error("Resend official letter failure:", error);
       res.status(500).json({ error: error.message || "Failed to dispatch official email via Resend." });
     }
   });
+
 
   // SEO Metadata Map for Server-Side Meta Injection
   const ROUTE_SEO_MAP: Record<string, { title: string; description: string; canonical: string; noIndex?: boolean }> = {
