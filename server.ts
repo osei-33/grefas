@@ -19,6 +19,7 @@ import {
   createCloudFunctionHandler,
   type PaystackWebhookEvent
 } from "./src/lib/paystackWebhookHandler";
+import { formatLetterBodyHtml } from "./src/lib/letterFormatter";
 
 // Node version check
 const nodeVersion = process.versions.node.split(".")[0];
@@ -2825,13 +2826,8 @@ CRITICAL FORMATTING INSTRUCTIONS:
       ? new Date(date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
       : new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-    // Format paragraphs
-    const formattedParagraphs = body
-      .split('\n\n')
-      .map((p: string) => p.trim())
-      .filter((p: string) => p.length > 0)
-      .map((p: string) => `<p style="margin: 0 0 16px 0; text-align: justify; text-indent: 28px; line-height: 1.7; font-size: 14px; color: #1c1917;">${p.replace(/\n/g, '<br/>')}</p>`)
-      .join('');
+    // Format paragraphs and rich markdown content (bold, headings, tables, lists, quotes, dividers)
+    const formattedParagraphs = formatLetterBodyHtml(body);
 
     const logoHtml = logoUrl 
       ? `<img src="${logoUrl}" style="max-height: 75px; max-width: 140px; object-fit: contain; margin-bottom: 8px;" alt="Grefas Corporate Logo" />`

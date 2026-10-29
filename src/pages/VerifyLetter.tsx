@@ -33,6 +33,7 @@ import { db } from '@/firebase';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import { formatLetterBodyHtml } from '@/lib/letterFormatter';
 
 interface VerifiedLetter {
   id: string;
@@ -397,9 +398,7 @@ export default function VerifyLetter() {
                         </p>
                         <div className="bg-muted/10 p-5 rounded-xl border border-border text-xs sm:text-sm font-serif leading-relaxed text-foreground space-y-3 text-justify">
                           <p className="font-bold">{verifiedDoc.salutation || 'Dear Sir/Madam,'}</p>
-                          {verifiedDoc.body.split('\n\n').map((para, idx) => (
-                            <p key={idx} className="indent-6">{para}</p>
-                          ))}
+                          <div dangerouslySetInnerHTML={{ __html: formatLetterBodyHtml(verifiedDoc.body) }} />
                         </div>
                       </div>
 

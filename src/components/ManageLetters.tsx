@@ -36,8 +36,26 @@ import {
   Hash,
   Sliders,
   CheckCircle2,
-  FileSignature
+  FileSignature,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  List,
+  ListOrdered,
+  Heading3,
+  Quote,
+  Table as TableIcon,
+  Minus,
+  DollarSign,
+  Calendar as CalendarIcon,
+  CaseUpper
 } from 'lucide-react';
+import { 
+  formatLetterBodyHtml, 
+  getWordAndCharCount, 
+  formatCurrentDateFormal 
+} from '@/lib/letterFormatter';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { logAuditActivity } from '@/lib/auditLogger';
@@ -151,6 +169,7 @@ export default function ManageLetters() {
   const [letterheadType, setLetterheadType] = useState<'entertainment' | 'consult' | 'joint'>('joint');
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.05);
+  const [bodyViewMode, setBodyViewMode] = useState<'write' | 'preview'>('write');
 
   // Digital Signature states for letters
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -183,6 +202,68 @@ export default function ManageLetters() {
     const year = new Date().getFullYear();
     const serial = Math.floor(100 + Math.random() * 900);
     return `GREFAS/${prefix}/${year}/${serial}`;
+  };
+
+  // Selection & text formatting tools for letter body
+  const insertFormatting = (prefix: string, suffix: string = '', defaultText: string = '') => {
+    const textarea = document.getElementById('input-letter-body') as HTMLTextAreaElement;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = body.substring(start, end);
+
+    const textToInsert = selected || defaultText;
+    const replacement = prefix + textToInsert + suffix;
+
+    const newBody = body.substring(0, start) + replacement + body.substring(end);
+    setBody(newBody);
+
+    setTimeout(() => {
+      textarea.focus();
+      if (selected) {
+        textarea.setSelectionRange(start, start + replacement.length);
+      } else {
+        textarea.setSelectionRange(start + prefix.length, start + prefix.length + defaultText.length);
+      }
+    }, 0);
+  };
+
+  const handleTransformUppercase = () => {
+    const textarea = document.getElementById('input-letter-body') as HTMLTextAreaElement;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = body.substring(start, end);
+    if (!selected) {
+      toast.info("Please select or highlight text first to convert to UPPERCASE.");
+      return;
+    }
+
+    const replacement = selected.toUpperCase();
+    const newBody = body.substring(0, start) + replacement + body.substring(end);
+    setBody(newBody);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start, start + replacement.length);
+    }, 0);
+  };
+
+  const handleBodyKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        insertFormatting('**', '**', 'bold text');
+      } else if (e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        insertFormatting('*', '*', 'italic text');
+      } else if (e.key.toLowerCase() === 'u') {
+        e.preventDefault();
+        insertFormatting('<u>', '</u>', 'underlined text');
+      }
+    }
   };
 
   // Set line properties when canvas is available
@@ -839,13 +920,8 @@ We take this opportunity to convey our profound gratitude for your exemplary con
     const classificationTag = letter.classification || 'OFFICIAL CORRESPONDENCE';
     const valedictionText = letter.valediction || 'Yours faithfully,';
 
-    // Convert newlines in letter body to paragraph elements
-    const formattedBody = letter.body
-      .split('\n\n')
-      .map(p => p.trim())
-      .filter(p => p.length > 0)
-      .map(p => `<p class="body-p">${p.replace(/\n/g, '<br/>')}</p>`)
-      .join('');
+    // Convert formatted markdown and structured clauses in letter body to executive HTML
+    const formattedBody = formatLetterBodyHtml(letter.body);
 
     // Authentic Circular Corporate Seal SVG
     const corporateSealHtml = letter.showSeal !== false ? `
@@ -2202,25 +2278,243 @@ Please sign and return a duplicate of this engagement letter to our administrati
               </CardContent>
             </Card>
 
-            {/* Letter Body textarea */}
+            {/* Letter Body Editor Card with Formatting Tools */}
             <Card className="border border-border">
               <CardHeader className="pb-3 border-b border-border bg-muted/10">
-                <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
-                  <FileText className="h-4.5 w-4.5 text-orange-600" /> Letter Body Paragraphs *
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Review or draft the main body of your letter. Press Enter twice to create structured paragraph indents.
-                </CardDescription>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
+                      <FileText className="h-4.5 w-4.5 text-orange-600" /> Letter Body Paragraphs &amp; Clauses *
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Compose statutory correspondence with formatting tools for bold, lists, clauses, and financial terms.
+                    </CardDescription>
+                  </div>
+
+                  {/* Mode switcher tabs (Source vs Formatted View) */}
+                  <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border/60 self-start sm:self-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setBodyViewMode('write')}
+                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer ${
+                        bodyViewMode === 'write'
+                          ? 'bg-background text-orange-600 shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Source Editor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBodyViewMode('preview')}
+                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
+                        bodyViewMode === 'preview'
+                          ? 'bg-background text-orange-600 shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Eye className="h-3 w-3" /> Formatted View
+                    </button>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="pt-4 space-y-4">
-                <Textarea
-                  id="input-letter-body"
-                  placeholder="Type your official letter contents here. Press Enter twice between paragraphs to maintain dignified indentation in printed copies..."
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  className="bg-muted/30 text-xs min-h-[240px] font-serif leading-relaxed text-foreground"
-                  required
-                />
+              <CardContent className="pt-4 space-y-3">
+                {/* Executive Formatting Toolbar */}
+                <div className="bg-muted/40 p-2.5 rounded-xl border border-border/80 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    
+                    {/* Primary Styling Tools */}
+                    <div className="flex flex-wrap items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('**', '**', 'bold text')}
+                        className="p-1.5 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-xs font-bold"
+                        title="Bold (Ctrl+B)"
+                        aria-label="Bold text"
+                      >
+                        <Bold className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('*', '*', 'italic text')}
+                        className="p-1.5 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-xs"
+                        title="Italic (Ctrl+I)"
+                        aria-label="Italic text"
+                      >
+                        <Italic className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('<u>', '</u>', 'underlined text')}
+                        className="p-1.5 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-xs"
+                        title="Underline (Ctrl+U)"
+                        aria-label="Underline text"
+                      >
+                        <Underline className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('~~', '~~', 'strikethrough text')}
+                        className="p-1.5 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-xs"
+                        title="Strikethrough"
+                        aria-label="Strikethrough"
+                      >
+                        <Strikethrough className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleTransformUppercase}
+                        className="px-2 py-1 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-[10px] font-black uppercase"
+                        title="Convert selected text to UPPERCASE"
+                      >
+                        <CaseUpper className="h-3.5 w-3.5 inline mr-0.5" /> CAPS
+                      </button>
+
+                      <div className="h-5 w-px bg-border mx-1"></div>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('\n\n### 1.0 SECTION CLAUSE TITLE\n', '', '')}
+                        className="px-2 py-1 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1"
+                        title="Insert Section Heading (###)"
+                      >
+                        <Heading3 className="h-3.5 w-3.5" /> Clause Title
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('\n1. First provision\n2. Second provision\n3. Third provision\n', '', '')}
+                        className="p-1.5 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-xs"
+                        title="Numbered Legal List (1. 2. 3.)"
+                      >
+                        <ListOrdered className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('\n• First term or condition\n• Second term or condition\n', '', '')}
+                        className="p-1.5 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-xs"
+                        title="Bullet List (•)"
+                      >
+                        <List className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('\n> Quoted statute or contractual condition\n', '', '')}
+                        className="p-1.5 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-xs"
+                        title="Indented Stature / Blockquote (>)"
+                      >
+                        <Quote className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('\n\n---\n\n', '', '')}
+                        className="p-1.5 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-xs"
+                        title="Insert Section Divider Rule (---)"
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => insertFormatting('\n\n| Deliverable / Milestone | Timeline | Fee (GH₵) |\n| Phase 1: Inception & Scripting | Weeks 1 - 2 | GH₵ 3,500.00 |\n| Phase 2: Principal Photography | Weeks 3 - 5 | GH₵ 7,500.00 |\n\n', '', '')}
+                        className="px-2 py-1 rounded-lg border border-border/60 bg-card hover:bg-muted text-foreground hover:text-orange-600 transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1"
+                        title="Insert Financial or Milestone Table"
+                      >
+                        <TableIcon className="h-3.5 w-3.5 text-orange-600" /> Terms Table
+                      </button>
+                    </div>
+
+                    {/* Word and Character Statistics */}
+                    {(() => {
+                      const counts = getWordAndCharCount(body);
+                      return (
+                        <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-2 bg-background/80 px-2.5 py-1 rounded-md border border-border/50 shrink-0">
+                          <span>{counts.words} words</span>
+                          <span>•</span>
+                          <span>{counts.chars} chars</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Corporate Quick Inserters Ribbon */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-border/50 text-[10px]">
+                    <span className="text-[9px] uppercase font-bold text-muted-foreground tracking-wider shrink-0 mr-1">
+                      Quick Inserts:
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => insertFormatting('GH₵ ', '', '0.00')}
+                      className="px-2 py-0.5 rounded border border-border/60 bg-background hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 transition-colors font-bold text-foreground cursor-pointer flex items-center gap-0.5"
+                    >
+                      + GH₵ (Cedis)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => insertFormatting(formatCurrentDateFormal(), '', '')}
+                      className="px-2 py-0.5 rounded border border-border/60 bg-background hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 transition-colors font-medium text-foreground cursor-pointer flex items-center gap-0.5"
+                    >
+                      <CalendarIcon className="h-2.5 w-2.5 text-orange-600" /> + Today's Date
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => insertFormatting(`Our Ref: ${referenceNumber || 'GREFAS/REF'}`, '', '')}
+                      className="px-2 py-0.5 rounded border border-border/60 bg-background hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 transition-colors font-mono font-bold text-orange-600 cursor-pointer"
+                    >
+                      + Our Ref
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => insertFormatting('\n\nThis agreement and all matters arising hereunder shall be governed by and construed in accordance with the statutory laws of the Republic of Ghana.\n\n', '', '')}
+                      className="px-2 py-0.5 rounded border border-border/60 bg-background hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 transition-colors font-medium text-foreground cursor-pointer"
+                      title="Insert Ghanaian Governing Law Clause"
+                    >
+                      + Ghanaian Law Clause
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => insertFormatting('\n\nCONFIDENTIALITY: All proprietary information, artistic assets, and contractual negotiations disclosed herein shall remain strictly confidential between both parties.\n\n', '', '')}
+                      className="px-2 py-0.5 rounded border border-border/60 bg-background hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 transition-colors font-medium text-foreground cursor-pointer"
+                      title="Insert Non-Disclosure & Confidentiality Clause"
+                    >
+                      + Confidentiality
+                    </button>
+                  </div>
+                </div>
+
+                {bodyViewMode === 'write' ? (
+                  <Textarea
+                    id="input-letter-body"
+                    placeholder="Type your official letter contents here. Use formatting buttons above, or keyboard shortcuts Ctrl+B (Bold), Ctrl+I (Italic), Ctrl+U (Underline)..."
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    onKeyDown={handleBodyKeyDown}
+                    className="bg-muted/30 text-xs sm:text-sm min-h-[260px] font-serif leading-relaxed text-foreground p-3.5 focus-visible:ring-orange-500"
+                    required
+                  />
+                ) : (
+                  <div className="border border-border rounded-xl p-5 bg-background min-h-[260px] font-serif text-xs sm:text-sm leading-relaxed text-foreground overflow-y-auto">
+                    <p className="text-[10px] font-bold text-orange-600 uppercase tracking-wider font-sans mb-3 flex items-center gap-1.5 pb-2 border-b border-border">
+                      <Eye className="h-3.5 w-3.5" /> Real-time Formatted Output Preview
+                    </p>
+                    <div 
+                      className="space-y-3 text-justify"
+                      dangerouslySetInnerHTML={{ __html: formatLetterBodyHtml(body || '') }}
+                    />
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                   <div className="space-y-2">
@@ -2632,20 +2926,13 @@ Please sign and return a duplicate of this engagement letter to our administrati
                     {salutation}
                   </div>
 
-                  {/* Body Paragraphs */}
-                  <div className="text-xs text-neutral-800 space-y-2.5 leading-relaxed text-justify">
-                    {body ? (
-                      body.split('\n\n').map((p, i) => (
-                        <p key={i} className="indent-6">
-                          {p}
-                        </p>
-                      ))
-                    ) : (
-                      <p className="text-neutral-400 italic">
-                        Select an executive template above or use the AI drafter to generate complete paragraphs with formal Ghanaian corporate British English formatting.
-                      </p>
-                    )}
-                  </div>
+                  {/* Body Paragraphs with Rich Formatting Support */}
+                  <div 
+                    className="text-xs text-neutral-800 space-y-2.5 leading-relaxed text-justify"
+                    dangerouslySetInnerHTML={{ 
+                      __html: formatLetterBodyHtml(body || 'Select an executive template above or use the formatting tools and AI drafter to generate complete paragraphs with formal Ghanaian corporate British English formatting.') 
+                    }}
+                  />
 
                   {/* Sign off & Seal side by side */}
                   <div className="pt-3 flex justify-between items-end border-t border-neutral-200 mt-4">
