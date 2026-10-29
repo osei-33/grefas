@@ -431,7 +431,9 @@ service cloud.firestore {
     }
 
     match /letters/{letterId} {
-      allow read, write: if isStaff();
+      // Allow public read so clients, embassies, institutions, and the public can verify official letters
+      allow read: if true;
+      allow write: if isStaff();
     }
 
     match /employees/{employeeId} {

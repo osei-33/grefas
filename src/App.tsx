@@ -17,6 +17,7 @@ import MyApplications from './pages/MyApplications';
 import WorkWithUs from './pages/WorkWithUs';
 import Sponsorship from './pages/Sponsorship';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import VerifyLetter from './pages/VerifyLetter';
 import { Toaster } from 'sonner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LanguageProvider } from './lib/LanguageContext';
@@ -102,7 +103,10 @@ function AnimatedRoutes() {
             <Route path="/terms" element={<PrivacyPolicy defaultTab="terms" />} />
             <Route path="/refund-policy" element={<PrivacyPolicy defaultTab="refund" />} />
             <Route path="/refund" element={<PrivacyPolicy defaultTab="refund" />} />
-            <Route path="/legal" element={<PrivacyPolicy defaultTab="privacy" />} />
+            <Route path="/verify-letter" element={<VerifyLetter />} />
+            <Route path="/verify" element={<Navigate to="/verify-letter" replace />} />
+            <Route path="/verify-document" element={<Navigate to="/verify-letter" replace />} />
+            <Route path="/verification" element={<Navigate to="/verify-letter" replace />} />
 
             <Route path="/blog" element={<Navigate to="/" replace />} />
             <Route path="/blog/:slug" element={<Navigate to="/" replace />} />

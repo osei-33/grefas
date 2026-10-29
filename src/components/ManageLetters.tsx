@@ -1300,7 +1300,7 @@ We take this opportunity to convey our profound gratitude for your exemplary con
             <div class="letter-footer">
               <div class="footer-security-row">
                 <span class="security-hash">DOC-ID: ${refNum.replace(/[^a-zA-Z0-9]/g, '')}</span>
-                <span>AUTHENTICITY VERIFIABLE AT WWW.${cleanWebsite.toUpperCase()}</span>
+                <span>AUTHENTICITY VERIFIABLE AT WWW.${cleanWebsite.toUpperCase()}/VERIFY-LETTER</span>
                 <span>ORIGINAL CORPORATE INSTRUMENT</span>
               </div>
               <div class="footer-disclaimer">
@@ -2692,7 +2692,7 @@ Please sign and return a duplicate of this engagement letter to our administrati
                   {/* Verification micro-print */}
                   <div className="pt-2 border-t border-neutral-100 flex justify-between text-[7px] text-neutral-400 font-sans">
                     <span>SECURITY REF: {referenceNumber || 'GREFAS-REF-2025'}</span>
-                    <span>VERIFY AT: WWW.{cleanWebsiteDisplay.toUpperCase()}</span>
+                    <span>VERIFY AT: WWW.{cleanWebsiteDisplay.toUpperCase()}/VERIFY-LETTER</span>
                   </div>
                 </div>
               </div>

@@ -2950,7 +2950,7 @@ CRITICAL FORMATTING INSTRUCTIONS:
 
               <!-- Security Document Verification Notice -->
               <div style="margin-top: 32px; padding: 10px 14px; background-color: #fafaf9; border: 1px solid #e7e5e4; border-radius: 6px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; color: #78716c; line-height: 1.4;">
-                <strong style="color: #1c1917;">DOCUMENT INTEGRITY VERIFICATION:</strong> This communication is an official, tamper-evident corporate instrument dispatched by Grefas Consult & Entertainment Ltd under Ref: <span style="font-family: monospace; font-weight: bold; color: #ea580c;">${refLine}</span>. Verification may be confirmed online at <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}" style="color: #ea580c; text-decoration: none;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}</a>.
+                <strong style="color: #1c1917;">DOCUMENT INTEGRITY VERIFICATION:</strong> This communication is an official, tamper-evident corporate instrument dispatched by Grefas Consult & Entertainment Ltd under Ref: <span style="font-family: monospace; font-weight: bold; color: #ea580c;">${refLine}</span>. Authenticity can be verified online at <a href="https://${companyWebsite.replace(/^https?:\/\//, '')}/verify-letter?ref=${encodeURIComponent(refLine)}" style="color: #ea580c; text-decoration: underline; font-weight: bold;">www.${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}/verify-letter</a>.
               </div>
             </div>
 

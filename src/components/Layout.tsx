@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown, ExternalLink, Navigation, Wrench, Clock, ShieldAlert } from 'lucide-react';
+import { Menu, X, Instagram, Facebook, Twitter, Phone, Mail, MapPin, Youtube, Music2, Sun, Moon, MessageCircle, Globe, ChevronDown, ExternalLink, Navigation, Wrench, Clock, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { safeGetLocalStorage, safeSetLocalStorage, safeGetSessionStorage, safeSetSessionStorage } from '@/lib/utils';
 import Chat from './Chat';
@@ -358,7 +358,7 @@ export default function Layout({ children }: LayoutProps) {
                 </span>
               )}
             </Link>
-            <div className="hidden lg:block">
+            <div className="hidden md:block">
               <GlobalSearch />
             </div>
           </div>
@@ -449,8 +449,8 @@ export default function Layout({ children }: LayoutProps) {
           </div>
 
           {/* Mobile Menu Button */}
-          <div className="flex items-center space-x-3 md:hidden">
-            <GlobalSearch />
+          <div className="flex items-center space-x-2 md:hidden">
+            <GlobalSearch compact />
             <Button
               variant="ghost"
               size="icon"
@@ -673,6 +673,11 @@ export default function Layout({ children }: LayoutProps) {
                 <li>
                   <Link to="/privacy-policy?tab=refund" className="hover:text-orange-600 transition-colors" id="footer-link-refund">
                     Refund Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/verify-letter" className="hover:text-orange-600 transition-colors flex items-center gap-1.5 font-semibold text-orange-600 dark:text-orange-400" id="footer-link-verify-letter">
+                    <ShieldCheck className="h-3.5 w-3.5 shrink-0" /> Verify Official Letter
                   </Link>
                 </li>
               </ul>
