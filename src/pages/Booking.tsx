@@ -1370,6 +1370,24 @@ export default function Booking() {
         }
       }
 
+      // Find assigned team member details for specialist SMS alert
+      const assignedMember = teamMembers.find(
+        m => m.id === formData.teamMemberId || m.name === formData.teamMemberName
+      );
+      const specialistPhone = (assignedMember?.phone || assignedMember?.phoneNumber || '').trim();
+      const specialistName = assignedMember?.name || formData.teamMemberName || 'Team Specialist';
+
+      // Dispatch direct immediate SMS alert to team member / specialist
+      if (specialistPhone) {
+        const specialistSmsMsg = `Hello ${specialistName}, you have a new client booking (#${newOrderNumber}) for ${formData.serviceTitle || 'General Consultation'} on ${dateStr} at ${formData.time} with client ${formData.userName} (Tel: ${formData.userPhone}). - Grefas Consult`;
+        try {
+          await sendArkeselSms(specialistPhone, specialistSmsMsg);
+          console.log(`Specialist SMS alert dispatched directly to ${specialistName} (${specialistPhone}) via Arkesel!`);
+        } catch (specSmsErr) {
+          console.warn("Specialist Arkesel SMS alert error:", specSmsErr);
+        }
+      }
+
       // Trigger automatic Paystack payment receipt & confirmation email via Resend Hook
       try {
         await sendBookingPaymentConfirmation({
@@ -1383,7 +1401,7 @@ export default function Booking() {
           amountPaid: Number(bookingTotalPayable),
           paystackReference: paymentRef,
           paymentChannel: actualChannel === 'card' ? 'Visa / Mastercard Card' : `${momoProvider} Mobile Money`,
-          teamMemberName: formData.teamMemberName || 'Primary Available Specialist'
+          teamMemberName: specialistName
         });
         console.log("Paystack payment confirmation email with PDF receipt dispatched via Resend!");
       } catch (payResendErr) {
@@ -1403,7 +1421,8 @@ export default function Booking() {
             date: dateStr,
             time: formData.time,
             orderNumber: newOrderNumber,
-            teamMemberName: formData.teamMemberName || 'Primary Available Specialist',
+            teamMemberName: specialistName,
+            teamMemberPhone: specialistPhone || undefined,
             notes: formData.notes,
             customMessage: bookingSmsMsg
           })
@@ -1946,13 +1965,20 @@ export default function Booking() {
                           >
                             <option value="" className="bg-card">Primary available specialist (No preference)</option>
                             {teamMembers.map(m => (
-                              <option key={m.id} value={m.id} className="bg-card">{m.name} — {m.role}</option>
+                              <option key={m.id} value={m.id} className="bg-card">
+                                {m.name} {m.memberId ? `[ID: ${m.memberId}]` : ''} — {m.role}
+                              </option>
                             ))}
                           </select>
                           {formData.teamMemberName && (
-                            <p className="text-xs text-orange-600 font-bold flex items-center gap-1.5 mt-1.5 animate-in fade-in">
-                              ★ Pre-assigned Preferred Expert: {formData.teamMemberName}
-                            </p>
+                            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-orange-600 font-bold animate-in fade-in">
+                              <span>★ Pre-assigned Preferred Expert: {formData.teamMemberName}</span>
+                              {teamMembers.find(m => m.id === formData.teamMemberId || m.name === formData.teamMemberName)?.memberId && (
+                                <span className="px-2 py-0.5 rounded bg-orange-100 dark:bg-orange-950/40 text-orange-800 dark:text-orange-300 font-mono text-[10px]">
+                                  ID: {teamMembers.find(m => m.id === formData.teamMemberId || m.name === formData.teamMemberName)?.memberId}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
 

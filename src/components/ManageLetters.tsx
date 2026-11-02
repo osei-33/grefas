@@ -50,7 +50,17 @@ import {
   DollarSign,
   Calendar as CalendarIcon,
   CaseUpper,
-  QrCode
+  QrCode,
+  History,
+  FileArchive,
+  CheckSquare,
+  Square,
+  RotateCcw,
+  GitBranch,
+  Layers,
+  Filter,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { 
@@ -59,7 +69,7 @@ import {
   formatCurrentDateFormal 
 } from '@/lib/letterFormatter';
 import { toast } from 'sonner';
-import { db, handleFirestoreError, OperationType } from '@/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '@/firebase';
 import { logAuditActivity } from '@/lib/auditLogger';
 import { 
   collection, 
@@ -73,6 +83,43 @@ import {
   updateDoc,
   setDoc
 } from 'firebase/firestore';
+
+export interface LetterVersion {
+  id: string;
+  letterId: string;
+  referenceNumber: string;
+  versionNumber: number;
+  changeType: 'INITIAL_ISSUE' | 'MANUAL_OVERRIDE' | 'REVISED_BODY' | 'SIGNATORY_CHANGE' | 'RECIPIENT_UPDATE' | 'ROLLBACK';
+  summary: string;
+  adminEmail: string;
+  adminName?: string;
+  notes?: string;
+  changedFields?: string[];
+  createdAt?: any;
+  snapshot: {
+    recipientType: 'organisation' | 'individual' | 'institution';
+    recipientName: string;
+    recipientDesignation?: string;
+    recipientCompany?: string;
+    recipientAddress: string;
+    recipientPhone?: string;
+    recipientEmail?: string;
+    date: string;
+    referenceNumber?: string;
+    classification?: string;
+    subject: string;
+    salutation: string;
+    body: string;
+    valediction?: string;
+    signatoryName: string;
+    signatoryTitle: string;
+    letterheadType: 'entertainment' | 'consult' | 'joint';
+    showSeal?: boolean;
+    watermarkEnabled?: boolean;
+    watermarkOpacity?: number;
+    signatorySignature?: string;
+  };
+}
 
 interface Letter {
   id: string;
@@ -146,7 +193,20 @@ export default function ManageLetters() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'list' | 'compose'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'compose' | 'history'>('list');
+
+  // Multi-select for consolidated PDF archive
+  const [selectedLetterIds, setSelectedLetterIds] = useState<string[]>([]);
+  const [isGeneratingArchive, setIsGeneratingArchive] = useState(false);
+
+  // Document Version History states
+  const [versions, setVersions] = useState<LetterVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(true);
+  const [inspectingVersion, setInspectingVersion] = useState<LetterVersion | null>(null);
+  const [versionSearch, setVersionSearch] = useState('');
+  const [versionFilterType, setVersionFilterType] = useState<string>('all');
+  const [versionFilterRef, setVersionFilterRef] = useState<string>('');
+  const [manualOverrideNote, setManualOverrideNote] = useState<string>('');
 
   // Form states
   const [recipientType, setRecipientType] = useState<'organisation' | 'individual' | 'institution'>('organisation');
@@ -452,11 +512,13 @@ export default function ManageLetters() {
     setWatermarkEnabled(letter.watermarkEnabled !== undefined ? letter.watermarkEnabled : true);
     setWatermarkOpacity(letter.watermarkOpacity !== undefined ? letter.watermarkOpacity : 0.05);
     setSignatorySignature(letter.signatorySignature || '');
+    setManualOverrideNote('');
     setActiveTab('compose');
   };
 
   const handleComposeTabClick = () => {
     setEditingLetterId(null);
+    setManualOverrideNote('');
     setRecipientType('organisation');
     setRecipientName('');
     setRecipientDesignation('');
@@ -498,6 +560,26 @@ export default function ManageLetters() {
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'letters');
       setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Load document version history from Firestore
+  useEffect(() => {
+    const versionsRef = collection(db, 'letter_versions');
+    const q = query(versionsRef, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const versionsData: LetterVersion[] = [];
+      snapshot.forEach((doc) => {
+        versionsData.push({ id: doc.id, ...doc.data() } as LetterVersion);
+      });
+      setVersions(versionsData);
+      setLoadingVersions(false);
+    }, (error) => {
+      console.warn("Failed to load letter versions:", error);
+      setLoadingVersions(false);
     });
 
     return () => unsubscribe();
@@ -640,28 +722,85 @@ export default function ManageLetters() {
         updatedAt: serverTimestamp()
       };
 
+      const adminEmail = auth.currentUser?.email || 'admin@grefasconsultandentertainment.com';
+      const adminName = auth.currentUser?.displayName || 'Executive Administrator';
+
       if (editingLetterId) {
+        // Compute changed fields for audit trail diff
+        const prevLetter = letters.find(l => l.id === editingLetterId);
+        const changedFields: string[] = [];
+        if (prevLetter) {
+          if (prevLetter.subject !== letterData.subject) changedFields.push('Subject');
+          if (prevLetter.body !== letterData.body) changedFields.push('Body Clauses');
+          if (prevLetter.recipientName !== letterData.recipientName) changedFields.push('Recipient Name');
+          if (prevLetter.recipientCompany !== letterData.recipientCompany || prevLetter.recipientDesignation !== letterData.recipientDesignation) changedFields.push('Recipient Org / Designation');
+          if (prevLetter.recipientAddress !== letterData.recipientAddress) changedFields.push('Recipient Address');
+          if (prevLetter.signatoryName !== letterData.signatoryName || prevLetter.signatoryTitle !== letterData.signatoryTitle) changedFields.push('Signatory Authority');
+          if (prevLetter.classification !== letterData.classification) changedFields.push('Classification');
+          if (prevLetter.letterheadType !== letterData.letterheadType) changedFields.push('Letterhead Division');
+          if (prevLetter.date !== letterData.date) changedFields.push('Effective Date');
+          if (prevLetter.signatorySignature !== letterData.signatorySignature) changedFields.push('Digital Signature');
+        }
+
+        const existingVersionsForDoc = versions.filter(v => v.letterId === editingLetterId);
+        const nextVersionNum = existingVersionsForDoc.length + 1;
+        const changeType: 'INITIAL_ISSUE' | 'MANUAL_OVERRIDE' | 'REVISED_BODY' | 'SIGNATORY_CHANGE' | 'RECIPIENT_UPDATE' | 'ROLLBACK' = manualOverrideNote.trim() 
+          ? 'MANUAL_OVERRIDE' 
+          : (changedFields.includes('Body Clauses') ? 'REVISED_BODY' : (changedFields.includes('Signatory Authority') ? 'SIGNATORY_CHANGE' : 'MANUAL_OVERRIDE'));
+
         await updateDoc(doc(db, 'letters', editingLetterId), letterData);
+
+        // Record version snapshot in audit trail
+        await addDoc(collection(db, 'letter_versions'), {
+          letterId: editingLetterId,
+          referenceNumber: letterData.referenceNumber,
+          versionNumber: nextVersionNum,
+          changeType,
+          summary: changedFields.length > 0 ? `Updated ${changedFields.join(', ')}` : 'Manual editorial revision',
+          adminEmail,
+          adminName,
+          notes: manualOverrideNote.trim() || `Manual revision executed by ${adminName}.`,
+          changedFields: changedFields.length > 0 ? changedFields : ['General Attributes'],
+          snapshot: letterData,
+          createdAt: serverTimestamp()
+        });
+
         await logAuditActivity({
           type: 'update',
           module: 'Official Letters',
-          action: 'UPDATED_LETTER',
-          description: `Updated official letter "${subject}" (Ref: ${letterData.referenceNumber}) for recipient ${recipientName}.`,
+          action: 'UPDATED_LETTER_VERSION',
+          description: `Updated official letter "${subject}" (Ref: ${letterData.referenceNumber}) to Version ${nextVersionNum}. Notes: ${manualOverrideNote.trim() || 'N/A'}.`,
           targetId: editingLetterId,
           targetName: subject
         });
-        toast.success('Official letter updated successfully!');
+        toast.success(`Official letter updated! Version ${nextVersionNum} recorded in Document Version History.`);
       } else {
         const newRef = await addDoc(collection(db, 'letters'), letterData);
+
+        // Record initial version (v1) in letter_versions
+        await addDoc(collection(db, 'letter_versions'), {
+          letterId: newRef.id,
+          referenceNumber: letterData.referenceNumber,
+          versionNumber: 1,
+          changeType: 'INITIAL_ISSUE',
+          summary: `Initial issuance for ${letterData.recipientName} (${letterData.classification})`,
+          adminEmail,
+          adminName,
+          notes: 'Original document issued and registered in corporate archive.',
+          changedFields: ['All Fields (Initial Issue)'],
+          snapshot: letterData,
+          createdAt: serverTimestamp()
+        });
+
         await logAuditActivity({
           type: 'create',
           module: 'Official Letters',
-          action: 'CREATED_LETTER',
-          description: `Created new official letter "${subject}" (Ref: ${letterData.referenceNumber}) for ${recipientName}.`,
+          action: 'CREATED_LETTER_VERSION_1',
+          description: `Created new official letter "${subject}" (Ref: ${letterData.referenceNumber}) - Version 1 recorded in audit trail.`,
           targetId: newRef.id,
           targetName: subject
         });
-        toast.success('Official letter saved successfully!');
+        toast.success('Official letter saved & Version 1 recorded in Document Version History!');
       }
       
       // Reset composer form partially
@@ -675,6 +814,7 @@ export default function ManageLetters() {
       setBody('');
       setAiPrompt('');
       setSignatorySignature('');
+      setManualOverrideNote('');
       setEditingLetterId(null);
       
       // Navigate to list
@@ -682,6 +822,59 @@ export default function ManageLetters() {
     } catch (err) {
       toast.error(editingLetterId ? 'Failed to update the letter.' : 'Failed to save the letter to database.');
       console.error(err);
+    }
+  };
+
+  const handleRestoreVersion = async (version: LetterVersion) => {
+    if (!confirm(`Are you sure you want to rollback to Version ${version.versionNumber} for Ref: ${version.referenceNumber}? This will replace the active document content with this historical snapshot.`)) {
+      return;
+    }
+
+    try {
+      const adminEmail = auth.currentUser?.email || 'admin@grefasconsultandentertainment.com';
+      const adminName = auth.currentUser?.displayName || 'Executive Administrator';
+
+      const restoredData = {
+        ...version.snapshot,
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(doc(db, 'letters', version.letterId), restoredData);
+
+      const existingVersionsForDoc = versions.filter(v => v.letterId === version.letterId);
+      const nextVersionNum = existingVersionsForDoc.length + 1;
+
+      // Log the rollback as a new version
+      await addDoc(collection(db, 'letter_versions'), {
+        letterId: version.letterId,
+        referenceNumber: version.referenceNumber,
+        versionNumber: nextVersionNum,
+        changeType: 'ROLLBACK',
+        summary: `Rollback restoration to Version ${version.versionNumber}`,
+        adminEmail,
+        adminName,
+        notes: `Restored document state from Version ${version.versionNumber} originally created at ${version.createdAt?.toDate ? version.createdAt.toDate().toLocaleString() : 'earlier date'}.`,
+        changedFields: ['All Snapshot Fields (Rollback)'],
+        snapshot: version.snapshot,
+        createdAt: serverTimestamp()
+      });
+
+      await logAuditActivity({
+        type: 'update',
+        module: 'Official Letters',
+        action: 'ROLLBACK_LETTER_VERSION',
+        description: `Rolled back official letter "${version.snapshot.subject}" (Ref: ${version.referenceNumber}) to Version ${version.versionNumber}.`,
+        targetId: version.letterId,
+        targetName: version.snapshot.subject
+      });
+
+      toast.success(`Document successfully restored to Version ${version.versionNumber}!`);
+      if (inspectingVersion) {
+        setInspectingVersion(null);
+      }
+    } catch (err: any) {
+      console.error("Rollback error:", err);
+      toast.error(`Failed to restore document version: ${err.message}`);
     }
   };
 
@@ -1559,6 +1752,888 @@ We take this opportunity to convey our profound gratitude for your exemplary con
     toast.success('Executive official letter layout rendered! Printing window triggered.');
   };
 
+  const triggerPrintVersionSnapshot = (version: LetterVersion) => {
+    const pseudoLetter: Letter = {
+      id: version.letterId,
+      ...version.snapshot,
+      watermarkEnabled: version.snapshot.watermarkEnabled !== undefined ? version.snapshot.watermarkEnabled : true,
+      watermarkOpacity: version.snapshot.watermarkOpacity !== undefined ? version.snapshot.watermarkOpacity : 0.05
+    };
+    triggerSafePrint(pseudoLetter);
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedLetterIds.length === filteredLetters.length && filteredLetters.length > 0) {
+      setSelectedLetterIds([]);
+    } else {
+      setSelectedLetterIds(filteredLetters.map(l => l.id));
+    }
+  };
+
+  const handleToggleSelectLetter = (letterId: string) => {
+    setSelectedLetterIds(prev => 
+      prev.includes(letterId) ? prev.filter(id => id !== letterId) : [...prev, letterId]
+    );
+  };
+
+  const handleClearSelection = () => {
+    setSelectedLetterIds([]);
+  };
+
+  const handleExportSelectedArchive = () => {
+    const selected = letters.filter(l => selectedLetterIds.includes(l.id));
+    if (selected.length === 0) {
+      toast.error('Please select at least one letter using the checkboxes to export an archive.');
+      return;
+    }
+    triggerConsolidatedPrintArchive(selected);
+  };
+
+  const triggerConsolidatedPrintArchive = async (selectedLetters: Letter[]) => {
+    if (!selectedLetters || selectedLetters.length === 0) {
+      toast.error('Please select at least one letter to export into the consolidated PDF archive.');
+      return;
+    }
+
+    setIsGeneratingArchive(true);
+    const toastId = toast.loading(`Preparing consolidated PDF archive for ${selectedLetters.length} documents...`);
+
+    try {
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        toast.error('Print window blocked! Please allow pop-ups for this domain.', { id: toastId });
+        setIsGeneratingArchive(false);
+        return;
+      }
+
+      const archiveBatchRef = `GREFAS-ARCHIVE-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      const compilingOfficial = auth.currentUser?.displayName || auth.currentUser?.email || 'Executive Secretariat';
+      const cleanWebsite = (settings.website || 'grefasconsultandentertainment.com')
+        .replace(/^https?:\/\//i, '')
+        .replace(/^www\./i, '')
+        .replace(/\/$/, '');
+
+      // Pre-generate QR codes for every included document
+      const qrMap = new Map<string, string>();
+      for (const letter of selectedLetters) {
+        const refNum = letter.referenceNumber || `GREFAS/GEN/${new Date().getFullYear()}/${letter.id.substring(0, 5).toUpperCase()}`;
+        const verifyUrl = `${window.location.origin}/verify-letter?ref=${encodeURIComponent(refNum)}`;
+        try {
+          const qrData = await QRCode.toDataURL(verifyUrl, {
+            width: 170,
+            margin: 1,
+            color: { dark: '#111827', light: '#ffffff' }
+          });
+          qrMap.set(letter.id, qrData);
+        } catch {
+          // ignore error for individual QR
+        }
+      }
+
+      // Shared Seal SVG
+      const corporateSealSvg = `
+        <svg viewBox="0 0 160 160" width="120" height="120" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="80" cy="80" r="75" fill="none" stroke="#991b1b" stroke-width="3" />
+          <circle cx="80" cy="80" r="70" fill="none" stroke="#991b1b" stroke-width="1.2" stroke-dasharray="4 2" />
+          <circle cx="80" cy="80" r="48" fill="none" stroke="#991b1b" stroke-width="1.8" />
+          <circle cx="80" cy="80" r="45" fill="#fef2f2" fill-opacity="0.4" />
+          <defs>
+            <path id="seal-arch-top" d="M 22,80 A 58,58 0 0,1 138,80" fill="none" />
+            <path id="seal-arch-bot" d="M 138,80 A 58,58 0 0,1 22,80" fill="none" />
+          </defs>
+          <text fill="#991b1b" font-size="7.8" font-weight="900" letter-spacing="1.2" font-family="'Times New Roman', serif">
+            <textPath href="#seal-arch-top" startOffset="50%" text-anchor="middle">
+              ★ GREFAS CONSULT &amp; ENTERTAINMENT ★
+            </textPath>
+          </text>
+          <text fill="#991b1b" font-size="6.8" font-weight="bold" letter-spacing="1.1" font-family="'Times New Roman', serif">
+            <textPath href="#seal-arch-bot" startOffset="50%" text-anchor="middle">
+              OFFICIAL CORPORATE SEAL • GHANA
+            </textPath>
+          </text>
+          <g transform="translate(80, 80)">
+            <polygon points="0,-14 4,-4 14,-4 6,3 9,13 0,7 -9,13 -6,3 -14,-4 -4,-4" fill="#991b1b" />
+            <text y="21" text-anchor="middle" fill="#991b1b" font-size="8" font-weight="bold" font-family="Arial, sans-serif" letter-spacing="0.8">
+              VERIFIED
+            </text>
+            <text y="28" text-anchor="middle" fill="#991b1b" font-size="6" font-family="Arial, sans-serif" font-weight="600">
+              INCORP. 2024
+            </text>
+          </g>
+        </svg>
+      `;
+
+      // Build Table of Contents Rows
+      const tocRowsHtml = selectedLetters.map((l, idx) => {
+        const ref = l.referenceNumber || `GREFAS/GEN/${new Date().getFullYear()}/${l.id.substring(0, 5).toUpperCase()}`;
+        const formattedDate = new Date(l.date || new Date()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        const divisionBadge = l.letterheadType === 'entertainment' 
+          ? 'Entertainment' 
+          : l.letterheadType === 'consult' ? 'Business Consult' : 'Joint Group';
+        return `
+          <tr style="border-bottom: 1px solid #e5e7eb; font-size: 9pt;">
+            <td style="padding: 6px 8px; font-weight: bold; text-align: center; color: #6b7280;">${idx + 1}</td>
+            <td style="padding: 6px 8px; font-family: monospace; font-weight: bold; color: #c2410c;">${ref}</td>
+            <td style="padding: 6px 8px; color: #374151;">${formattedDate}</td>
+            <td style="padding: 6px 8px; font-weight: 600; color: #111827;">${l.recipientName}</td>
+            <td style="padding: 6px 8px; color: #4b5563;">${divisionBadge}</td>
+            <td style="padding: 6px 8px; font-weight: 700; color: #7c2d12;">${l.classification || 'OFFICIAL'}</td>
+            <td style="padding: 6px 8px; color: #1f2937; max-width: 200px;">${l.subject}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Build Individual Letter Pages
+      const letterSheetsHtml = selectedLetters.map((letter, idx) => {
+        let headerTitle = settings.letterheadJointTitle || "GREFAS ENTERTAINMENT & CONSULT";
+        let headerSubtitle = settings.letterheadJointSubtitle || "Theatre, Film Casting, Artiste Management, Production & Business Consulting";
+        
+        if (letter.letterheadType === 'entertainment') {
+          headerTitle = settings.letterheadEntTitle || "GREFAS ENTERTAINMENT & PRODUCTIONS";
+          headerSubtitle = settings.letterheadEntSubtitle || "Skit & Movie Production, Casting Services, Creative Arts and Artiste Management";
+        } else if (letter.letterheadType === 'consult') {
+          headerTitle = settings.letterheadConsultTitle || "GREFAS BUSINESS & STRATEGY CONSULT";
+          headerSubtitle = settings.letterheadConsultSubtitle || "Corporate Advisory, Visa Interview Preparation, Strategic Management Consulting";
+        }
+
+        const logoHtml = settings.logoUrl 
+          ? `<img src="${settings.logoUrl}" class="letterhead-logo" alt="Grefas Logo" referrerPolicy="no-referrer" />`
+          : `<div class="letterhead-logo-placeholder">GREFAS</div>`;
+
+        const formattedDate = new Date(letter.date || new Date()).toLocaleDateString('en-GB', { 
+          day: 'numeric', 
+          month: 'long', 
+          year: 'numeric' 
+        });
+
+        const refNum = letter.referenceNumber || `GREFAS/GEN/${new Date().getFullYear()}/${letter.id.substring(0, 5).toUpperCase()}`;
+        const classificationTag = letter.classification || 'OFFICIAL CORRESPONDENCE';
+        const valedictionText = letter.valediction || 'Yours faithfully,';
+        const formattedBody = formatLetterBodyHtml(letter.body);
+        const qrCodeDataUrl = qrMap.get(letter.id) || '';
+
+        return `
+          <div class="archive-letter-sheet ${idx < selectedLetters.length - 1 ? 'page-break' : ''}">
+            <!-- Compendium Running Archive Bar -->
+            <div class="archive-running-header">
+              <span class="running-title">GREFAS CORPORATE ARCHIVES COMPENDIUM</span>
+              <span class="running-meta">DOCUMENT ${idx + 1} OF ${selectedLetters.length}</span>
+              <span class="running-ref">REF: ${refNum}</span>
+            </div>
+
+            <!-- Letterhead Header -->
+            <div class="letterhead-header">
+              <div class="logo-box">
+                ${logoHtml}
+              </div>
+              <div class="letterhead-info">
+                <h1 class="company-name">${headerTitle}</h1>
+                <p class="company-subtitle">${headerSubtitle}</p>
+                <p class="company-reg-line">${settings.registrationNumber || 'Reg. No: CS-289412024 • TIN: C0048192837'}</p>
+                <p class="company-contact">
+                  ${settings.address} • ${settings.officeGps || 'GPS: AI-0008-9223'}<br/>
+                  Phone: ${settings.phone} • Email: ${settings.email}<br/>
+                  Official Web Portal: <a href="https://www.${cleanWebsite}" class="company-web-link">www.${cleanWebsite}</a>
+                </p>
+              </div>
+            </div>
+
+            <!-- Reference & Classification Strip -->
+            <div class="reference-strip">
+              <div><strong>Our Ref:</strong> <span class="ref-tag">${refNum}</span></div>
+              <div class="classification-pill">${classificationTag}</div>
+              <div><strong>Date:</strong> ${formattedDate}</div>
+            </div>
+
+            <!-- Recipient Metadata -->
+            <div class="letter-meta">
+              <div class="recipient-block">
+                <p class="recipient-salute-to">TO:</p>
+                <h2 class="recipient-name">${letter.recipientName}</h2>
+                ${letter.recipientDesignation ? `<p class="recipient-designation">${letter.recipientDesignation}</p>` : ''}
+                ${letter.recipientCompany ? `<p class="recipient-company">${letter.recipientCompany}</p>` : ''}
+                <p class="recipient-address">${letter.recipientAddress || 'Address on file'}</p>
+              </div>
+              <div class="date-block">
+                <strong>Effective Date:</strong><br/>
+                ${formattedDate}
+              </div>
+            </div>
+
+            <!-- Subject Header -->
+            <div class="subject-container">
+              <div class="subject-line">
+                RE: ${letter.subject.toUpperCase()}
+              </div>
+            </div>
+
+            <!-- Salutation -->
+            <div class="salutation">
+              ${letter.salutation}
+            </div>
+
+            <!-- Body Paragraphs -->
+            <div class="letter-body">
+              ${formattedBody}
+            </div>
+
+            <!-- Sign-off, Corporate Seal & Verification QR -->
+            <div class="sign-off-section">
+              <div class="sign-off-block">
+                <div class="sign-off-valediction">${valedictionText}</div>
+                <div class="signature-space">
+                  ${letter.signatorySignature ? `<img src="${letter.signatorySignature}" class="signature-img" alt="Digital Signature" />` : ''}
+                </div>
+                <p class="signatory-name">${letter.signatoryName}</p>
+                <p class="signatory-title">${letter.signatoryTitle}</p>
+                <p class="signatory-company">For: Grefas Consult &amp; Entertainment Limited</p>
+              </div>
+
+              <div class="seal-and-qr-group">
+                ${letter.showSeal !== false ? `<div class="official-seal-box">${corporateSealSvg}</div>` : ''}
+                ${qrCodeDataUrl ? `
+                  <div class="verification-qr-box">
+                    <img src="${qrCodeDataUrl}" class="qr-code-img" alt="Verification QR Code" />
+                    <div class="qr-code-meta">
+                      <span class="qr-code-title">DIGITAL AUTHENTICATION</span>
+                      <span class="qr-code-instruction">Scan camera to verify</span>
+                      <span class="qr-code-ref">Ref: ${refNum}</span>
+                      <span class="qr-code-url">www.${cleanWebsite}/verify-letter</span>
+                    </div>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+
+            <!-- Security Verification Footer -->
+            <div class="letter-footer">
+              <div class="footer-security-row">
+                <span class="security-hash">DOC-ID: ${refNum.replace(/[^a-zA-Z0-9]/g, '')}</span>
+                <span>AUTHENTICITY VERIFIABLE AT WWW.${cleanWebsite.toUpperCase()}/VERIFY-LETTER</span>
+                <span>ARCHIVE TRANSCRIPT</span>
+              </div>
+              <div class="footer-disclaimer">
+                This document is an authentic corporate correspondence issued under the authority of Grefas Consult &amp; Entertainment Limited. Any unauthorized alteration, erasure, or duplication renders this instrument null and void.
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Grefas Consolidated Letters Archive - ${archiveBatchRef}</title>
+            <style>
+              @page {
+                size: A4 portrait;
+                margin: 16mm 14mm 16mm 14mm;
+              }
+              * {
+                box-sizing: border-box;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              body {
+                font-family: "Times New Roman", Times, Georgia, serif;
+                color: #111827;
+                margin: 0;
+                padding: 0;
+                background-color: #ffffff;
+                line-height: 1.5;
+              }
+              .page-break {
+                page-break-after: always;
+                break-after: page;
+              }
+
+              /* Archive Cover Page Styles */
+              .archive-cover-page {
+                padding: 10px 0 30px 0;
+                min-height: 90vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+              }
+              .cover-header {
+                text-align: center;
+                border-bottom: 2.5px solid #111827;
+                padding-bottom: 18px;
+                margin-bottom: 24px;
+              }
+              .cover-logo-img {
+                max-height: 70px;
+                object-fit: contain;
+                margin-bottom: 8px;
+              }
+              .cover-org-title {
+                font-size: 18pt;
+                font-weight: 900;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+                margin: 0 0 4px 0;
+                color: #111827;
+              }
+              .cover-org-subtitle {
+                font-size: 9.5pt;
+                color: #4b5563;
+                margin: 0 0 6px 0;
+                font-family: Arial, sans-serif;
+              }
+              .cover-title-badge {
+                display: inline-block;
+                background: #c2410c;
+                color: #ffffff;
+                padding: 6px 18px;
+                font-size: 11pt;
+                font-weight: 900;
+                letter-spacing: 1.2px;
+                text-transform: uppercase;
+                border-radius: 4px;
+                margin-top: 10px;
+                font-family: Arial, sans-serif;
+              }
+              .cover-metrics-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 12px;
+                margin-bottom: 24px;
+                font-family: Arial, sans-serif;
+              }
+              .cover-metric-card {
+                border: 1px solid #d1d5db;
+                background: #f9fafb;
+                padding: 10px;
+                border-radius: 6px;
+                text-align: center;
+              }
+              .cover-metric-label {
+                font-size: 7.5pt;
+                color: #6b7280;
+                text-transform: uppercase;
+                font-weight: 700;
+                margin-bottom: 4px;
+              }
+              .cover-metric-value {
+                font-size: 13pt;
+                font-weight: 900;
+                color: #111827;
+              }
+
+              .manifest-title {
+                font-family: Arial, sans-serif;
+                font-size: 11pt;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                margin: 0 0 10px 0;
+                color: #111827;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+              }
+              .manifest-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 25px;
+                font-family: Arial, sans-serif;
+              }
+              .manifest-table th {
+                background: #f3f4f6;
+                padding: 8px;
+                font-size: 8pt;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                border-top: 1px solid #d1d5db;
+                border-bottom: 1.5px solid #111827;
+                color: #374151;
+                text-align: left;
+              }
+
+              .cover-certification-box {
+                border: 1.5px solid #991b1b;
+                background: #fff5f5;
+                padding: 14px 18px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                gap: 18px;
+                font-family: Arial, sans-serif;
+                margin-top: auto;
+              }
+              .cover-cert-text {
+                font-size: 8.5pt;
+                color: #4b5563;
+                line-height: 1.4;
+              }
+              .cover-cert-title {
+                font-size: 9.5pt;
+                font-weight: 800;
+                color: #991b1b;
+                margin-bottom: 3px;
+                text-transform: uppercase;
+              }
+
+              /* Running Header for Archive Letters */
+              .archive-running-header {
+                font-family: Arial, sans-serif;
+                font-size: 7.5pt;
+                color: #6b7280;
+                border-bottom: 1px solid #e5e7eb;
+                padding-bottom: 4px;
+                margin-bottom: 12px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                text-transform: uppercase;
+                letter-spacing: 0.6px;
+                font-weight: 700;
+              }
+              .running-ref {
+                font-family: monospace;
+                color: #c2410c;
+              }
+
+              /* Official Letterhead Styles */
+              .letterhead-header {
+                display: flex;
+                align-items: center;
+                gap: 18px;
+                border-bottom: 2px solid #111827;
+                padding-bottom: 10px;
+                margin-bottom: 14px;
+              }
+              .logo-box {
+                width: 85px;
+                height: 85px;
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+              .letterhead-logo {
+                max-width: 85px;
+                max-height: 85px;
+                object-fit: contain;
+              }
+              .letterhead-logo-placeholder {
+                width: 85px;
+                height: 85px;
+                background: #ea580c;
+                color: white;
+                font-weight: 900;
+                font-size: 14pt;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 4px;
+                letter-spacing: 1px;
+                font-family: Arial, sans-serif;
+              }
+              .letterhead-info {
+                flex: 1;
+              }
+              .company-name {
+                font-size: 14pt;
+                font-weight: 900;
+                letter-spacing: 1px;
+                margin: 0 0 2px 0;
+                color: #111827;
+                text-transform: uppercase;
+              }
+              .company-subtitle {
+                font-size: 8pt;
+                color: #4b5563;
+                font-weight: 600;
+                margin: 0 0 3px 0;
+                font-family: Arial, sans-serif;
+              }
+              .company-reg-line {
+                font-size: 7.2pt;
+                color: #6b7280;
+                margin: 0 0 2px 0;
+                font-family: Arial, sans-serif;
+                font-weight: bold;
+              }
+              .company-contact {
+                font-size: 7.2pt;
+                color: #6b7280;
+                margin: 0;
+                line-height: 1.35;
+                font-family: Arial, sans-serif;
+              }
+              .company-web-link {
+                color: #c2410c;
+                text-decoration: none;
+                font-weight: bold;
+              }
+
+              /* Reference Strip */
+              .reference-strip {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                padding: 4px 10px;
+                margin-bottom: 14px;
+                font-size: 9pt;
+                font-family: Arial, sans-serif;
+              }
+              .ref-tag {
+                font-family: "Courier New", Courier, monospace;
+                font-weight: bold;
+                color: #c2410c;
+              }
+              .classification-pill {
+                background: #fed7aa;
+                color: #7c2d12;
+                font-weight: 900;
+                font-size: 7pt;
+                padding: 2px 8px;
+                border-radius: 9999px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+
+              /* Recipient & Date */
+              .letter-meta {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                margin-bottom: 16px;
+              }
+              .recipient-block {
+                max-width: 65%;
+              }
+              .recipient-salute-to {
+                font-size: 8.5pt;
+                font-weight: bold;
+                color: #6b7280;
+                margin: 0 0 2px 0;
+                font-family: Arial, sans-serif;
+              }
+              .recipient-name {
+                font-size: 11pt;
+                font-weight: 900;
+                color: #111827;
+                margin: 0 0 1px 0;
+              }
+              .recipient-designation {
+                font-size: 9.5pt;
+                color: #4b5563;
+                font-style: italic;
+                margin: 0 0 1px 0;
+              }
+              .recipient-company {
+                font-size: 9.5pt;
+                font-weight: 700;
+                color: #1f2937;
+                margin: 0 0 2px 0;
+              }
+              .recipient-address {
+                white-space: pre-line;
+                margin: 0;
+                color: #374151;
+                font-size: 9.5pt;
+                line-height: 1.35;
+              }
+              .date-block {
+                text-align: right;
+                font-size: 10pt;
+              }
+
+              /* Subject Header */
+              .subject-container {
+                margin-bottom: 16px;
+              }
+              .subject-line {
+                font-size: 11pt;
+                font-weight: 900;
+                text-transform: uppercase;
+                text-align: center;
+                padding: 5px 10px;
+                border-top: 1.5px solid #111827;
+                border-bottom: 1.5px solid #111827;
+                letter-spacing: 0.6px;
+                color: #111827;
+              }
+
+              /* Salutation & Body */
+              .salutation {
+                font-size: 10.5pt;
+                font-weight: 700;
+                margin-bottom: 10px;
+              }
+              .letter-body {
+                text-align: justify;
+                margin-bottom: 22px;
+                font-size: 10.5pt;
+              }
+              .body-p {
+                text-indent: 28px;
+                margin: 0 0 10px 0;
+                line-height: 1.55;
+              }
+
+              /* Sign-off & Seal */
+              .sign-off-section {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-end;
+                margin-top: 18px;
+                page-break-inside: avoid;
+              }
+              .sign-off-block {
+                font-size: 10.5pt;
+                min-width: 240px;
+              }
+              .sign-off-valediction {
+                margin-bottom: 10px;
+                font-weight: 600;
+              }
+              .signature-space {
+                min-height: 50px;
+                display: flex;
+                align-items: center;
+              }
+              .signature-img {
+                max-height: 50px;
+                max-width: 160px;
+                object-fit: contain;
+                margin: 2px 0;
+              }
+              .signatory-name {
+                font-weight: 800;
+                font-size: 10.5pt;
+                margin: 0;
+                color: #111827;
+              }
+              .signatory-title {
+                color: #4b5563;
+                margin: 2px 0 0 0;
+                font-size: 9pt;
+                font-weight: 600;
+              }
+              .signatory-company {
+                font-size: 8pt;
+                color: #6b7280;
+                margin: 1px 0 0 0;
+                font-family: Arial, sans-serif;
+              }
+              .official-seal-box {
+                text-align: center;
+                padding-right: 6px;
+              }
+              .seal-and-qr-group {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+              }
+              .verification-qr-box {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                border: 1px solid #d1d5db;
+                background: #f9fafb;
+                padding: 4px 8px;
+                border-radius: 4px;
+              }
+              .qr-code-img {
+                width: 48px;
+                height: 48px;
+                object-fit: contain;
+                display: block;
+                border: 1px solid #e5e7eb;
+                background: #fff;
+                padding: 2px;
+              }
+              .qr-code-meta {
+                font-family: Arial, sans-serif;
+                font-size: 6.5pt;
+                line-height: 1.25;
+                color: #4b5563;
+                text-align: left;
+              }
+              .qr-code-title {
+                font-weight: 800;
+                color: #111827;
+                display: block;
+                letter-spacing: 0.5px;
+              }
+              .qr-code-instruction {
+                color: #c2410c;
+                font-weight: 700;
+                display: block;
+              }
+              .qr-code-ref {
+                font-family: "Courier New", monospace;
+                color: #1f2937;
+                display: block;
+                font-size: 6.2pt;
+                font-weight: bold;
+              }
+              .qr-code-url {
+                color: #6b7280;
+                font-size: 5.8pt;
+                display: block;
+              }
+
+              /* Letter Footer */
+              .letter-footer {
+                margin-top: 25px;
+                border-top: 1px solid #d1d5db;
+                padding-top: 6px;
+                font-size: 7pt;
+                color: #6b7280;
+                font-family: Arial, sans-serif;
+                page-break-inside: avoid;
+              }
+              .footer-security-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 3px;
+                font-weight: 700;
+                color: #374151;
+              }
+              .security-hash {
+                font-family: "Courier New", monospace;
+              }
+              .footer-disclaimer {
+                line-height: 1.3;
+                color: #9ca3af;
+              }
+            </style>
+          </head>
+          <body>
+            <!-- ARCHIVE COVER PAGE -->
+            <div class="archive-cover-page page-break">
+              <div>
+                <div class="cover-header">
+                  ${settings.logoUrl ? `<img src="${settings.logoUrl}" class="cover-logo-img" alt="Grefas Logo" />` : ''}
+                  <h1 class="cover-org-title">GREFAS CONSULT &amp; ENTERTAINMENT</h1>
+                  <p class="cover-org-subtitle">Corporate Secretariat • Executive Records &amp; Document Archive Management</p>
+                  <p style="font-size: 8pt; color: #6b7280; font-family: Arial, sans-serif; margin: 0;">
+                    ${settings.registrationNumber || 'Reg. No: CS-289412024 • TIN: C0048192837'} • ${settings.address}
+                  </p>
+                  <div>
+                    <span class="cover-title-badge">OFFICIAL CORRESPONDENCE ARCHIVE COMPENDIUM</span>
+                  </div>
+                </div>
+
+                <!-- Archival Metadata Grid -->
+                <div class="cover-metrics-grid">
+                  <div class="cover-metric-card">
+                    <div class="cover-metric-label">Batch Archive Ref</div>
+                    <div class="cover-metric-value" style="font-size: 9.5pt; font-family: monospace; color: #c2410c;">${archiveBatchRef}</div>
+                  </div>
+                  <div class="cover-metric-card">
+                    <div class="cover-metric-label">Total Documents</div>
+                    <div class="cover-metric-value">${selectedLetters.length}</div>
+                  </div>
+                  <div class="cover-metric-card">
+                    <div class="cover-metric-label">Archived On</div>
+                    <div class="cover-metric-value" style="font-size: 10pt;">${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                  </div>
+                  <div class="cover-metric-card">
+                    <div class="cover-metric-label">Compiling Officer</div>
+                    <div class="cover-metric-value" style="font-size: 9.5pt; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${compilingOfficial}</div>
+                  </div>
+                </div>
+
+                <!-- Table of Contents / Executive Manifest -->
+                <div class="manifest-title">
+                  <span>Executive Archive Manifest &amp; Document Index</span>
+                </div>
+                <table class="manifest-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 35px; text-align: center;">#</th>
+                      <th style="width: 140px;">Reference Number</th>
+                      <th style="width: 95px;">Issue Date</th>
+                      <th>Addressee / Recipient</th>
+                      <th style="width: 100px;">Division</th>
+                      <th style="width: 100px;">Classification</th>
+                      <th>Subject</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${tocRowsHtml}
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Archival Certification Footer Box -->
+              <div class="cover-certification-box">
+                <div style="flex-shrink: 0;">
+                  ${corporateSealSvg}
+                </div>
+                <div class="cover-cert-text">
+                  <div class="cover-cert-title">Corporate Certification &amp; Authentication Notice</div>
+                  This consolidated document archive constitutes an official and tamper-evident repository of correspondence issued under the corporate seal and executive mandate of Grefas Consult &amp; Entertainment Limited. Every instrument contained herein remains verifiable at <strong>www.${cleanWebsite}/verify-letter</strong> using its unique reference number.
+                  <div style="margin-top: 6px; font-weight: bold; color: #111827;">
+                    Certified by: ${compilingOfficial} • Corporate Secretariat • Issued in the Republic of Ghana
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SEQUENTIAL LETTER SHEETS -->
+            ${letterSheetsHtml}
+
+            <script>
+              window.addEventListener('load', function() {
+                var images = document.getElementsByTagName('img');
+                var loadedCount = 0;
+                var totalImages = images.length;
+                
+                if (totalImages === 0) {
+                  setTimeout(function() { window.print(); }, 400);
+                  return;
+                }
+                
+                function onImageLoad() {
+                  loadedCount++;
+                  if (loadedCount >= totalImages) {
+                    setTimeout(function() { window.print(); }, 400);
+                  }
+                }
+                
+                for (var i = 0; i < totalImages; i++) {
+                  if (images[i].complete) {
+                    onImageLoad();
+                  } else {
+                    images[i].addEventListener('load', onImageLoad);
+                    images[i].addEventListener('error', onImageLoad);
+                  }
+                }
+              });
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+
+      await logAuditActivity({
+        type: 'export',
+        module: 'Official Letters',
+        action: 'EXPORT_CONSOLIDATED_ARCHIVE',
+        description: `Exported consolidated PDF archive containing ${selectedLetters.length} official letters. Batch Ref: ${archiveBatchRef}.`,
+        targetId: archiveBatchRef,
+        targetName: `Archive Batch (${selectedLetters.length} Letters)`
+      });
+
+      toast.success(`Consolidated PDF archive containing ${selectedLetters.length} letters ready! Print dialog initiated.`, { id: toastId });
+    } catch (err: any) {
+      console.error('Consolidated archive error:', err);
+      toast.error(`Failed to generate consolidated archive: ${err.message}`, { id: toastId });
+    } finally {
+      setIsGeneratingArchive(false);
+    }
+  };
+
   const updateLetterContactInfo = async (letterId: string, phone: string, email: string) => {
     if (!letterId || letterId === 'draft') return;
     try {
@@ -1586,6 +2661,7 @@ We take this opportunity to convey our profound gratitude for your exemplary con
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          appOrigin: window.location.origin,
           recipientEmail: emailToUse.trim(),
           recipientName: letter.recipientName,
           recipientDesignation: letter.recipientDesignation,
@@ -1780,6 +2856,19 @@ For: Grefas Consult & Entertainment Limited`;
             Letters Directory ({letters.length})
           </Button>
           <Button
+            id="btn-tab-history"
+            variant={activeTab === 'history' ? 'default' : 'outline'}
+            onClick={() => {
+              setVersionFilterRef('');
+              setActiveTab('history');
+            }}
+            className={`flex-1 md:flex-none text-xs font-bold uppercase tracking-wider px-4 ${
+              activeTab === 'history' ? 'bg-orange-600 hover:bg-orange-700 text-white' : ''
+            }`}
+          >
+            <History className="h-3.5 w-3.5 mr-1" /> Version History ({versions.length})
+          </Button>
+          <Button
             id="btn-tab-compose"
             variant={activeTab === 'compose' ? 'default' : 'outline'}
             onClick={handleComposeTabClick}
@@ -1794,6 +2883,53 @@ For: Grefas Consult & Entertainment Limited`;
 
       {activeTab === 'list' ? (
         <div className="space-y-4">
+          {/* Multi-select batch export toolbar banner */}
+          {selectedLetterIds.length > 0 && (
+            <div className="bg-orange-50/90 dark:bg-orange-950/50 border-2 border-orange-300 dark:border-orange-800 p-3.5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-in fade-in-50">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-orange-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                  {selectedLetterIds.length}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-foreground flex items-center gap-2">
+                    <span>{selectedLetterIds.length} {selectedLetterIds.length === 1 ? 'Official Letter Selected' : 'Official Letters Selected'}</span>
+                    <span className="text-[10px] bg-orange-200 dark:bg-orange-900/60 text-orange-900 dark:text-orange-200 px-2 py-0.5 rounded-full font-semibold">
+                      Batch Compendium
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Compile and export selected official letters as a single consolidated corporate PDF archive with table of contents &amp; verification seals.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                <Button
+                  id="btn-clear-selection"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleClearSelection}
+                  className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Deselect All
+                </Button>
+                <Button
+                  id="btn-export-consolidated-archive"
+                  size="sm"
+                  onClick={handleExportSelectedArchive}
+                  disabled={isGeneratingArchive}
+                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold flex items-center gap-1.5 h-8 shadow-xs"
+                >
+                  {isGeneratingArchive ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileArchive className="h-3.5 w-3.5" />
+                  )}
+                  Export Consolidated PDF Archive ({selectedLetterIds.length})
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Filtering and search bar */}
           <div className="bg-card p-4 rounded-xl border border-border flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
@@ -1807,7 +2943,7 @@ For: Grefas Consult & Entertainment Limited`;
                 className="pl-9 bg-muted/35 text-xs h-9"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 id="filter-recipient-type"
                 value={filterType}
@@ -1819,6 +2955,24 @@ For: Grefas Consult & Entertainment Limited`;
                 <option value="individual">Individuals</option>
                 <option value="institution">Institutions</option>
               </select>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleToggleSelectAll}
+                className="text-xs font-bold h-9 border-border/80 text-foreground flex items-center gap-1.5"
+                title="Select or deselect all visible letters"
+              >
+                {filteredLetters.length > 0 && selectedLetterIds.length === filteredLetters.length ? (
+                  <>
+                    <CheckSquare className="h-3.5 w-3.5 text-orange-600" /> Deselect Visible
+                  </>
+                ) : (
+                  <>
+                    <Square className="h-3.5 w-3.5 text-muted-foreground" /> Select All ({filteredLetters.length})
+                  </>
+                )}
+              </Button>
             </div>
           </div>
 
@@ -1853,16 +3007,34 @@ For: Grefas Consult & Entertainment Limited`;
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-border bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <th className="p-4 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all letters"
+                          checked={filteredLetters.length > 0 && selectedLetterIds.length === filteredLetters.length}
+                          onChange={handleToggleSelectAll}
+                          className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                        />
+                      </th>
                       <th className="p-4 w-48">Date / Reference</th>
                       <th className="p-4">Recipient Info</th>
                       <th className="p-4">Subject</th>
                       <th className="p-4 w-36">Classification</th>
-                      <th className="p-4 w-48 text-right">Actions</th>
+                      <th className="p-4 w-52 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {filteredLetters.map((letter) => (
-                      <tr key={letter.id} className="hover:bg-muted/15 transition-all">
+                      <tr key={letter.id} className={`hover:bg-muted/15 transition-all ${selectedLetterIds.includes(letter.id) ? 'bg-orange-50/30 dark:bg-orange-950/20' : ''}`}>
+                        <td className="p-4 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select letter ${letter.subject}`}
+                            checked={selectedLetterIds.includes(letter.id)}
+                            onChange={() => handleToggleSelectLetter(letter.id)}
+                            className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="p-4">
                           <p className="text-xs font-bold text-foreground">
                             {new Date(letter.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -1901,10 +3073,24 @@ For: Grefas Consult & Entertainment Limited`;
                         <td className="p-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <Button
+                              id={`btn-history-${letter.id}`}
+                              size="icon"
+                              variant="outline"
+                              title="View Document Version History & Manual Overrides"
+                              onClick={() => {
+                                setVersionFilterRef(letter.referenceNumber || letter.id);
+                                setVersionSearch('');
+                                setActiveTab('history');
+                              }}
+                              className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 border-amber-200"
+                            >
+                              <History className="h-4 w-4" />
+                            </Button>
+                            <Button
                               id={`btn-edit-${letter.id}`}
                               size="icon"
                               variant="outline"
-                              title="Edit Letter"
+                              title="Edit Letter (Logs Manual Override in Version History)"
                               onClick={() => handleStartEdit(letter)}
                               className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
                             >
@@ -1962,6 +3148,230 @@ For: Grefas Consult & Entertainment Limited`;
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      ) : activeTab === 'history' ? (
+        /* DOCUMENT VERSION HISTORY TAB */
+        <div className="space-y-4">
+          {/* Version History Filter & Search Bar */}
+          <div className="bg-card p-4 rounded-xl border border-border flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="search-version-history-input"
+                type="text"
+                placeholder="Search audit trail by reference number, recipient, subject, or administrator..."
+                value={versionSearch}
+                onChange={(e) => setVersionSearch(e.target.value)}
+                className="pl-9 bg-muted/35 text-xs h-9"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                id="filter-version-change-type"
+                value={versionFilterType}
+                onChange={(e) => setVersionFilterType(e.target.value)}
+                className="bg-card border border-border rounded-lg px-3 text-xs h-9 text-muted-foreground font-medium"
+              >
+                <option value="all">All Change Types</option>
+                <option value="INITIAL_ISSUE">Initial Issues (v1)</option>
+                <option value="MANUAL_OVERRIDE">Manual Overrides</option>
+                <option value="REVISED_BODY">Revised Body Paragraphs</option>
+                <option value="SIGNATORY_CHANGE">Signatory Authority Changes</option>
+                <option value="ROLLBACK">Restored / Rollback Versions</option>
+              </select>
+
+              {versionFilterRef && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setVersionFilterRef('')}
+                  className="text-xs h-9 border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 flex items-center gap-1.5 font-bold"
+                >
+                  <span>Filtering: {versionFilterRef}</span>
+                  <span className="text-xs">✕</span>
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Version History Table */}
+          <div className="bg-card border border-border rounded-xl overflow-hidden shadow-xs">
+            {loadingVersions ? (
+              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin text-orange-600 mb-2" />
+                <p className="text-xs">Loading document audit trail...</p>
+              </div>
+            ) : (() => {
+              const filteredVersions = versions.filter(v => {
+                const matchesRef = !versionFilterRef || 
+                  (v.referenceNumber && v.referenceNumber.toLowerCase() === versionFilterRef.toLowerCase()) || 
+                  v.letterId === versionFilterRef;
+                const matchesType = versionFilterType === 'all' || v.changeType === versionFilterType;
+                const term = versionSearch.toLowerCase().trim();
+                const matchesSearch = !term || 
+                  (v.referenceNumber && v.referenceNumber.toLowerCase().includes(term)) ||
+                  (v.snapshot?.recipientName && v.snapshot.recipientName.toLowerCase().includes(term)) ||
+                  (v.snapshot?.subject && v.snapshot.subject.toLowerCase().includes(term)) ||
+                  (v.adminEmail && v.adminEmail.toLowerCase().includes(term)) ||
+                  (v.summary && v.summary.toLowerCase().includes(term)) ||
+                  (v.notes && v.notes.toLowerCase().includes(term));
+                return matchesRef && matchesType && matchesSearch;
+              });
+
+              if (filteredVersions.length === 0) {
+                return (
+                  <div className="text-center p-12">
+                    <History className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                    <h3 className="font-bold text-sm text-foreground mb-1">No Version History Records Found</h3>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto mb-4">
+                      {versionSearch || versionFilterType !== 'all' || versionFilterRef
+                        ? 'No audit log entries match your active filters. Try clearing your search parameters.'
+                        : 'Every time an official letter is composed, manually overridden, or revised, a tamper-evident audit snapshot will automatically appear here.'}
+                    </p>
+                    {versionFilterRef && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setVersionFilterRef('')}
+                        className="text-xs font-bold"
+                      >
+                        Clear Reference Filter
+                      </Button>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/30 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        <th className="p-4 w-32">Version &amp; Timestamp</th>
+                        <th className="p-4 w-44">Reference &amp; Scope</th>
+                        <th className="p-4">Recipient &amp; Document Subject</th>
+                        <th className="p-4 w-44">Change Event</th>
+                        <th className="p-4 w-48">Administrator &amp; Notes</th>
+                        <th className="p-4 w-36 text-right">Audit Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border text-xs">
+                      {filteredVersions.map((ver) => {
+                        const dateFormatted = ver.createdAt?.toDate 
+                          ? ver.createdAt.toDate().toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                          : 'Recorded';
+
+                        let badgeColor = 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300';
+                        if (ver.changeType === 'INITIAL_ISSUE') {
+                          badgeColor = 'bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300 border-green-200';
+                        } else if (ver.changeType === 'MANUAL_OVERRIDE') {
+                          badgeColor = 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200';
+                        } else if (ver.changeType === 'REVISED_BODY') {
+                          badgeColor = 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200';
+                        } else if (ver.changeType === 'ROLLBACK') {
+                          badgeColor = 'bg-purple-100 text-purple-800 dark:bg-purple-950/50 dark:text-purple-300 border-purple-200';
+                        } else if (ver.changeType === 'SIGNATORY_CHANGE') {
+                          badgeColor = 'bg-rose-100 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300 border-rose-200';
+                        }
+
+                        return (
+                          <tr key={ver.id} className="hover:bg-muted/15 transition-all">
+                            <td className="p-4">
+                              <div className="flex items-center gap-1.5">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md font-mono font-black text-[11px] bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border border-orange-200">
+                                  v{ver.versionNumber}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+                                <Clock className="h-3 w-3" /> {dateFormatted}
+                              </p>
+                            </td>
+
+                            <td className="p-4">
+                              <p className="font-mono font-bold text-orange-600 text-xs">
+                                {ver.referenceNumber}
+                              </p>
+                              <span className="inline-block mt-0.5 text-[9px] uppercase font-black px-1.5 py-0.2 rounded bg-muted text-muted-foreground border border-border/80">
+                                {ver.snapshot?.classification || 'OFFICIAL'}
+                              </span>
+                            </td>
+
+                            <td className="p-4">
+                              <p className="font-bold text-foreground line-clamp-1">{ver.snapshot?.subject || 'Untitled Letter'}</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                                <span>To: <strong>{ver.snapshot?.recipientName}</strong></span>
+                                {ver.snapshot?.recipientCompany && <span>({ver.snapshot.recipientCompany})</span>}
+                              </p>
+                            </td>
+
+                            <td className="p-4">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeColor}`}>
+                                {ver.changeType.replace(/_/g, ' ')}
+                              </span>
+                              {ver.changedFields && ver.changedFields.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {ver.changedFields.slice(0, 3).map((f, i) => (
+                                    <span key={i} className="text-[9px] px-1.5 py-0.2 rounded bg-muted/70 text-foreground font-medium">
+                                      {f}
+                                    </span>
+                                  ))}
+                                  {ver.changedFields.length > 3 && (
+                                    <span className="text-[9px] text-muted-foreground">+{ver.changedFields.length - 3}</span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="p-4">
+                              <p className="font-semibold text-foreground text-[11px] truncate max-w-xs">{ver.adminName || ver.adminEmail}</p>
+                              <p className="text-[10px] text-muted-foreground italic line-clamp-2 mt-0.5">
+                                "{ver.notes || ver.summary || 'Manual modification made via Admin Letter Composer.'}"
+                              </p>
+                            </td>
+
+                            <td className="p-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  id={`btn-inspect-version-${ver.id}`}
+                                  size="icon"
+                                  variant="outline"
+                                  title="Inspect Full Historical Snapshot"
+                                  onClick={() => setInspectingVersion(ver)}
+                                  className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  id={`btn-print-version-${ver.id}`}
+                                  size="icon"
+                                  variant="outline"
+                                  title="Print This Historical Snapshot"
+                                  onClick={() => triggerPrintVersionSnapshot(ver)}
+                                  className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-200"
+                                >
+                                  <Printer className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  id={`btn-rollback-version-${ver.id}`}
+                                  size="icon"
+                                  variant="outline"
+                                  title="Rollback Active Document to This Version"
+                                  onClick={() => handleRestoreVersion(ver)}
+                                  className="h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50 border-purple-200"
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         </div>
       ) : (
@@ -2892,6 +4302,24 @@ Please sign and return a duplicate of this engagement letter to our administrati
                   </div>
                 </div>
 
+                {editingLetterId && (
+                  <div className="bg-amber-50/80 dark:bg-amber-950/30 p-3.5 rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-1.5 animate-in fade-in-50">
+                    <label className="text-xs font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                      <History className="h-3.5 w-3.5 text-amber-600" /> Manual Override Audit Justification (Optional)
+                    </label>
+                    <Input
+                      id="input-manual-override-note"
+                      placeholder="e.g. Corrected addressee title, or updated clause 4 per executive directive"
+                      value={manualOverrideNote}
+                      onChange={(e) => setManualOverrideNote(e.target.value)}
+                      className="bg-background text-xs h-8 border-amber-200 dark:border-amber-900/60"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      This override explanation will be permanently recorded in the Document Version History audit log alongside this new snapshot.
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-3 pt-3">
                   <Button
                     id="btn-composer-cancel"
@@ -2899,6 +4327,7 @@ Please sign and return a duplicate of this engagement letter to our administrati
                     variant="outline"
                     onClick={() => {
                       setEditingLetterId(null);
+                      setManualOverrideNote('');
                       setActiveTab('list');
                     }}
                     className="text-xs font-bold"
@@ -2911,7 +4340,7 @@ Please sign and return a duplicate of this engagement letter to our administrati
                     onClick={handleCreateLetter}
                     className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-5"
                   >
-                    {editingLetterId ? 'Update & Archive Letter' : 'Save & Archive Letter'}
+                    {editingLetterId ? 'Update & Record New Version' : 'Save & Archive Letter'}
                   </Button>
                 </div>
               </CardContent>
@@ -3666,6 +5095,160 @@ Please sign and return a duplicate of this engagement letter to our administrati
                   <ExternalLink className="h-3.5 w-3.5" /> Open Verification
                 </a>
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Snapshot Inspection Modal */}
+      {inspectingVersion && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-card border border-border rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 my-8 max-h-[90vh] flex flex-col animate-in fade-in-50 zoom-in-95">
+            {/* Modal Header */}
+            <div className="flex justify-between items-start border-b border-border pb-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-orange-100 dark:bg-orange-950/60 text-orange-600 flex items-center justify-center font-mono font-black text-sm border border-orange-200">
+                  v{inspectingVersion.versionNumber}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-foreground">Document Version Snapshot</h3>
+                    <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-200">
+                      {inspectingVersion.changeType.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                    Ref: {inspectingVersion.referenceNumber}
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setInspectingVersion(null)}
+                className="h-8 w-8 p-0"
+              >
+                ✕
+              </Button>
+            </div>
+
+            {/* Audit Metadata Strip */}
+            <div className="bg-muted/40 p-3.5 rounded-xl border border-border text-xs space-y-2 shrink-0">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold block">Timestamp</span>
+                  <span className="font-medium text-foreground">
+                    {inspectingVersion.createdAt?.toDate 
+                      ? inspectingVersion.createdAt.toDate().toLocaleString('en-GB') 
+                      : 'Earlier Session'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold block">Authorized By</span>
+                  <span className="font-medium text-foreground truncate block">
+                    {inspectingVersion.adminName || inspectingVersion.adminEmail}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold block">Changed Scope</span>
+                  <span className="font-medium text-foreground">
+                    {inspectingVersion.changedFields?.join(', ') || 'Initial issuance'}
+                  </span>
+                </div>
+              </div>
+
+              {inspectingVersion.notes && (
+                <div className="pt-2 border-t border-border/60">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold block">Override Notes / Justification:</span>
+                  <p className="text-foreground italic mt-0.5">"{inspectingVersion.notes}"</p>
+                </div>
+              )}
+            </div>
+
+            {/* Snapshot Document Body (Scrollable) */}
+            <div className="flex-1 overflow-y-auto border border-border rounded-xl p-5 bg-background space-y-4">
+              <div className="flex justify-between items-start text-xs border-b border-border/80 pb-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">Addressee:</p>
+                  <p className="font-bold text-foreground text-sm">{inspectingVersion.snapshot.recipientName}</p>
+                  {(inspectingVersion.snapshot.recipientDesignation || inspectingVersion.snapshot.recipientCompany) && (
+                    <p className="text-muted-foreground">
+                      {[inspectingVersion.snapshot.recipientDesignation, inspectingVersion.snapshot.recipientCompany].filter(Boolean).join(' • ')}
+                    </p>
+                  )}
+                  {inspectingVersion.snapshot.recipientAddress && (
+                    <p className="text-muted-foreground mt-0.5 text-[11px] whitespace-pre-line">{inspectingVersion.snapshot.recipientAddress}</p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">Effective Date:</p>
+                  <p className="font-medium text-foreground">{inspectingVersion.snapshot.date}</p>
+                  <span className="inline-block mt-1 text-[9px] uppercase font-black px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 border border-orange-200">
+                    {inspectingVersion.snapshot.classification || 'OFFICIAL'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="py-2 text-center border-y border-border/80 bg-muted/20">
+                <span className="text-xs font-black uppercase tracking-wider text-foreground">
+                  RE: {inspectingVersion.snapshot.subject}
+                </span>
+              </div>
+
+              <p className="text-xs font-bold text-foreground">{inspectingVersion.snapshot.salutation}</p>
+
+              <div 
+                className="text-xs leading-relaxed text-foreground space-y-2.5"
+                dangerouslySetInnerHTML={{ __html: formatLetterBodyHtml(inspectingVersion.snapshot.body) }}
+              />
+
+              <div className="pt-4 border-t border-border flex justify-between items-end">
+                <div className="text-xs space-y-1">
+                  <p className="text-muted-foreground">{inspectingVersion.snapshot.valediction || 'Yours faithfully,'}</p>
+                  {inspectingVersion.snapshot.signatorySignature && (
+                    <img 
+                      src={inspectingVersion.snapshot.signatorySignature} 
+                      alt="Signatory Signature" 
+                      className="max-h-12 max-w-[140px] object-contain my-1" 
+                    />
+                  )}
+                  <p className="font-bold text-foreground">{inspectingVersion.snapshot.signatoryName}</p>
+                  <p className="text-[11px] text-muted-foreground">{inspectingVersion.snapshot.signatoryTitle}</p>
+                </div>
+                <div className="text-right text-[10px] text-muted-foreground font-mono">
+                  Division: {inspectingVersion.snapshot.letterheadType?.toUpperCase() || 'JOINT'}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setInspectingVersion(null)}
+                className="text-xs"
+              >
+                Close
+              </Button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => triggerPrintVersionSnapshot(inspectingVersion)}
+                  className="text-xs font-bold flex items-center gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Print This Snapshot
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleRestoreVersion(inspectingVersion)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Restore This Version
+                </Button>
+              </div>
             </div>
           </div>
         </div>

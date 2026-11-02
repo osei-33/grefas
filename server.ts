@@ -1466,6 +1466,7 @@ Sitemap: ${domain}/sitemap.xml`);
       orderNumber, 
       serviceDescription, 
       teamMemberName, 
+      teamMemberPhone,
       notes,
       customMessage
     } = req.body;
@@ -1474,7 +1475,7 @@ Sitemap: ${domain}/sitemap.xml`);
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const results = { email: "skipped", sms: "skipped" };
+    const results: { email: string; sms: string; teamMemberSms?: string } = { email: "skipped", sms: "skipped" };
 
     // Send Email
     if (resend && email) {
@@ -1570,7 +1571,7 @@ Sitemap: ${domain}/sitemap.xml`);
       console.warn("RESEND_API_KEY not configured");
     }
 
-    // Send SMS (uses Arkesel SMS gateway)
+    // Send SMS to client (uses Arkesel SMS gateway)
     if (phone) {
       const defaultSms = `Hi ${userName}, your booking ${orderNumber ? `(#${orderNumber}) ` : ''}for ${serviceTitle} on ${date} is CONFIRMED! - Grefas Consult`;
       results.sms = await sendSMS(
@@ -1579,6 +1580,18 @@ Sitemap: ${domain}/sitemap.xml`);
       );
     } else {
       console.warn("SMS sending skipped: recipient phone number is missing");
+    }
+
+    // Send SMS alert to assigned team specialist
+    if (teamMemberPhone) {
+      const memberSms = `Hello ${teamMemberName || 'Specialist'}, you have a new appointment booking (#${orderNumber || 'Pending'}) for ${serviceTitle} on ${date}${time ? ` at ${time}` : ''} with client ${userName} (Tel: ${phone || 'N/A'}). - Grefas Consult`;
+      try {
+        results.teamMemberSms = await sendSMS(teamMemberPhone, memberSms);
+        console.log(`Specialist SMS dispatched from server route to ${teamMemberName} (${teamMemberPhone})`);
+      } catch (specSmsErr) {
+        console.warn("Server SMS to specialist failed:", specSmsErr);
+        results.teamMemberSms = "failed";
+      }
     }
 
     res.json({ status: "ok", results });
@@ -2847,11 +2860,37 @@ CRITICAL FORMATTING INSTRUCTIONS:
       </div>
     ` : '';
 
-    const hostHeader = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
-    const protoHeader = (req.headers['x-forwarded-proto'] as string) || 'https';
-    const baseUrl = hostHeader 
-      ? `${protoHeader}://${hostHeader}` 
-      : `https://${companyWebsite.replace(/^(https?:\/\/)?(www\.)?/, '')}`;
+    // Robust external verification URL resolution (never use localhost in dispatched emails)
+    let baseUrl = (req.body?.appOrigin as string)?.trim() || '';
+    if (!baseUrl || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+      const originHeader = (req.headers.origin as string) || '';
+      if (originHeader && !originHeader.includes('localhost') && !originHeader.includes('127.0.0.1')) {
+        baseUrl = originHeader;
+      }
+    }
+    if (!baseUrl || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+      const refererHeader = (req.headers.referer as string) || '';
+      if (refererHeader) {
+        try {
+          const parsed = new URL(refererHeader);
+          if (!parsed.hostname.includes('localhost') && !parsed.hostname.includes('127.0.0.1')) {
+            baseUrl = parsed.origin;
+          }
+        } catch (e) {}
+      }
+    }
+    if (!baseUrl || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+      const fwdHost = (req.headers['x-forwarded-host'] as string) || '';
+      if (fwdHost && !fwdHost.includes('localhost') && !fwdHost.includes('127.0.0.1')) {
+        const fwdProto = (req.headers['x-forwarded-proto'] as string) || 'https';
+        baseUrl = `${fwdProto}://${fwdHost}`;
+      }
+    }
+    if (!baseUrl || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+      // Default to deployed environment URL
+      baseUrl = 'https://ais-dev-yygez7zhqy6cpuimkrbm2l-770633330023.europe-west2.run.app';
+    }
+    baseUrl = baseUrl.replace(/\/$/, '');
     const verifyUrl = `${baseUrl}/verify-letter?ref=${encodeURIComponent(refLine)}`;
 
     // Generate high-resolution Verification QR Code for email
@@ -3226,6 +3265,21 @@ CRITICAL FORMATTING INSTRUCTIONS:
       title: "Refund Policy | Grefas Consult & Entertainment",
       description: "Read the official Refund Policy and consumer guarantee terms of Grefas Consult & Entertainment in Ghana.",
       canonical: "https://grefasconsultandentertainment.com/privacy-policy",
+    },
+    "/verify-letter": {
+      title: "Official Document Verification | Grefas Consult & Entertainment",
+      description: "Verify the authenticity of official letters, agreements, and corporate instruments issued by Grefas Consult & Entertainment.",
+      canonical: "https://grefasconsultandentertainment.com/verify-letter",
+    },
+    "/verify": {
+      title: "Official Document Verification | Grefas Consult & Entertainment",
+      description: "Verify the authenticity of official letters and corporate instruments issued by Grefas Consult & Entertainment.",
+      canonical: "https://grefasconsultandentertainment.com/verify-letter",
+    },
+    "/letter-verify": {
+      title: "Official Document Verification | Grefas Consult & Entertainment",
+      description: "Verify the authenticity of official letters and corporate instruments issued by Grefas Consult & Entertainment.",
+      canonical: "https://grefasconsultandentertainment.com/verify-letter",
     },
   };
 

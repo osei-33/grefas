@@ -680,6 +680,11 @@ export default function Layout({ children }: LayoutProps) {
                     <ShieldCheck className="h-3.5 w-3.5 shrink-0" /> Verify Official Letter
                   </Link>
                 </li>
+                <li>
+                  <Link to="/verify-member" className="hover:text-orange-600 transition-colors flex items-center gap-1.5 font-semibold text-orange-600 dark:text-orange-400" id="footer-link-verify-member">
+                    <ShieldCheck className="h-3.5 w-3.5 shrink-0" /> Verify Team Member ID
+                  </Link>
+                </li>
               </ul>
             </div>
             <div>

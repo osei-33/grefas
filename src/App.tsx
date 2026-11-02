@@ -104,9 +104,25 @@ function AnimatedRoutes() {
             <Route path="/refund-policy" element={<PrivacyPolicy defaultTab="refund" />} />
             <Route path="/refund" element={<PrivacyPolicy defaultTab="refund" />} />
             <Route path="/verify-letter" element={<VerifyLetter />} />
-            <Route path="/verify" element={<Navigate to="/verify-letter" replace />} />
-            <Route path="/verify-document" element={<Navigate to="/verify-letter" replace />} />
-            <Route path="/verification" element={<Navigate to="/verify-letter" replace />} />
+            <Route path="/verify-letter/:ref" element={<VerifyLetter />} />
+            <Route path="/verify-member" element={<VerifyLetter />} />
+            <Route path="/verify-member/:ref" element={<VerifyLetter />} />
+            <Route path="/verify-team" element={<VerifyLetter />} />
+            <Route path="/verify-team/:ref" element={<VerifyLetter />} />
+            <Route path="/verify-staff" element={<VerifyLetter />} />
+            <Route path="/verify-staff/:ref" element={<VerifyLetter />} />
+            <Route path="/verify" element={<VerifyLetter />} />
+            <Route path="/verify/:ref" element={<VerifyLetter />} />
+            <Route path="/letter-verify" element={<VerifyLetter />} />
+            <Route path="/letter-verify/:ref" element={<VerifyLetter />} />
+            <Route path="/letter/verify" element={<VerifyLetter />} />
+            <Route path="/letter/verify/:ref" element={<VerifyLetter />} />
+            <Route path="/letters/verify" element={<VerifyLetter />} />
+            <Route path="/letters/verify/:ref" element={<VerifyLetter />} />
+            <Route path="/verify-document" element={<VerifyLetter />} />
+            <Route path="/verify-document/:ref" element={<VerifyLetter />} />
+            <Route path="/verification" element={<VerifyLetter />} />
+            <Route path="/verification/:ref" element={<VerifyLetter />} />
 
             <Route path="/blog" element={<Navigate to="/" replace />} />
             <Route path="/blog/:slug" element={<Navigate to="/" replace />} />

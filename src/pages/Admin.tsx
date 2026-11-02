@@ -6836,20 +6836,56 @@ function ManageTeam() {
   const [bulkSignatureText, setBulkSignatureText] = useState('');
   const [bulkSignatureImage, setBulkSignatureImage] = useState('');
   const [isUploadingBulkSig, setIsUploadingBulkSig] = useState(false);
+  const [isBackfillingIds, setIsBackfillingIds] = useState(false);
 
   const [newMember, setNewMember] = useState({
+    memberId: '',
     name: '',
     role: '',
     experience: '',
     bio: '',
     imageUrl: '',
     email: '',
+    phone: '',
     rating: 4.9,
     category: 'consulting',
     skillsInput: '',
     available: true,
     highlightsInput: ''
   });
+
+  const generateNewMemberId = () => {
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    return `GREFAS-TM-${randomSuffix}`;
+  };
+
+  const handleBackfillMemberIds = async () => {
+    setIsBackfillingIds(true);
+    try {
+      let updatedCount = 0;
+      for (let i = 0; i < members.length; i++) {
+        const m = members[i];
+        if (!m.memberId) {
+          const generatedId = `GREFAS-TM-${String(i + 1).padStart(3, '0')}`;
+          await updateDoc(doc(db, 'team_members', m.id), {
+            memberId: generatedId,
+            updatedAt: serverTimestamp()
+          });
+          updatedCount++;
+        }
+      }
+      if (updatedCount > 0) {
+        toast.success(`Successfully assigned unique Member IDs to ${updatedCount} specialist(s)!`);
+      } else {
+        toast.info('All team specialists already have active Member IDs assigned.');
+      }
+    } catch (err) {
+      console.error("Backfilling member IDs failed:", err);
+      toast.error('Could not auto-assign member IDs. Please try again.');
+    } finally {
+      setIsBackfillingIds(false);
+    }
+  };
 
   const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.8): Promise<Blob> => {
     return new Promise((resolve, reject) => {
@@ -7172,14 +7208,17 @@ function ManageTeam() {
         "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400&h=400"
       ];
       const imageUrl = newMember.imageUrl.trim() || defaultImages[Math.floor(Math.random() * defaultImages.length)];
+      const memberIdToSave = newMember.memberId.trim() || generateNewMemberId();
 
       await addDoc(collection(db, 'team_members'), {
+        memberId: memberIdToSave,
         name: newMember.name,
         role: newMember.role,
         experience: newMember.experience,
         bio: newMember.bio,
         imageUrl,
         email: newMember.email.trim(),
+        phone: newMember.phone.trim(),
         rating: Number(newMember.rating) || 4.9,
         category: newMember.category,
         skills,
@@ -7188,15 +7227,17 @@ function ManageTeam() {
         createdAt: serverTimestamp()
       });
 
-      toast.success('Specialist profile added successfully!');
+      toast.success(`Specialist profile added with Member ID: ${memberIdToSave}`);
       setIsAdding(false);
       setNewMember({
+        memberId: '',
         name: '',
         role: '',
         experience: '',
         bio: '',
         imageUrl: '',
         email: '',
+        phone: '',
         rating: 4.9,
         category: 'consulting',
         skillsInput: '',
@@ -7226,14 +7267,17 @@ function ManageTeam() {
         "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400&h=400"
       ];
       const imageUrl = newMember.imageUrl.trim() || defaultImages[Math.floor(Math.random() * defaultImages.length)];
+      const memberIdToSave = newMember.memberId.trim() || generateNewMemberId();
 
       await updateDoc(doc(db, 'team_members', editingId), {
+        memberId: memberIdToSave,
         name: newMember.name,
         role: newMember.role,
         experience: newMember.experience,
         bio: newMember.bio,
         imageUrl,
         email: newMember.email.trim(),
+        phone: newMember.phone.trim(),
         rating: Number(newMember.rating) || 4.9,
         category: newMember.category,
         skills,
@@ -7246,12 +7290,14 @@ function ManageTeam() {
       setEditingId(null);
       setIsAdding(false);
       setNewMember({
+        memberId: '',
         name: '',
         role: '',
         experience: '',
         bio: '',
         imageUrl: '',
         email: '',
+        phone: '',
         rating: 4.9,
         category: 'consulting',
         skillsInput: '',
@@ -7266,12 +7312,14 @@ function ManageTeam() {
   const startEdit = (member: any) => {
     setEditingId(member.id);
     setNewMember({
+      memberId: member.memberId || '',
       name: member.name || '',
       role: member.role || '',
       experience: member.experience || '',
       bio: member.bio || '',
       imageUrl: member.imageUrl || '',
       email: member.email || '',
+      phone: member.phone || member.phoneNumber || '',
       rating: member.rating || 4.9,
       category: member.category || 'consulting',
       skillsInput: member.skills ? member.skills.join(', ') : '',
@@ -7312,34 +7360,48 @@ function ManageTeam() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Manage Team</h1>
           <p className="text-sm text-muted-foreground mt-1">Add or update team specialists, consultants, and event show hosts.</p>
         </div>
-        <Button onClick={() => {
-          if (editingId) {
-            setEditingId(null);
-            setNewMember({
-              name: '',
-              role: '',
-              experience: '',
-              bio: '',
-              imageUrl: '',
-              email: '',
-              rating: 4.9,
-              category: 'consulting',
-              skillsInput: '',
-              available: true,
-              highlightsInput: ''
-            });
-            setIsAdding(false);
-          } else {
-            setIsAdding(!isAdding);
-          }
-        }} className="bg-orange-600 hover:bg-orange-700 text-white">
-          {editingId ? 'Cancel Edit' : (isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add Specialist</>)}
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button onClick={() => {
+            if (editingId) {
+              setEditingId(null);
+              setNewMember({
+                memberId: '',
+                name: '',
+                role: '',
+                experience: '',
+                bio: '',
+                imageUrl: '',
+                email: '',
+                phone: '',
+                rating: 4.9,
+                category: 'consulting',
+                skillsInput: '',
+                available: true,
+                highlightsInput: ''
+              });
+              setIsAdding(false);
+            } else {
+              setIsAdding(!isAdding);
+            }
+          }} className="bg-orange-600 hover:bg-orange-700 text-white">
+            {editingId ? 'Cancel Edit' : (isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add Specialist</>)}
+          </Button>
+          <Button 
+            type="button"
+            variant="outline"
+            disabled={isBackfillingIds}
+            onClick={handleBackfillMemberIds}
+            className="border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 text-xs font-bold"
+          >
+            {isBackfillingIds ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />}
+            Auto-Assign Missing IDs
+          </Button>
+        </div>
       </div>
 
       {(isAdding || editingId) && (
@@ -7350,6 +7412,35 @@ function ManageTeam() {
           </CardHeader>
           <CardContent>
             <form onSubmit={editingId ? handleUpdate : handleAdd} className="space-y-4">
+              
+              {/* Member ID Field with Auto-Generate Helper */}
+              <div className="p-3.5 rounded-xl border border-orange-500/20 bg-orange-500/5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                    Specialist Member ID (Official Public Verification Code)
+                  </label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNewMember(prev => ({ ...prev, memberId: generateNewMemberId() }))}
+                    className="text-xs h-7 px-2.5 font-bold border-orange-300 dark:border-orange-800 text-orange-700 dark:text-orange-300 hover:bg-orange-100/50"
+                  >
+                    Auto-Generate ID
+                  </Button>
+                </div>
+                <Input
+                  value={newMember.memberId}
+                  onChange={(e) => setNewMember({ ...newMember, memberId: e.target.value.toUpperCase() })}
+                  placeholder="E.g., GREFAS-TM-001 (or click Auto-Generate ID)"
+                  className="font-mono text-sm uppercase bg-background"
+                />
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Clients and visitors use this ID to verify the specialist's identity and accreditation status at <span className="font-mono text-orange-600">/verify-member</span>.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Full Name *</label>
@@ -7405,7 +7496,20 @@ function ManageTeam() {
                     onChange={(e) => setNewMember({ ...newMember, email: e.target.value })}
                     placeholder="E.g., specialist@grefas.com"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">Direct message notifications from the chosen specialist's modal will be routed right to this address.</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">Direct message notifications will be routed right to this address.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground flex items-center justify-between">
+                    <span>Specialist Mobile Phone (Instant SMS Alerts)</span>
+                    <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">SMS Gateway</span>
+                  </label>
+                  <Input
+                    type="tel"
+                    value={newMember.phone}
+                    onChange={(e) => setNewMember({ ...newMember, phone: e.target.value })}
+                    placeholder="E.g., +233240000000 or 0244123456"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">Specialist receives immediate SMS alerts whenever a client books an appointment with them.</p>
                 </div>
               </div>
 
@@ -7679,11 +7783,45 @@ function ManageTeam() {
                         )}
                       </p>
                       <p className="text-xs text-orange-600 font-semibold">{member.role}</p>
-                      {member.email && (
-                        <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1 mt-0.5">
-                          <span className="font-semibold text-foreground/85">Email:</span> {member.email}
-                        </p>
-                      )}
+                      
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-muted border border-border text-foreground flex items-center gap-1">
+                          <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                          ID: {member.memberId || 'GREFAS-TM-001'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(member.memberId || 'GREFAS-TM-001');
+                            toast.success(`Copied Specialist ID: ${member.memberId || 'GREFAS-TM-001'}`);
+                          }}
+                          className="text-[10px] text-muted-foreground hover:text-foreground font-semibold flex items-center gap-0.5 hover:underline"
+                          title="Copy Specialist ID"
+                        >
+                          <Copy className="h-2.5 w-2.5" /> Copy
+                        </button>
+                        <a
+                          href={`/verify-member?id=${encodeURIComponent(member.memberId || member.id)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 font-bold flex items-center gap-0.5 hover:underline"
+                        >
+                          Verify <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-muted-foreground">
+                        {member.email && (
+                          <span className="flex items-center gap-1">
+                            <span className="font-semibold text-foreground/80">Email:</span> {member.email}
+                          </span>
+                        )}
+                        {member.phone && (
+                          <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-semibold">
+                            <span className="font-bold text-foreground/80">SMS:</span> {member.phone}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground truncate max-w-sm mt-0.5">{member.bio}</p>
                     </div>
                   </div>

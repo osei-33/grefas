@@ -434,6 +434,15 @@ service cloud.firestore {
       // Allow public read so clients, embassies, institutions, and the public can verify official letters
       allow read: if true;
       allow write: if isStaff();
+
+      match /versions/{versionId} {
+        allow read, write: if isStaff();
+      }
+    }
+
+    match /letter_versions/{versionId} {
+      // Document Version History & audit trail for official letters
+      allow read, write: if isStaff();
     }
 
     match /employees/{employeeId} {

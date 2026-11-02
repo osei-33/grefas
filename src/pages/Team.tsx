@@ -11,18 +11,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Loader2, Briefcase, Award, Star, Mail, ArrowRight, Filter, Sparkles, Check, CheckCircle, Flame, Calendar, MessageSquare, Send, ArrowLeft, MessageCircle } from 'lucide-react';
+import { Loader2, Briefcase, Award, Star, Mail, ArrowRight, Filter, Sparkles, Check, CheckCircle, Flame, Calendar, MessageSquare, Send, ArrowLeft, MessageCircle, ShieldCheck, Copy, ExternalLink, Search } from 'lucide-react';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
 
 interface TeamMember {
   id: string;
+  memberId?: string;
   name: string;
   role: string;
   experience: string;
   bio: string;
   imageUrl: string;
   email?: string;
+  phone?: string;
   skills: string[];
   rating?: number;
   category?: 'consulting' | 'entertainment' | 'both';
@@ -32,12 +34,14 @@ interface TeamMember {
 
 const DEFAULT_MEMBERS = [
   {
+    memberId: "GREFAS-TM-001",
     name: "Dr. Linda Serwaah",
     role: "Principal Consultant & Executive Director",
     experience: "12+ Years in Corporate Consulting",
     bio: "Dr. Linda lead-directs Grefas Consult. Her background in development planning and executive corporate coaching ensures every client engagement reaches impeccable results. She combines traditional strategic management with forward-acting leadership programs.",
     imageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=500&h=500",
     email: "serwaahlinda1995@gmail.com",
+    phone: "+233240000001",
     skills: ["Corporate Strategy", "Brand Audits", "Executive Advising", "Venture Incubation"],
     rating: 4.9,
     category: "consulting",
@@ -49,12 +53,14 @@ const DEFAULT_MEMBERS = [
     ]
   },
   {
+    memberId: "GREFAS-TM-002",
     name: "Kofi Mensah",
     role: "Head of Entertainment Production",
     experience: "9+ Years in Live Events",
     bio: "Kofi is the visionary orchestrator of our entertainment team. Having overseen premium live shows, custom corporate events, and bespoke performance layouts across West Africa, he knows how to transform general audio-visual ideas into unforgettable realities.",
     imageUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=500&h=500",
     email: "kofi.production@grefas.com",
+    phone: "+233240000002",
     skills: ["Creative Directing", "Sound Design", "Artist Bookings", "Master of Ceremonies"],
     rating: 4.8,
     category: "entertainment",
@@ -66,12 +72,14 @@ const DEFAULT_MEMBERS = [
     ]
   },
   {
+    memberId: "GREFAS-TM-003",
     name: "Amara Diop",
     role: "Senior Business Specialist",
     experience: "7+ Years in Strategy & Markets",
     bio: "Amara coordinates market audits, startup scaling paths, and financial strategies. She helps small and medium-scale companies define operational benchmarks to execute flawless growth models with high-efficiency capital management.",
     imageUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=500&h=500",
     email: "amara.specialist@grefas.com",
+    phone: "+233240000003",
     skills: ["Market Entry", "Operations Audit", "Financial Engineering", "SME Structure"],
     rating: 4.9,
     category: "consulting",
@@ -91,6 +99,13 @@ export default function Team() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [activeModalMember, setActiveModalMember] = useState<TeamMember | null>(null);
   const navigate = useSafeNavigate();
+  const [verifyIdInput, setVerifyIdInput] = useState('');
+
+  const handleQuickVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifyIdInput.trim()) return;
+    navigate(`/verify-member?id=${encodeURIComponent(verifyIdInput.trim())}`);
+  };
 
   const [settings, setSettings] = useState<any>(null);
   const [isMessaging, setIsMessaging] = useState(false);
@@ -198,16 +213,18 @@ export default function Team() {
           }
         }
       } else {
-        const teamList: TeamMember[] = snapshot.docs.map(doc => {
+        const teamList: TeamMember[] = snapshot.docs.map((doc, idx) => {
           const data = doc.data();
           return {
             id: doc.id,
+            memberId: data.memberId || `GREFAS-TM-${String(idx + 1).padStart(3, '0')}`,
             name: data.name || '',
             role: data.role || '',
             experience: data.experience || '',
             bio: data.bio || '',
             imageUrl: data.imageUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200&h=200',
             email: data.email || '',
+            phone: data.phone || data.phoneNumber || '',
             skills: Array.isArray(data.skills) ? data.skills : [],
             rating: typeof data.rating === 'number' ? data.rating : 5.0,
             category: data.category || 'both',
@@ -298,6 +315,35 @@ export default function Team() {
           >
             Select any of our expert consultants or production directors to guide your business strategy or execute your entertainment goals.
           </motion.p>
+
+          {/* Quick Specialist ID Verification Search Bar */}
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="mt-6 max-w-xl mx-auto"
+          >
+            <form onSubmit={handleQuickVerify} className="relative flex items-center bg-card/90 border-2 border-orange-600/30 dark:border-orange-500/30 rounded-2xl p-1.5 shadow-lg focus-within:border-orange-600 focus-within:ring-2 focus-within:ring-orange-500/20 transition-all">
+              <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400 ml-3 shrink-0" />
+              <Input
+                type="text"
+                value={verifyIdInput}
+                onChange={(e) => setVerifyIdInput(e.target.value)}
+                placeholder="Verify Specialist by Member ID (e.g., GREFAS-TM-001)..."
+                className="border-0 shadow-none focus-visible:ring-0 bg-transparent text-xs sm:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans placeholder:text-muted-foreground/70 h-10"
+              />
+              <Button 
+                type="submit" 
+                size="sm" 
+                className="bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs h-9 px-4 shrink-0 shadow-sm"
+              >
+                Verify ID
+              </Button>
+            </form>
+            <p className="text-[11px] text-muted-foreground text-center mt-2 flex items-center justify-center gap-1.5">
+              <span>Public registry verification: Verify any Grefas team member credentials, role, & accreditation.</span>
+            </p>
+          </motion.div>
         </div>
 
         {/* Filter Controls */}
@@ -409,6 +455,36 @@ export default function Team() {
                   </CardHeader>
 
                   <CardContent className="flex-1 flex flex-col pt-2 bg-card">
+                    {/* Member ID and Verification Badge */}
+                    <div className="flex items-center justify-between text-xs font-mono bg-muted/70 dark:bg-muted/40 px-3 py-1.5 rounded-xl border border-border/70 mb-3 shadow-2xs">
+                      <span className="flex items-center gap-1.5 font-bold text-foreground">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span className="text-muted-foreground text-[10px] font-sans font-semibold tracking-wider uppercase">ID:</span>
+                        <span className="text-orange-600 dark:text-orange-400 font-extrabold tracking-wide">{member.memberId || `GREFAS-TM-${String(index + 1).padStart(3, '0')}`}</span>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(member.memberId || `GREFAS-TM-${String(index + 1).padStart(3, '0')}`);
+                            toast.success(`Copied Specialist ID: ${member.memberId || `GREFAS-TM-${String(index + 1).padStart(3, '0')}`}`);
+                          }}
+                          className="p-1 text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-background"
+                          title="Copy Specialist ID"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </button>
+                        <Link
+                          to={`/verify-member?id=${encodeURIComponent(member.memberId || member.id)}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 font-bold flex items-center gap-0.5 hover:underline"
+                          title="Verify Specialist Credentials"
+                        >
+                          Verify <ExternalLink className="h-2.5 w-2.5" />
+                        </Link>
+                      </div>
+                    </div>
                     
                     {/* Experience Info */}
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3 font-semibold">
@@ -611,6 +687,52 @@ export default function Team() {
                 <>
                   {/* Scrollable Content */}
                   <div className="p-6 space-y-6 overflow-y-auto flex-1">
+                    {/* Official Member ID & Accreditation Strip */}
+                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-9 w-9 rounded-full bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                          <ShieldCheck className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Accredited Specialist</span>
+                            <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.2 rounded font-bold">VERIFIED</span>
+                          </div>
+                          <p className="text-sm font-mono font-extrabold text-foreground mt-0.5">
+                            Member ID: <span className="text-orange-600 dark:text-orange-400">{activeModalMember.memberId || `GREFAS-TM-001`}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            navigator.clipboard.writeText(activeModalMember.memberId || `GREFAS-TM-001`);
+                            toast.success(`Copied Specialist ID: ${activeModalMember.memberId || `GREFAS-TM-001`}`);
+                          }}
+                          className="text-xs h-8 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100/50"
+                        >
+                          <Copy className="h-3 w-3 mr-1" /> Copy ID
+                        </Button>
+                        <Button
+                          asChild
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8"
+                        >
+                          <Link 
+                            to={`/verify-member?id=${encodeURIComponent(activeModalMember.memberId || activeModalMember.id)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Verify Online <ExternalLink className="h-3 w-3 ml-1" />
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
+
                     {/* Availability and Experience indicators */}
                     <div className="flex flex-wrap gap-3 items-center">
                       <div className={`px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-bold border shadow-xs ${
