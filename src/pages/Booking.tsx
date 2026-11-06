@@ -14,7 +14,7 @@ import { collection, onSnapshot, setDoc, doc, updateDoc, serverTimestamp, getDoc
 import { onAuthStateChanged } from 'firebase/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer, ShieldCheck, Smartphone, CreditCard, Lock, CheckCircle, Handshake, Tag, Percent } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, User, Mail, Phone, Briefcase, Clock, ArrowRight, ArrowLeft, Check, HelpCircle, Search, Copy, Printer, ShieldCheck, Smartphone, CreditCard, Lock, CheckCircle, Handshake, Tag, Percent, Gift, HeartHandshake, Sparkles } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import SEO from '@/components/SEO';
 import Breadcrumbs from '@/components/Breadcrumbs';
@@ -133,16 +133,135 @@ export default function Booking() {
   const [statusMomoNetwork, setStatusMomoNetwork] = useState('MTN');
   const [statusMomoPhone, setStatusMomoPhone] = useState('');
 
-  // Effective consultation price (uses negotiated proposed amount if client chose to pay proposed now, otherwise discounted effective price)
-  const effectiveListedPrice = selectedService ? selectedServicePricing.effectivePrice : Math.max(0, Number(consultationPrice) || 150);
+  // Free Consultation States (For Helpers, Sponsors, Inquiries, and Partners)
+  const [isFreeConsultationGranted, setIsFreeConsultationGranted] = useState(false);
+  const [freeConsultationCodeInput, setFreeConsultationCodeInput] = useState('');
+  const [appliedFreeCode, setAppliedFreeCode] = useState<string | null>(null);
+  const [freeConsultationCategory, setFreeConsultationCategory] = useState<'want_to_help' | 'get_in_touch' | 'community' | 'general'>('want_to_help');
+  const [freeConsultationReason, setFreeConsultationReason] = useState('');
+  const [validatingFreeCode, setValidatingFreeCode] = useState(false);
+
+  // Check if current service is naturally free (e.g. Complimentary Consultation)
+  const isSelectedServiceFree = Boolean(selectedService && (selectedService.price === 0 || selectedServicePricing.effectivePrice === 0));
+  const isFreeConsultation = isFreeConsultationGranted || appliedFreeCode !== null || isSelectedServiceFree;
+
+  // Effective consultation price (0 if free consultation granted or free service selected)
+  const effectiveListedPrice = isFreeConsultation
+    ? 0
+    : selectedService
+    ? selectedServicePricing.effectivePrice
+    : Math.max(0, Number(consultationPrice) || 150);
+
   const parsedProposedPrice = Math.max(1, Number(proposedPriceInput) || effectiveListedPrice);
-  const baseConsultationPrice =
-    wantsToNegotiate && selectedServicePricing.isNegotiable && negotiationCheckoutMode === 'pay_proposed_now'
-      ? parsedProposedPrice
-      : effectiveListedPrice;
+  const baseConsultationPrice = isFreeConsultation
+    ? 0
+    : wantsToNegotiate && selectedServicePricing.isNegotiable && negotiationCheckoutMode === 'pay_proposed_now'
+    ? parsedProposedPrice
+    : effectiveListedPrice;
   const bookingFeeBreakdown = calculateFeeCharge(baseConsultationPrice, false);
-  const bookingTransactionFee = bookingFeeBreakdown.feeAmount;
-  const bookingTotalPayable = bookingFeeBreakdown.totalAmount;
+  const bookingTransactionFee = isFreeConsultation ? 0 : bookingFeeBreakdown.feeAmount;
+  const bookingTotalPayable = isFreeConsultation ? 0 : bookingFeeBreakdown.totalAmount;
+
+  // Auto-activate Free Consultation from URL query params (e.g. /booking?free=true or ?reason=help or ?code=HELP-GREFAS)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const freeParam = searchParams.get('free');
+    const reasonParam = searchParams.get('reason'); // 'help' | 'contact' | 'sponsor'
+    const codeParam = searchParams.get('code');
+
+    if (freeParam === 'true' || reasonParam === 'help' || reasonParam === 'contact' || reasonParam === 'sponsor' || codeParam) {
+      setIsFreeConsultationGranted(true);
+      const cat = reasonParam === 'help' || reasonParam === 'sponsor' ? 'want_to_help' : 'get_in_touch';
+      setFreeConsultationCategory(cat);
+      setAppliedFreeCode(codeParam || (cat === 'want_to_help' ? 'HELP-GREFAS' : 'GETINTOUCH'));
+      setFreeConsultationReason(
+        cat === 'want_to_help'
+          ? 'Complimentary consultation for partners, sponsors, and helpers wanting to support Grefas'
+          : 'Complimentary discovery session for those wanting to get in touch with our leadership'
+      );
+    }
+  }, [location.search]);
+
+  // Handler to apply / validate free consultation voucher code
+  const handleApplyFreeCode = async (presetCode?: string) => {
+    const raw = (presetCode || freeConsultationCodeInput).trim().toUpperCase();
+    if (!raw) {
+      toast.error('Please enter a consultation grant or voucher code.');
+      return;
+    }
+    setValidatingFreeCode(true);
+    try {
+      // 1. Check default built-in codes
+      if (raw === 'HELP-GREFAS' || raw === 'GREFAS-HELP' || raw === 'HELP' || raw === 'SPONSOR') {
+        setIsFreeConsultationGranted(true);
+        setAppliedFreeCode(raw);
+        setFreeConsultationCategory('want_to_help');
+        setFreeConsultationReason('Granted for those who want to help, sponsor, or partner with Grefas.');
+        toast.success('Code Applied! 100% Free Consultation for those who want to help or sponsor.');
+        return;
+      }
+      if (raw === 'GETINTOUCH' || raw === 'INTOUCH' || raw === 'CONTACT' || raw === 'TOUCH-FREE' || raw === 'DISCOVERY') {
+        setIsFreeConsultationGranted(true);
+        setAppliedFreeCode(raw);
+        setFreeConsultationCategory('get_in_touch');
+        setFreeConsultationReason('Granted for those who want to get in touch with our team.');
+        toast.success('Code Applied! 100% Free Consultation for getting in touch with us.');
+        return;
+      }
+
+      // 2. Check Firestore free_consultation_codes collection
+      const q = query(collection(db, 'free_consultation_codes'), where('code', '==', raw));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const codeDoc = snap.docs[0];
+        const codeData = codeDoc.data();
+        if (codeData.active === false) {
+          toast.error('This free consultation code has been deactivated.');
+          return;
+        }
+        if (codeData.maxUses && (codeData.usedCount || 0) >= codeData.maxUses) {
+          toast.error('This free consultation code has reached its maximum redemptions.');
+          return;
+        }
+
+        setIsFreeConsultationGranted(true);
+        setAppliedFreeCode(raw);
+        setFreeConsultationCategory(codeData.category || 'want_to_help');
+        setFreeConsultationReason(codeData.description || 'Admin authorized free consultation grant.');
+        toast.success(`Code "${raw}" verified! 100% Free Consultation granted.`);
+        
+        // Track usage increment
+        try {
+          await updateDoc(codeDoc.ref, {
+            usedCount: (codeData.usedCount || 0) + 1,
+            lastUsedAt: serverTimestamp()
+          });
+        } catch (e) {}
+      } else {
+        toast.error('Invalid or expired consultation code. Try HELP-GREFAS or GETINTOUCH.');
+      }
+    } catch (err) {
+      console.error('Code validation error:', err);
+      if (raw.includes('HELP') || raw.includes('TOUCH') || raw.includes('FREE')) {
+        setIsFreeConsultationGranted(true);
+        setAppliedFreeCode(raw);
+        setFreeConsultationCategory(raw.includes('HELP') ? 'want_to_help' : 'get_in_touch');
+        setFreeConsultationReason('Courtesy consultation grant.');
+        toast.success(`Code "${raw}" accepted! Free Consultation granted.`);
+      } else {
+        toast.error('Could not verify code. Please check your connection.');
+      }
+    } finally {
+      setValidatingFreeCode(false);
+    }
+  };
+
+  const handleRemoveFreeCode = () => {
+    setIsFreeConsultationGranted(false);
+    setAppliedFreeCode(null);
+    setFreeConsultationCodeInput('');
+    toast.info('Free consultation grant removed.');
+  };
 
   // Listen for Paystack redirect callbacks (e.g. ?reference=GREFAS-BOOK-xxx or ?trxref=xxx)
   useEffect(() => {
@@ -1141,7 +1260,7 @@ export default function Booking() {
       }
     }
 
-    if (!isNegotiationProposalOnly && (!isPaid || !paystackReceipt || !paymentRef)) {
+    if (!isNegotiationProposalOnly && !isFreeConsultation && (!isPaid || !paystackReceipt || !paymentRef)) {
       toast.error("A verified Paystack transaction receipt is required before marking this booking as 'Paid'. Please complete the payment first, or submit a Price Negotiation Proposal.");
       return;
     }
@@ -1161,13 +1280,17 @@ export default function Booking() {
 
     setSubmitting(true);
     try {
-      const newOrderNumber = generateOrderNumber();
+      const newOrderNumber = isFreeConsultation
+        ? `GREFAS-FREE-${Math.floor(100000 + Math.random() * 900000)}`
+        : generateOrderNumber();
       setOrderNumber(newOrderNumber);
 
       const recordedByEmail = auth.currentUser?.email || formData.userEmail || 'online_client';
-      const actualChannel = paystackReceipt?.channel || (paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`);
-      const isNegotiatingThisBooking = Boolean(wantsToNegotiate && selectedServicePricing.isNegotiable);
-      const finalBookingPrice = isNegotiatingThisBooking ? parsedProposedPrice : effectiveListedPrice;
+      const actualChannel = isFreeConsultation
+        ? 'courtesy_grant'
+        : paystackReceipt?.channel || (paymentProvider === 'card' ? 'card' : `momo_${momoProvider.toLowerCase()}`);
+      const isNegotiatingThisBooking = Boolean(!isFreeConsultation && wantsToNegotiate && selectedServicePricing.isNegotiable);
+      const finalBookingPrice = isFreeConsultation ? 0 : (isNegotiatingThisBooking ? parsedProposedPrice : effectiveListedPrice);
 
       const bookingPayload: Record<string, any> = {
         ...formData,
@@ -1175,17 +1298,21 @@ export default function Booking() {
         date: dateStr,
         clientTimezone: timezone,
         userId: user?.uid || 'anonymous',
-        status: isNegotiatingThisBooking ? 'Negotiation' : 'pending',
+        status: isFreeConsultation ? 'confirmed' : (isNegotiatingThisBooking ? 'Negotiation' : 'pending'),
+        isFreeConsultation: Boolean(isFreeConsultation),
+        freeConsultationCategory: isFreeConsultation ? freeConsultationCategory : null,
+        freeConsultationReason: isFreeConsultation ? (freeConsultationReason || 'Granted for those who want to help or get in touch with us') : null,
+        freeConsultationCode: isFreeConsultation ? (appliedFreeCode || 'DIRECT-GRANT') : null,
         originalPrice: selectedServicePricing.originalPrice,
-        servicePrice: selectedServicePricing.effectivePrice,
-        discountType: selectedServicePricing.discountType,
-        discountValue: selectedServicePricing.discountValue,
-        discountPercent: selectedServicePricing.discountPercent,
-        discountAmount: selectedServicePricing.savingsAmount,
+        servicePrice: isFreeConsultation ? 0 : selectedServicePricing.effectivePrice,
+        discountType: isFreeConsultation ? 'percentage' : selectedServicePricing.discountType,
+        discountValue: isFreeConsultation ? 100 : selectedServicePricing.discountValue,
+        discountPercent: isFreeConsultation ? 100 : selectedServicePricing.discountPercent,
+        discountAmount: isFreeConsultation ? selectedServicePricing.originalPrice : selectedServicePricing.savingsAmount,
         negotiationStatus: isNegotiatingThisBooking ? 'pending_admin' : 'none',
         negotiatedPrice: isNegotiatingThisBooking ? parsedProposedPrice : null,
         proposedPrice: isNegotiatingThisBooking ? parsedProposedPrice : null,
-        agreedPrice: isNegotiatingThisBooking ? null : effectiveListedPrice,
+        agreedPrice: isFreeConsultation ? 0 : (isNegotiatingThisBooking ? null : effectiveListedPrice),
         adminCounterPrice: null,
         clientNegotiationNote: isNegotiatingThisBooking ? negotiationNoteInput.trim() : '',
         negotiationHistory: isNegotiatingThisBooking
@@ -1204,14 +1331,14 @@ export default function Booking() {
         price: finalBookingPrice,
         totalPrice: finalBookingPrice,
         subtotal: baseConsultationPrice,
-        amountPaid: isNegotiationProposalOnly ? 0 : baseConsultationPrice,
+        amountPaid: isNegotiationProposalOnly ? 0 : (isFreeConsultation ? 0 : baseConsultationPrice),
         balanceDue: isNegotiationProposalOnly ? finalBookingPrice : 0,
-        paymentStatus: isNegotiationProposalOnly ? 'Negotiating' : 'Paid',
-        paymentGateway: isNegotiationProposalOnly ? 'Pending Agreement' : 'Paystack',
-        paymentRef: isNegotiationProposalOnly ? '' : paymentRef,
-        paystackReference: isNegotiationProposalOnly ? '' : paymentRef,
-        paystackReceiptId: isNegotiationProposalOnly ? '' : String(paystackReceipt?.id || paymentRef),
-        paystackReceipt: isNegotiationProposalOnly
+        paymentStatus: isFreeConsultation ? 'Complimentary (Free)' : (isNegotiationProposalOnly ? 'Negotiating' : 'Paid'),
+        paymentGateway: isFreeConsultation ? 'Free Consultation Grant' : (isNegotiationProposalOnly ? 'Pending Agreement' : 'Paystack'),
+        paymentRef: isFreeConsultation ? `FREE-${newOrderNumber}` : (isNegotiationProposalOnly ? '' : paymentRef),
+        paystackReference: isFreeConsultation ? `FREE-${newOrderNumber}` : (isNegotiationProposalOnly ? '' : paymentRef),
+        paystackReceiptId: isFreeConsultation ? `FREE-${newOrderNumber}` : (isNegotiationProposalOnly ? '' : String(paystackReceipt?.id || paymentRef)),
+        paystackReceipt: isNegotiationProposalOnly || isFreeConsultation
           ? null
           : {
               id: paystackReceipt?.id || null,
@@ -1225,9 +1352,10 @@ export default function Booking() {
               channel: actualChannel,
               gateway_response: paystackReceipt?.gateway_response || 'Approved'
             },
-        paymentChannel: isNegotiationProposalOnly ? 'pending' : actualChannel,
-        paidAmount: isNegotiationProposalOnly ? 0 : paystackReceipt?.amountInGhs || bookingTotalPayable,
-        paidAt: isNegotiationProposalOnly ? null : paystackReceipt?.paid_at || new Date().toISOString(),
+        paymentChannel: isFreeConsultation ? 'courtesy_grant' : (isNegotiationProposalOnly ? 'pending' : actualChannel),
+        paidAmount: isFreeConsultation ? 0 : (isNegotiationProposalOnly ? 0 : paystackReceipt?.amountInGhs || bookingTotalPayable),
+        paidAt: isFreeConsultation ? new Date().toISOString() : (isNegotiationProposalOnly ? null : paystackReceipt?.paid_at || new Date().toISOString()),
+        confirmedAt: isFreeConsultation ? new Date().toISOString() : null,
         transactionFee: isNegotiationProposalOnly ? 0 : bookingTransactionFee,
         feePercentage: bookingFeeBreakdown.feePercentageDisplay,
         createdAt: serverTimestamp()
@@ -1627,6 +1755,24 @@ export default function Booking() {
 
             {/* Form Steps Card Container */}
             <div className="mx-auto max-w-3xl">
+              {isFreeConsultation && (
+                <div className="mb-4 p-3.5 rounded-2xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-between gap-3 text-xs text-teal-900 dark:text-teal-200">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-8 w-8 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold flex-shrink-0 shadow-sm">
+                      <Gift className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="font-extrabold block text-sm">Complimentary Consultation Active (GH₵ 0.00)</span>
+                      <p className="text-[11px] text-muted-foreground">
+                        Courtesy grant for partners, sponsors, helpers, and community inquiries. Paystack fee waived.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="bg-teal-600 text-white px-2.5 py-1 rounded-full font-mono text-[10px] font-black uppercase whitespace-nowrap">
+                    Free Pass
+                  </span>
+                </div>
+              )}
               <Card className="border border-border/50 shadow-lg overflow-hidden bg-card">
                 <CardHeader className="bg-orange-600 text-white relative">
                   <div className="absolute top-4 right-4 bg-orange-700/60 backdrop-blur text-white border border-white/10 px-3 py-1 rounded-full text-xs font-bold font-mono">
@@ -2085,6 +2231,114 @@ export default function Booking() {
                           )}
                         </div>
 
+                        {/* FREE CONSULTATION GRANT / HELP / GET IN TOUCH SECTION */}
+                        <div className="mt-6 rounded-2xl border border-teal-500/30 bg-teal-500/5 p-5 space-y-4 text-left">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-teal-500/20 pb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="h-9 w-9 rounded-xl bg-teal-600 flex items-center justify-center text-white font-black text-sm shadow-sm flex-shrink-0">
+                                <HeartHandshake className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-sm font-extrabold text-foreground">Want to Help or Get in Touch?</h4>
+                                  <span className="bg-teal-500/20 text-teal-800 dark:text-teal-200 text-[10px] font-black px-2 py-0.5 rounded-full uppercase font-mono">
+                                    100% Free Pass
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground font-medium">
+                                  Complimentary consultation for volunteers, community partners, donors, helpers, and general inquiries.
+                                </p>
+                              </div>
+                            </div>
+                            {!isFreeConsultation ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setIsFreeConsultationGranted(true);
+                                  setFreeConsultationCategory('want_to_help');
+                                  toast.success("Complimentary consultation activated! Fee waived to GH₵ 0.00.");
+                                }}
+                                className="rounded-xl border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/15 font-bold text-xs h-8 whitespace-nowrap shadow-xs"
+                              >
+                                <Gift className="h-3.5 w-3.5 mr-1 text-teal-600" /> Claim Free Consultation
+                              </Button>
+                            ) : (
+                              <span className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 text-[11px] font-extrabold px-3 py-1 rounded-full flex items-center gap-1 font-mono">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Free Grant Active
+                              </span>
+                            )}
+                          </div>
+
+                          {isFreeConsultation ? (
+                            <div className="bg-card border border-teal-500/30 rounded-xl p-4 space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                                <div>
+                                  <span className="text-[10px] font-mono uppercase tracking-wider font-extrabold text-teal-600 dark:text-teal-400 block">
+                                    Approved Courtesy Consultation
+                                  </span>
+                                  <p className="text-sm font-black text-foreground flex items-center gap-1.5 mt-0.5">
+                                    <Sparkles className="h-4 w-4 text-amber-500" />
+                                    {appliedFreeCode ? `Grant Code: ${appliedFreeCode}` : 'Complimentary Consultation Pass'}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Category: <strong className="capitalize text-foreground">{freeConsultationCategory.replace('_', ' ')}</strong> &bull; Total Payable: <span className="text-emerald-600 font-black font-mono">GH₵ 0.00 (100% Waived)</span>
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={handleRemoveFreeCode}
+                                  className="text-xs text-muted-foreground hover:text-red-600 h-7 px-2.5 self-start"
+                                >
+                                  Remove / Pay Standard
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-3 pt-1">
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <input
+                                  type="text"
+                                  value={freeConsultationCodeInput}
+                                  onChange={(e) => setFreeConsultationCodeInput(e.target.value.toUpperCase())}
+                                  placeholder="Enter Grant Code (e.g. HELP-GREFAS)"
+                                  className="flex-1 px-3 py-2 text-xs font-mono font-bold rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => handleApplyFreeCode()}
+                                  disabled={validatingFreeCode || !freeConsultationCodeInput.trim()}
+                                  className="rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs h-9 px-4"
+                                >
+                                  {validatingFreeCode ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Tag className="h-3.5 w-3.5 mr-1" />}
+                                  Apply Code
+                                </Button>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <span className="text-[11px] text-muted-foreground font-semibold">Available Grant Codes:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyFreeCode('HELP-GREFAS')}
+                                  className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 transition-colors"
+                                >
+                                  HELP-GREFAS
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyFreeCode('GETINTOUCH')}
+                                  className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 transition-colors"
+                                >
+                                  GETINTOUCH
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         {/* IN-APP SECURE PAYMENT PORTAL */}
                         <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-4 text-left">
                           <div className="flex items-center justify-between border-b border-emerald-500/15 pb-3">
@@ -2199,7 +2453,20 @@ export default function Booking() {
                             </div>
                           )}
 
-                          {!isPaid ? (
+                          {isFreeConsultation ? (
+                            <div className="bg-teal-500/10 border border-teal-500/30 p-5 rounded-xl text-center space-y-2">
+                              <div className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-teal-500/20 text-teal-600 shadow-xs">
+                                <Gift className="h-6 w-6" />
+                              </div>
+                              <h5 className="text-sm font-bold text-teal-900 dark:text-teal-200">100% Complimentary Consultation Approved</h5>
+                              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                                Paystack transaction fee is waived (GH₵ 0.00). A confirmed booking slot will be secured immediately for your inquiry or collaboration request.
+                              </p>
+                              <div className="inline-flex items-center gap-2 px-3 py-1 bg-teal-500/15 text-teal-700 dark:text-teal-300 rounded-full text-xs font-mono font-bold mt-1">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Direct Appointment Scheduling
+                              </div>
+                            </div>
+                          ) : !isPaid ? (
                             <div className="space-y-4">
                               {/* Payment Method Selector */}
                               <div className="grid grid-cols-2 gap-2">
@@ -2403,7 +2670,7 @@ export default function Booking() {
                           </Button>
                           {(() => {
                             const isProposalOnly = wantsToNegotiate && selectedServicePricing.isNegotiable && negotiationCheckoutMode === 'propose_first';
-                            const canSubmitBooking = isPaid || isProposalOnly;
+                            const canSubmitBooking = isPaid || isProposalOnly || isFreeConsultation;
                             return (
                               <Button
                                 type="button"
@@ -2411,7 +2678,9 @@ export default function Booking() {
                                 disabled={submitting || !canSubmitBooking}
                                 className={`font-bold h-11 px-6 rounded-xl flex-1 justify-center flex items-center gap-1.5 shadow-md active:scale-95 transition-all text-sm ${
                                   canSubmitBooking
-                                    ? isProposalOnly
+                                    ? isFreeConsultation
+                                      ? 'bg-teal-600 hover:bg-teal-700 text-white'
+                                      : isProposalOnly
                                       ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                                       : 'bg-orange-600 hover:bg-orange-700 text-white'
                                     : 'bg-muted border border-border text-muted-foreground cursor-not-allowed shadow-none hover:bg-muted'
@@ -2419,6 +2688,10 @@ export default function Booking() {
                               >
                                 {submitting ? (
                                   <span className="flex items-center gap-1.5 justify-center"><Loader2 className="h-5 w-5 animate-spin" /> Transmitting Booking...</span>
+                                ) : isFreeConsultation ? (
+                                  <span className="flex items-center gap-1.5 justify-center text-white">
+                                    <Gift className="h-4.5 w-4.5" /> Confirm Free Consultation (GH₵ 0.00)
+                                  </span>
                                 ) : isProposalOnly ? (
                                   <span className="flex items-center gap-1.5 justify-center">
                                     <Handshake className="h-4 w-4" /> Submit Booking & Price Proposal (GH₵ {parsedProposedPrice.toLocaleString()})

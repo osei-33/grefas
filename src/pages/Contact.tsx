@@ -4,7 +4,8 @@ import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Mail, Phone, MapPin, Send, MessageCircle, Navigation, ExternalLink, Loader2, Mic, MicOff, Square, Play, Pause, Trash2, Volume2, Sparkles, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Mail, Phone, MapPin, Send, MessageCircle, Navigation, ExternalLink, Loader2, Mic, MicOff, Square, Play, Pause, Trash2, Volume2, Sparkles, AlertCircle, Gift, HeartHandshake } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/firebase';
 import { doc, onSnapshot, collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -461,6 +462,37 @@ export default function Contact() {
           >
             Have an inquiry or want to collaborate with our team in Nyinahin-Ashanti, Ashanti Region? Send us a message and we'll reply promptly.
           </motion.p>
+
+          {/* Complimentary Free Consultation Callout */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="mx-auto mt-8 max-w-2xl rounded-2xl border border-teal-500/30 bg-teal-500/10 p-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-left shadow-sm"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="h-11 w-11 rounded-2xl bg-teal-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                <Gift className="h-6 w-6" />
+              </div>
+              <div>
+                <span className="text-sm font-black text-foreground flex items-center gap-2">
+                  Want to Help or Get in Touch?
+                  <span className="bg-teal-500/20 text-teal-800 dark:text-teal-200 text-[10px] font-black px-2 py-0.5 rounded-full uppercase font-mono">
+                    100% Free
+                  </span>
+                </span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  We offer complimentary consultation sessions for volunteers, community partners, donors, and organizations seeking to collaborate.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/booking?reason=contact&free=true"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-extrabold whitespace-nowrap shadow-sm transition-all self-stretch sm:self-auto justify-center"
+            >
+              <HeartHandshake className="h-4 w-4" /> Book Free Session
+            </Link>
+          </motion.div>
         </div>
 
         <div className="mt-16 grid grid-cols-1 gap-12 lg:grid-cols-2">

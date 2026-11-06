@@ -527,6 +527,22 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["fullName", "role", "status"]
+    },
+    "FreeConsultationCode": {
+      "title": "Free Consultation Code",
+      "description": "Voucher or grant code for 100% free consultation for helpers, sponsors, and partners",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "The promo or voucher code string" },
+        "category": { "type": "string", "description": "Category: want_to_help, get_in_touch, community, general" },
+        "description": { "type": "string", "description": "Reason or purpose for this free consultation grant" },
+        "active": { "type": "boolean", "description": "Whether this code is currently redeemable" },
+        "maxUses": { "type": "number", "description": "Maximum number of redemptions allowed" },
+        "usedCount": { "type": "number", "description": "Number of times redeemed" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "category", "active"]
     }
   },
   "firestore": {
@@ -637,6 +653,10 @@
     "/employees/{employeeId}": {
       "schema": "Employee",
       "description": "Collection of registered company employees, staff, consultants, and creative talent"
+    },
+    "/free_consultation_codes/{codeId}": {
+      "schema": "FreeConsultationCode",
+      "description": "Collection of promotional codes and grant vouchers offering 100% free consultations for helpers and inquiries"
     }
   }
 }

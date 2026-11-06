@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Minus, Percent, Sliders, ToggleLeft, ToggleRight, Sparkles, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, UserPlus, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt, Package, Handshake, Tag } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, Zap, Radio, Check, Image as ImageIcon, Briefcase, LogOut, Plus, Minus, Percent, Sliders, ToggleLeft, ToggleRight, Sparkles, Trash2, Loader2, FolderOpen, Settings as SettingsIcon, Save, Info, Phone, Mail, MapPin, Quote, Calendar as CalendarIcon, Users, Youtube, Facebook, Music2, AlertCircle, Bell, MessageCircle, CheckCircle, Menu, X, ListTodo, Clock, Search, ChevronLeft, ChevronRight, Grid, List, Download, FileSpreadsheet, FileText, Printer, Camera, Edit, BookOpen, Wrench, User as UserIcon, Star, Megaphone, CreditCard, ShieldCheck, Upload, Ticket, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Wallet, Play, UserCheck, UserPlus, Paperclip, ExternalLink, Eye, Lock, Globe, Copy, HeartHandshake, Landmark, Building2, Navigation, Heart, Receipt, Package, Handshake, Tag, Gift } from 'lucide-react';
 import { setLocalTransactionFeeConfig } from '@/lib/transactionFees';
 import { mergeServicesWithDefaults, getServicePricing, getRecordNegotiationSummary, DEFAULT_SERVICES, markServiceKeysLocallyDeleted } from '@/lib/servicePricing';
 import { sendNegotiatedPriceApprovedSms } from '@/lib/arkeselSms';
@@ -10701,6 +10701,309 @@ function ManageBookings() {
   });
   const [savingBookingBilling, setSavingBookingBilling] = useState(false);
 
+  // Free Consultation States (For Helpers, Sponsors, Inquiries, and Partners)
+  const [isFreeModalOpen, setIsFreeModalOpen] = useState(false);
+  const [isCodesModalOpen, setIsCodesModalOpen] = useState(false);
+  const [creatingFreeBooking, setCreatingFreeBooking] = useState(false);
+  const [freeConsultationFilter, setFreeConsultationFilter] = useState<'all' | 'free_only' | 'paid_only'>('all');
+  const [availableServices, setAvailableServices] = useState<any[]>([]);
+  const [availableTeamMembers, setAvailableTeamMembers] = useState<any[]>([]);
+  const [freeCodes, setFreeCodes] = useState<any[]>([]);
+  const [creatingCode, setCreatingCode] = useState(false);
+
+  const [freeBookingForm, setFreeBookingForm] = useState({
+    userName: '',
+    userEmail: '',
+    userPhone: '',
+    organization: '',
+    category: 'want_to_help' as 'want_to_help' | 'get_in_touch' | 'community' | 'partner' | 'general',
+    serviceId: '',
+    serviceTitle: 'Complimentary Consultation (Helpers & Inquiries)',
+    teamMemberId: '',
+    teamMemberName: 'Primary Available Specialist',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    time: '10:00 AM',
+    meetingFormat: 'Virtual (Google Meet / Zoom)',
+    reason: 'Wants to help or get in touch with Grefas',
+    notes: '',
+    sendEmailNotification: true,
+    sendSmsNotification: true
+  });
+
+  const [newCodeForm, setNewCodeForm] = useState({
+    code: '',
+    label: '',
+    category: 'want_to_help',
+    maxRedemptions: 50,
+    description: ''
+  });
+
+  useEffect(() => {
+    const unsubServices = onSnapshot(collection(db, 'services'), (snap) => {
+      const s = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAvailableServices(s.length > 0 ? s : DEFAULT_SERVICES);
+    }, (err) => console.warn('Services load warning:', err));
+
+    const unsubTeam = onSnapshot(collection(db, 'team_members'), (snap) => {
+      setAvailableTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => console.warn('Team members load warning:', err));
+
+    const unsubCodes = onSnapshot(collection(db, 'free_consultation_codes'), (snap) => {
+      const loadedCodes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setFreeCodes(loadedCodes);
+
+      if (snap.empty) {
+        const defaults = [
+          {
+            code: 'HELP-GREFAS',
+            label: 'Volunteer & Community Helper Grant',
+            category: 'want_to_help',
+            discountPercent: 100,
+            active: true,
+            maxRedemptions: 100,
+            redemptionCount: 0,
+            description: '100% free consultation for those who want to help or volunteer with Grefas.'
+          },
+          {
+            code: 'GETINTOUCH',
+            label: 'General Inquiry & Outreach Grant',
+            category: 'get_in_touch',
+            discountPercent: 100,
+            active: true,
+            maxRedemptions: 100,
+            redemptionCount: 0,
+            description: 'Complimentary consultation pass for prospective partners and parties seeking to get in touch.'
+          },
+          {
+            code: 'COMMUNITY',
+            label: 'Community Partner Consultation',
+            category: 'community',
+            discountPercent: 100,
+            active: true,
+            maxRedemptions: 100,
+            redemptionCount: 0,
+            description: 'Free consultation for community partners and civic leaders.'
+          }
+        ];
+        defaults.forEach(async (item) => {
+          try {
+            await setDoc(doc(db, 'free_consultation_codes', item.code), {
+              ...item,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+          } catch (e) {
+            console.warn('Could not seed code:', item.code, e);
+          }
+        });
+      }
+    }, (err) => console.warn('Free codes load warning:', err));
+
+    return () => {
+      unsubServices();
+      unsubTeam();
+      unsubCodes();
+    };
+  }, []);
+
+  const handleCreateFreeConsultation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!freeBookingForm.userName.trim() || !freeBookingForm.userEmail.trim()) {
+      toast.error('Recipient name and email are required.');
+      return;
+    }
+    if (!freeBookingForm.date || !freeBookingForm.time) {
+      toast.error('Appointment date and time are required.');
+      return;
+    }
+
+    setCreatingFreeBooking(true);
+    try {
+      const currentUser = auth.currentUser;
+      const adminEmail = currentUser?.email || 'admin@grefas.org';
+      const adminName = currentUser?.displayName || 'Grefas Admin';
+      const orderNum = `GREFAS-FREE-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const bookingData: Record<string, any> = {
+        userName: freeBookingForm.userName.trim(),
+        userEmail: freeBookingForm.userEmail.trim().toLowerCase(),
+        userPhone: freeBookingForm.userPhone.trim() || 'N/A',
+        organization: freeBookingForm.organization.trim() || null,
+        serviceId: freeBookingForm.serviceId || 'default-free-consultation',
+        serviceTitle: freeBookingForm.serviceTitle || 'Complimentary Consultation (Helpers & Inquiries)',
+        teamMemberId: freeBookingForm.teamMemberId || null,
+        teamMemberName: freeBookingForm.teamMemberName || 'Primary Available Specialist',
+        date: freeBookingForm.date,
+        time: freeBookingForm.time,
+        meetingFormat: freeBookingForm.meetingFormat,
+        notes: freeBookingForm.notes.trim() || 'Complimentary consultation arranged by Admin.',
+        orderNumber: orderNum,
+        userId: 'admin_granted',
+        status: 'confirmed',
+        isFreeConsultation: true,
+        freeConsultationCategory: freeBookingForm.category,
+        freeConsultationReason: freeBookingForm.reason.trim() || 'Complimentary consultation for helpers and inquiries',
+        freeConsultationGrantedBy: adminEmail,
+        freeConsultationCode: 'ADMIN-DIRECT-GRANT',
+        price: 0,
+        totalPrice: 0,
+        servicePrice: 0,
+        discountType: 'percentage',
+        discountValue: 100,
+        discountPercent: 100,
+        discountAmount: 150,
+        amountPaid: 0,
+        balanceDue: 0,
+        paymentStatus: 'Complimentary (Free)',
+        paymentGateway: 'Free Consultation Grant',
+        paymentRef: `FREE-${orderNum}`,
+        paymentChannel: 'courtesy_grant',
+        paidAmount: 0,
+        paidAt: new Date().toISOString(),
+        confirmedAt: new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(collection(db, 'bookings'), bookingData);
+
+      await addDoc(collection(db, 'booking_passes'), {
+        bookingId: docRef.id,
+        orderNumber: orderNum,
+        userName: bookingData.userName,
+        userEmail: bookingData.userEmail,
+        serviceTitle: bookingData.serviceTitle,
+        isFreeConsultation: true,
+        freeConsultationCategory: bookingData.freeConsultationCategory,
+        generatedByEmail: adminEmail,
+        generatedByName: adminName,
+        timestamp: new Date().toISOString()
+      });
+
+      await addDoc(collection(db, 'activity_logs'), {
+        userId: currentUser?.uid || null,
+        userEmail: adminEmail,
+        userName: adminName,
+        type: 'free_consultation_created',
+        description: `Admin created 100% Free Consultation (${orderNum}) for ${bookingData.userName} (${bookingData.freeConsultationCategory})`,
+        createdAt: new Date().toISOString()
+      });
+
+      if (freeBookingForm.sendEmailNotification || freeBookingForm.sendSmsNotification) {
+        try {
+          await fetch('/api/notify-confirmation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: bookingData.userEmail,
+              phone: bookingData.userPhone !== 'N/A' ? bookingData.userPhone : '',
+              userName: bookingData.userName,
+              serviceTitle: bookingData.serviceTitle,
+              date: bookingData.date,
+              time: bookingData.time,
+              orderNumber: orderNum,
+              teamMemberName: bookingData.teamMemberName,
+              notes: `Complimentary Consultation Pass. Format: ${bookingData.meetingFormat}. ${bookingData.notes}`,
+              serviceDescription: `Complimentary Consultation granted for: ${bookingData.freeConsultationReason}`
+            })
+          });
+        } catch (notifyErr) {
+          console.warn('Notification alert warning:', notifyErr);
+        }
+      }
+
+      toast.success(`Free Consultation scheduled successfully! Reference: ${orderNum}`);
+      setIsFreeModalOpen(false);
+
+      setFreeBookingForm({
+        userName: '',
+        userEmail: '',
+        userPhone: '',
+        organization: '',
+        category: 'want_to_help',
+        serviceId: '',
+        serviceTitle: 'Complimentary Consultation (Helpers & Inquiries)',
+        teamMemberId: '',
+        teamMemberName: 'Primary Available Specialist',
+        date: format(new Date(), 'yyyy-MM-dd'),
+        time: '10:00 AM',
+        meetingFormat: 'Virtual (Google Meet / Zoom)',
+        reason: 'Wants to help or get in touch with Grefas',
+        notes: '',
+        sendEmailNotification: true,
+        sendSmsNotification: true
+      });
+
+      handlePrintBookingPass({ id: docRef.id, ...bookingData });
+    } catch (err) {
+      console.error('Error creating free consultation:', err);
+      toast.error('Failed to create free consultation.');
+    } finally {
+      setCreatingFreeBooking(false);
+    }
+  };
+
+  const handleCreateFreeCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanCode = newCodeForm.code.trim().toUpperCase().replace(/\s+/g, '-');
+    if (!cleanCode) {
+      toast.error('Please enter a valid code name.');
+      return;
+    }
+    setCreatingCode(true);
+    try {
+      await setDoc(doc(db, 'free_consultation_codes', cleanCode), {
+        code: cleanCode,
+        label: newCodeForm.label.trim() || `${cleanCode} Grant Pass`,
+        category: newCodeForm.category,
+        discountPercent: 100,
+        active: true,
+        maxRedemptions: Number(newCodeForm.maxRedemptions) || 50,
+        redemptionCount: 0,
+        description: newCodeForm.description.trim() || '100% complimentary consultation pass.',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      toast.success(`Free consultation code ${cleanCode} created!`);
+      setNewCodeForm({
+        code: '',
+        label: '',
+        category: 'want_to_help',
+        maxRedemptions: 50,
+        description: ''
+      });
+    } catch (err) {
+      console.error('Error creating code:', err);
+      toast.error('Failed to create code.');
+    } finally {
+      setCreatingCode(false);
+    }
+  };
+
+  const handleToggleCodeStatus = async (codeItem: any) => {
+    try {
+      await updateDoc(doc(db, 'free_consultation_codes', codeItem.id), {
+        active: !codeItem.active,
+        updatedAt: serverTimestamp()
+      });
+      toast.success(`Code ${codeItem.code} is now ${!codeItem.active ? 'Active' : 'Inactive'}`);
+    } catch (err) {
+      console.error('Error toggling code:', err);
+      toast.error('Failed to update code.');
+    }
+  };
+
+  const handleDeleteCode = async (codeId: string) => {
+    if (!confirm('Are you sure you want to delete this free consultation code?')) return;
+    try {
+      await deleteDoc(doc(db, 'free_consultation_codes', codeId));
+      toast.success('Code deleted successfully.');
+    } catch (err) {
+      console.error('Error deleting code:', err);
+      toast.error('Failed to delete code.');
+    }
+  };
+
   const openBookingBillingModal = (booking: any) => {
     const summary = getRecordNegotiationSummary(booking, Number(booking.servicePrice || booking.totalPrice || 150));
     setEditingBookingBilling(booking);
@@ -11324,11 +11627,16 @@ function ManageBookings() {
 
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(booking.orderNumber || booking.id)}`;
 
+      const isFreePass = Boolean(booking.isFreeConsultation);
+      const accentColor = isFreePass ? '#0d9488' : '#ea580c';
+      const accentBg = isFreePass ? '#f0fdfa' : '#fff7ed';
+      const accentBorder = isFreePass ? '#ccfbf1' : '#ffedd5';
+
       const htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Reservation Pass - ${booking.orderNumber || 'N/A'}</title>
+          <title>${isFreePass ? 'Complimentary Consultation Pass' : 'Reservation Pass'} - ${booking.orderNumber || 'N/A'}</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
             body {
@@ -11340,7 +11648,7 @@ function ManageBookings() {
             .pass-card {
               max-width: 600px;
               margin: 0 auto;
-              border: 2px dashed #ea580c;
+              border: 2px dashed ${accentColor};
               border-radius: 16px;
               padding: 24px;
               background-color: #fff;
@@ -11355,7 +11663,7 @@ function ManageBookings() {
             .logo-text {
               font-size: 16px;
               font-weight: 800;
-              color: #ea580c;
+              color: ${accentColor};
               text-transform: uppercase;
             }
             .pass-title {
@@ -11369,8 +11677,8 @@ function ManageBookings() {
             .order-section {
               display: flex;
               justify-content: space-between;
-              background-color: #fff7ed;
-              border: 1px solid #ffedd5;
+              background-color: ${accentBg};
+              border: 1px solid ${accentBorder};
               padding: 16px;
               border-radius: 12px;
               margin-bottom: 20px;
@@ -11379,12 +11687,12 @@ function ManageBookings() {
               font-size: 9px;
               text-transform: uppercase;
               font-weight: 700;
-              color: #ea580c;
+              color: ${accentColor};
             }
             .order-val {
               font-size: 28px;
               font-weight: 900;
-              color: #ea580c;
+              color: ${accentColor};
               letter-spacing: 0.1em;
             }
             .grid {
@@ -11430,20 +11738,22 @@ function ManageBookings() {
           <div class="pass-card">
             <div class="header">
               <div>
-                <div class="logo-text">Grefas Consult</div>
-                <div style="font-size: 11px; color: #4b5563;">Official Validation Ticket</div>
+                <div class="logo-text">${isFreePass ? 'Grefas Community & Partnerships' : 'Grefas Consult'}</div>
+                <div style="font-size: 11px; color: #4b5563;">${isFreePass ? 'Official Complimentary Consultation Pass' : 'Official Validation Ticket'}</div>
               </div>
               <div class="pass-title">
-                Reservation Pass <br/>
+                ${isFreePass ? 'Complimentary Pass' : 'Reservation Pass'} <br/>
                 <strong style="color: #111827; font-size: 12px;">${booking.date || 'N/A'}</strong>
               </div>
             </div>
 
             <div class="order-section">
               <div>
-                <span class="order-label">Unique Reference Code</span>
+                <span class="order-label">${isFreePass ? 'Complimentary Pass Code' : 'Unique Reference Code'}</span>
                 <div class="order-val">${booking.orderNumber || 'N/A'}</div>
-                <p style="font-size: 11px; color: #6b7280; margin: 4px 0 0 0;">Please keep this reference for verification.</p>
+                <p style="font-size: 11px; color: #6b7280; margin: 4px 0 0 0;">
+                  ${isFreePass ? 'Courtesy Pass for Helpers, Sponsors & Inquiries • Fee: GH₵ 0.00' : 'Please keep this reference for verification.'}
+                </p>
               </div>
               <div>
                 <img src="${qrUrl}" style="width: 80px; height: 80px; display: block;" alt="QR" />
@@ -11452,28 +11762,31 @@ function ManageBookings() {
 
             <div class="grid">
               <div class="grid-box">
-                <h4 class="box-title">Client Details</h4>
+                <h4 class="box-title">Client / Guest Particulars</h4>
                 <p class="box-text"><strong>Name:</strong> ${booking.userName || 'N/A'}</p>
                 <p class="box-text"><strong>Email:</strong> ${booking.userEmail || 'N/A'}</p>
                 <p class="box-text"><strong>Phone:</strong> ${booking.userPhone || 'N/A'}</p>
+                ${booking.organization ? `<p class="box-text"><strong>Org / Partner:</strong> ${booking.organization}</p>` : ''}
               </div>
               <div class="grid-box">
-                <h4 class="box-title">Service Details</h4>
+                <h4 class="box-title">Consultation Session</h4>
                 <p class="box-text"><strong>Service:</strong> ${booking.serviceTitle || 'General Consultation'}</p>
                 <p class="box-text"><strong>Time Slot:</strong> ${booking.time || 'N/A'}</p>
                 <p class="box-text"><strong>Specialist:</strong> ${booking.teamMemberName || 'General Staff'}</p>
+                ${isFreePass ? `<p class="box-text" style="color: #0d9488; font-weight: 700;"><strong>Fee:</strong> 100% Free Consultation</p>` : ''}
               </div>
             </div>
 
-            ${booking.notes ? `
+            ${(booking.notes || booking.freeConsultationReason) ? `
               <div class="notes-box">
-                <h4 class="box-title">Client Notes</h4>
-                <p class="box-text" style="font-style: italic;">"${booking.notes}"</p>
+                <h4 class="box-title">Session Purpose &amp; Notes</h4>
+                ${booking.freeConsultationReason ? `<p class="box-text"><strong>Purpose:</strong> ${booking.freeConsultationReason}</p>` : ''}
+                ${booking.notes ? `<p class="box-text" style="font-style: italic;">"${booking.notes}"</p>` : ''}
               </div>
             ` : ''}
 
             <div class="footer">
-              Thank you for choosing Grefas Consult & Entertainment. Generated on ${new Date().toLocaleString()}
+              ${isFreePass ? 'Complimentary session proudly sponsored by Grefas Foundation.' : 'Thank you for choosing Grefas Consult & Entertainment.'} Generated on ${new Date().toLocaleString()}
             </div>
           </div>
         </body>
@@ -12341,6 +12654,9 @@ function ManageBookings() {
   };
 
   const filteredBookings = bookings.filter((booking) => {
+    if (freeConsultationFilter === 'free_only' && !booking.isFreeConsultation) return false;
+    if (freeConsultationFilter === 'paid_only' && Boolean(booking.isFreeConsultation)) return false;
+
     const searchLower = searchTerm.trim().toLowerCase();
     if (!searchLower) return true;
     
@@ -12348,11 +12664,15 @@ function ManageBookings() {
     const userName = String(booking.userName || '').toLowerCase();
     const userEmail = String(booking.userEmail || '').toLowerCase();
     const serviceTitle = String(booking.serviceTitle || '').toLowerCase();
+    const freeCategory = String(booking.freeConsultationCategory || '').toLowerCase();
+    const freeReason = String(booking.freeConsultationReason || '').toLowerCase();
 
     return orderNumber.includes(searchLower) || 
            userName.includes(searchLower) || 
            userEmail.includes(searchLower) || 
-           serviceTitle.includes(searchLower);
+           serviceTitle.includes(searchLower) ||
+           freeCategory.includes(searchLower) ||
+           freeReason.includes(searchLower);
   });
 
   const handleSelectAllFiltered = () => {
@@ -12470,6 +12790,27 @@ function ManageBookings() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
+          {/* Free Consultation Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              onClick={() => setIsFreeModalOpen(true)}
+              className="text-xs gap-1.5 h-8 font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm"
+            >
+              <Gift className="h-3.5 w-3.5" />
+              Create Free Consultation
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsCodesModalOpen(true)}
+              className="text-xs gap-1.5 h-8 font-bold border-teal-500/40 text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+            >
+              <Tag className="h-3.5 w-3.5 text-teal-600" />
+              Free Grant Codes ({freeCodes.length})
+            </Button>
+          </div>
+
           {/* Export actions */}
           <div className="flex items-center gap-1.5 bg-card px-2 py-1 rounded-lg border border-border shrink-0">
             <span className="text-xs font-bold text-muted-foreground px-1.5 uppercase tracking-wider">Export:</span>
@@ -12531,14 +12872,54 @@ function ManageBookings() {
       {viewMode === 'list' && (
         <>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-card p-4 rounded-xl border border-border">
-            <div className="relative flex-grow max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by ID / Order number, Name, Email, or Service..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 bg-muted/40 border-border text-sm text-foreground focus-visible:ring-orange-600 focus-visible:border-orange-600"
-              />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-grow max-w-2xl">
+              <div className="relative flex-grow">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by ID, Name, Email, Service, or Free Reason..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 bg-muted/40 border-border text-sm text-foreground focus-visible:ring-orange-600 focus-visible:border-orange-600"
+                />
+              </div>
+
+              {/* Filter pills: All, Free, Paid */}
+              <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border shrink-0 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setFreeConsultationFilter('all')}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                    freeConsultationFilter === 'all'
+                      ? 'bg-card text-foreground shadow-xs font-black'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  All ({bookings.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreeConsultationFilter('free_only')}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                    freeConsultationFilter === 'free_only'
+                      ? 'bg-teal-600 text-white shadow-xs font-black'
+                      : 'text-teal-700 dark:text-teal-300 hover:bg-teal-500/10'
+                  }`}
+                >
+                  <Gift className="h-3 w-3" />
+                  Free ({bookings.filter(b => b.isFreeConsultation).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreeConsultationFilter('paid_only')}
+                  className={`text-xs px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                    freeConsultationFilter === 'paid_only'
+                      ? 'bg-card text-foreground shadow-xs font-black'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Paid ({bookings.filter(b => !b.isFreeConsultation).length})
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
@@ -12626,8 +13007,18 @@ function ManageBookings() {
                   </div>
                   <div className="flex-1 p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <div className="bg-orange-600/10 border border-orange-600/20 px-3 py-1 rounded-md">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">ID: {booking.orderNumber || 'NO-REF'}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="bg-orange-600/10 border border-orange-600/20 px-3 py-1 rounded-md">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">ID: {booking.orderNumber || 'NO-REF'}</span>
+                        </div>
+                        {booking.isFreeConsultation && (
+                          <div className="bg-teal-500/15 border border-teal-500/30 px-2.5 py-1 rounded-md flex items-center gap-1.5 text-teal-700 dark:text-teal-300">
+                            <Gift className="h-3.5 w-3.5 text-teal-600" />
+                            <span className="text-[10px] font-black uppercase tracking-wider">
+                              100% Free: {booking.freeConsultationCategory ? String(booking.freeConsultationCategory).replace('_', ' ') : 'Helpers & Inquiries'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       {booking.status === 'confirmed' && (
                         <div className="flex items-center gap-2">
@@ -13357,6 +13748,479 @@ function ManageBookings() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Free Consultation Modal */}
+      {isFreeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-8">
+            <div className="p-5 border-b border-border flex items-center justify-between bg-teal-500/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-teal-600 text-white shadow-xs">
+                  <Gift className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-foreground">Create Free Consultation</h3>
+                    <span className="bg-teal-500/20 text-teal-800 dark:text-teal-200 text-[10px] font-black px-2 py-0.5 rounded-full uppercase font-mono">
+                      100% Complimentary
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Schedule a verified zero-cost consultation for helpers, community sponsors, donors, and general inquiries.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFreeModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateFreeConsultation} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Recipient Basic Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Recipient Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    required
+                    placeholder="e.g. Samuel K. Mensah"
+                    value={freeBookingForm.userName}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, userName: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Email Address <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    required
+                    type="email"
+                    placeholder="recipient@example.com"
+                    value={freeBookingForm.userEmail}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, userEmail: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Phone Number (SMS Alert Recipient)
+                  </label>
+                  <Input
+                    type="tel"
+                    placeholder="024XXXXXXX or +233..."
+                    value={freeBookingForm.userPhone}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, userPhone: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Organization / Entity (Optional)
+                  </label>
+                  <Input
+                    placeholder="e.g. Civic Action Alliance / Partner NGO"
+                    value={freeBookingForm.organization}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, organization: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Category & Reason */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Consultation Purpose Category
+                  </label>
+                  <select
+                    value={freeBookingForm.category}
+                    onChange={(e) => {
+                      const cat = e.target.value as any;
+                      setFreeBookingForm({
+                        ...freeBookingForm,
+                        category: cat,
+                        reason:
+                          cat === 'want_to_help'
+                            ? 'Wants to volunteer or help Grefas Foundation'
+                            : cat === 'get_in_touch'
+                            ? 'Prospective partner reaching out to get in touch'
+                            : cat === 'community'
+                            ? 'Community advocate or civic partner collaboration'
+                            : cat === 'sponsor'
+                            ? 'Donor, sponsor, or philanthropy partner'
+                            : 'Complimentary consultation pass'
+                      });
+                    }}
+                    className="w-full h-10 rounded-xl border border-input bg-background px-3 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="want_to_help">Want to Help / Volunteer With Us</option>
+                    <option value="get_in_touch">Want to Get In Touch / Outreach</option>
+                    <option value="community">Community Partner &amp; Civic Leader</option>
+                    <option value="sponsor">Sponsor, Donor &amp; Philanthropy</option>
+                    <option value="general">VIP / Courtesy Consultation</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Primary Goal / Reason
+                  </label>
+                  <Input
+                    placeholder="e.g. Discuss youth legal aid sponsorship"
+                    value={freeBookingForm.reason}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, reason: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Service & Specialist Assignment */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Assigned Service / Topic
+                  </label>
+                  <select
+                    value={freeBookingForm.serviceId}
+                    onChange={(e) => {
+                      const sId = e.target.value;
+                      const match = availableServices.find(s => s.id === sId);
+                      setFreeBookingForm({
+                        ...freeBookingForm,
+                        serviceId: sId,
+                        serviceTitle: match?.title || match?.name || 'Complimentary Consultation (Helpers & Inquiries)'
+                      });
+                    }}
+                    className="w-full h-10 rounded-xl border border-input bg-background px-3 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="default-free-consultation">Complimentary Consultation (Helpers &amp; Inquiries)</option>
+                    {availableServices.filter(s => s.id !== 'default-free-consultation').map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title || s.name} (100% Free Grant)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Assigned Team Member / Specialist
+                  </label>
+                  <select
+                    value={freeBookingForm.teamMemberId}
+                    onChange={(e) => {
+                      const mId = e.target.value;
+                      const match = availableTeamMembers.find(m => m.id === mId);
+                      setFreeBookingForm({
+                        ...freeBookingForm,
+                        teamMemberId: mId,
+                        teamMemberName: match?.name || (mId ? 'Assigned Specialist' : 'Primary Available Specialist')
+                      });
+                    }}
+                    className="w-full h-10 rounded-xl border border-input bg-background px-3 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">Primary Available Specialist</option>
+                    {availableTeamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} {m.memberId ? `(ID: ${m.memberId})` : ''} - {m.role || 'Staff'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Date, Time & Meeting Format */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Appointment Date <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    required
+                    type="date"
+                    value={freeBookingForm.date}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, date: e.target.value })}
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Appointment Time <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={freeBookingForm.time}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, time: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-input bg-background px-3 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    {['09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM'].map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Meeting Format
+                  </label>
+                  <select
+                    value={freeBookingForm.meetingFormat}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, meetingFormat: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-input bg-background px-3 py-1 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="Virtual (Google Meet / Zoom)">Virtual (Google Meet / Zoom)</option>
+                    <option value="Direct Phone Call">Direct Phone Call</option>
+                    <option value="In-Person at Grefas Office">In-Person at Grefas Office</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Agenda Notes */}
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  Agenda Notes &amp; Preparation Instructions
+                </label>
+                <Textarea
+                  rows={2}
+                  placeholder="Additional briefing details or instructions for this complimentary consultation..."
+                  value={freeBookingForm.notes}
+                  onChange={(e) => setFreeBookingForm({ ...freeBookingForm, notes: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
+
+              {/* Automated Notifications Checkboxes */}
+              <div className="bg-muted/40 p-3.5 rounded-xl border border-border space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground block">
+                  Automated Communication Alerts
+                </span>
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={freeBookingForm.sendEmailNotification}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, sendEmailNotification: e.target.checked })}
+                    className="rounded border-border text-teal-600 focus:ring-teal-500"
+                  />
+                  <span>Send official confirmation email with consultation details to {freeBookingForm.userEmail || 'recipient'}</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={freeBookingForm.sendSmsNotification}
+                    onChange={(e) => setFreeBookingForm({ ...freeBookingForm, sendSmsNotification: e.target.checked })}
+                    className="rounded border-border text-teal-600 focus:ring-teal-500"
+                  />
+                  <span>Dispatch SMS alert via Arkesel to client &amp; assigned specialist upon booking</span>
+                </label>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-border">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsFreeModalOpen(false)}
+                  className="text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={creatingFreeBooking}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs gap-1.5 shadow-sm"
+                >
+                  {creatingFreeBooking ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Scheduling...</>
+                  ) : (
+                    <><Gift className="h-4 w-4" /> Issue Free Consultation Pass (GH₵ 0.00)</>
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Free Consultation Codes Management Modal */}
+      {isCodesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-8">
+            <div className="p-5 border-b border-border flex items-center justify-between bg-teal-500/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-teal-600 text-white shadow-xs">
+                  <Tag className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-foreground">Free Consultation Promo &amp; Grant Codes</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Visitors entering these codes on the /booking portal receive a 100% complimentary consultation.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCodesModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+              {/* Create new code form */}
+              <form onSubmit={handleCreateFreeCode} className="bg-muted/30 p-4 rounded-xl border border-border space-y-3">
+                <span className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <Plus className="h-4 w-4 text-teal-600" /> Create New Free Consultation Code
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">
+                      Code Name (Uppercase) *
+                    </label>
+                    <Input
+                      required
+                      placeholder="e.g. HELP-2026, PARTNER-GREFAS"
+                      value={newCodeForm.code}
+                      onChange={(e) => setNewCodeForm({ ...newCodeForm, code: e.target.value.toUpperCase() })}
+                      className="text-xs font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">
+                      Display Label
+                    </label>
+                    <Input
+                      placeholder="e.g. Community Partner Pass"
+                      value={newCodeForm.label}
+                      onChange={(e) => setNewCodeForm({ ...newCodeForm, label: e.target.value })}
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={newCodeForm.category}
+                      onChange={(e) => setNewCodeForm({ ...newCodeForm, category: e.target.value })}
+                      className="w-full h-9 rounded-xl border border-input bg-background px-3 py-1 text-xs font-semibold focus:outline-none"
+                    >
+                      <option value="want_to_help">Want to Help / Volunteer</option>
+                      <option value="get_in_touch">Want to Get In Touch / Outreach</option>
+                      <option value="community">Community Partner</option>
+                      <option value="sponsor">Sponsor / Donor</option>
+                      <option value="general">General Complimentary</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">
+                      Max Redemptions
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={newCodeForm.maxRedemptions}
+                      onChange={(e) => setNewCodeForm({ ...newCodeForm, maxRedemptions: Number(e.target.value) })}
+                      className="text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">
+                    Internal Description / Purpose
+                  </label>
+                  <Input
+                    placeholder="Short description for audit and verification records"
+                    value={newCodeForm.description}
+                    onChange={(e) => setNewCodeForm({ ...newCodeForm, description: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="submit"
+                    disabled={creatingCode}
+                    className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs h-9 px-4 gap-1.5"
+                  >
+                    {creatingCode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                    Add Code
+                  </Button>
+                </div>
+              </form>
+
+              {/* Active codes list */}
+              <div className="space-y-3">
+                <span className="text-xs font-black uppercase tracking-wider text-muted-foreground block">
+                  Configured Free Consultation Codes ({freeCodes.length})
+                </span>
+                <div className="space-y-2">
+                  {freeCodes.map((c) => (
+                    <div
+                      key={c.id || c.code}
+                      className="p-3.5 rounded-xl border border-border bg-card flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-sm text-foreground bg-teal-500/15 text-teal-800 dark:text-teal-200 px-2 py-0.5 rounded-md border border-teal-500/30">
+                            {c.code}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            c.active ? 'bg-emerald-500/15 text-emerald-600' : 'bg-muted text-muted-foreground'
+                          }`}>
+                            {c.active ? 'Active' : 'Disabled'}
+                          </span>
+                          <span className="text-xs font-extrabold text-foreground">{c.label}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Category: <span className="capitalize font-semibold text-foreground">{c.category ? String(c.category).replace('_', ' ') : 'General'}</span> &bull; 
+                          Redemptions: <span className="font-mono font-bold text-foreground">{c.redemptionCount || 0} / {c.maxRedemptions || 'Unlimited'}</span>
+                        </p>
+                        {c.description && (
+                          <p className="text-[11px] text-muted-foreground/80 italic mt-0.5">"{c.description}"</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleToggleCodeStatus(c)}
+                          className="text-xs h-8 px-2.5"
+                        >
+                          {c.active ? 'Disable' : 'Enable'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteCode(c.id || c.code)}
+                          className="text-xs h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-500/10 cursor-pointer"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {freeCodes.length === 0 && (
+                    <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-xl">
+                      No promo codes configured yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

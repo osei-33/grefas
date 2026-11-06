@@ -101,6 +101,21 @@ export const DEFAULT_SERVICES: ServiceItem[] = [
     discountPercent: 0,
     discountAmount: 0,
     discountLabel: ''
+  },
+  {
+    id: 'default-free-consultation',
+    title: 'Complimentary Consultation (Helpers & Inquiries)',
+    slug: 'complimentary-consultation',
+    category: 'Consulting',
+    description: '100% Free consultation session for prospective sponsors, community partners, donors, and anyone who wants to help or get in touch with our team.',
+    price: 0,
+    iconName: 'HeartHandshake',
+    color: 'bg-emerald-100 text-emerald-700',
+    intakeOnly: false,
+    isNegotiable: false,
+    discountPercent: 100,
+    discountAmount: 0,
+    discountLabel: '100% Free'
   }
 ];
 

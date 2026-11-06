@@ -313,10 +313,20 @@ service cloud.firestore {
           'negotiationNotes',
           'clientNegotiationNote',
           'negotiationHistory',
+          'isFreeConsultation',
+          'freeConsultationCategory',
+          'freeConsultationReason',
+          'freeConsultationCode',
+          'freeConsultationGrantedBy',
           'updatedAt'
         ])
       );
       allow delete: if isStaff();
+    }
+
+    match /free_consultation_codes/{codeId} {
+      allow read: if true;
+      allow write: if isStaff();
     }
 
     match /booking_passes/{passId} {
