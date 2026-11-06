@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { HelmetProvider } from 'react-helmet-async';
 import Layout from './components/Layout';
@@ -22,6 +22,44 @@ import { Toaster } from 'sonner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LanguageProvider } from './lib/LanguageContext';
 import { PaystackProvider } from './providers/PaystackProvider';
+
+function EnforceHomeOnRefresh() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    let isReload = false;
+    try {
+      const navEntries = performance.getEntriesByType('navigation');
+      const navType = navEntries.length > 0 ? (navEntries[0] as PerformanceNavigationTiming).type : '';
+      const isExplicitReload = navType === 'reload' || (window.performance as any)?.navigation?.type === 1;
+      const isSessionRefresh = navType !== 'back_forward' && sessionStorage.getItem('grefas_page_refresh') === 'true';
+
+      isReload = Boolean(isExplicitReload || isSessionRefresh);
+      sessionStorage.removeItem('grefas_page_refresh');
+    } catch {}
+
+    if (isReload && location.pathname !== '/' && location.pathname !== '') {
+      navigate('/', { replace: true });
+    }
+
+    const markRefresh = () => {
+      try {
+        sessionStorage.setItem('grefas_page_refresh', 'true');
+      } catch {}
+    };
+
+    window.addEventListener('beforeunload', markRefresh);
+    window.addEventListener('pagehide', markRefresh);
+
+    return () => {
+      window.removeEventListener('beforeunload', markRefresh);
+      window.removeEventListener('pagehide', markRefresh);
+    };
+  }, []); // Run only on initial mount/page load
+
+  return null;
+}
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -149,6 +187,7 @@ export default function App() {
         <LanguageProvider>
           <PaystackProvider>
             <Router>
+              <EnforceHomeOnRefresh />
               <Layout>
                 <AnimatedRoutes />
               </Layout>

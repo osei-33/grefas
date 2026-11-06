@@ -40,6 +40,30 @@ try {
   console.warn('[Runtime Deployment Audit] Environment inspection notice:', auditErr);
 }
 
+// Enforce app to return to homepage when a client refreshes the page
+try {
+  let isReload = false;
+  const navEntries = performance.getEntriesByType('navigation');
+  const navType = navEntries.length > 0 ? (navEntries[0] as PerformanceNavigationTiming).type : '';
+  const isExplicitReload = navType === 'reload' || (window.performance as any)?.navigation?.type === 1;
+  const isSessionRefresh = navType !== 'back_forward' && sessionStorage.getItem('grefas_page_refresh') === 'true';
+
+  isReload = Boolean(isExplicitReload || isSessionRefresh);
+  sessionStorage.removeItem('grefas_page_refresh');
+
+  if (isReload && window.location.pathname !== '/' && window.location.pathname !== '') {
+    window.history.replaceState(null, '', '/');
+  }
+
+  const markRefresh = () => {
+    try {
+      sessionStorage.setItem('grefas_page_refresh', 'true');
+    } catch {}
+  };
+  window.addEventListener('beforeunload', markRefresh);
+  window.addEventListener('pagehide', markRefresh);
+} catch {}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

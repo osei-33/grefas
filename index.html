@@ -194,6 +194,38 @@
       })();
     </script>
     
+    <script>
+      (function () {
+        try {
+          var isReload = false;
+          var navEntries = performance.getEntriesByType('navigation');
+          var navType = navEntries.length > 0 ? navEntries[0].type : '';
+          var isExplicitReload = navType === 'reload' || (window.performance && window.performance.navigation && window.performance.navigation.type === 1);
+
+          if (isExplicitReload) {
+            isReload = true;
+          } else if (!navType || navType === 'reload') {
+            if (sessionStorage.getItem('grefas_page_refresh') === 'true') {
+              isReload = true;
+            }
+          }
+          sessionStorage.removeItem('grefas_page_refresh');
+
+          if (isReload && window.location.pathname !== '/' && window.location.pathname !== '') {
+            window.history.replaceState(null, '', '/');
+          }
+
+          var markRefresh = function () {
+            try {
+              sessionStorage.setItem('grefas_page_refresh', 'true');
+            } catch (e) {}
+          };
+          window.addEventListener('beforeunload', markRefresh);
+          window.addEventListener('pagehide', markRefresh);
+        } catch (e) {}
+      })();
+    </script>
+    
     <script src="https://js.paystack.co/v1/inline.js" async></script>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8193654467459416"
      crossorigin="anonymous"></script>
