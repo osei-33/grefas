@@ -187,6 +187,12 @@
         "agreedSmsSentAt": { "type": "string", "description": "Timestamp when the agreed budget approval SMS was sent to the client" },
         "agreedSmsRecipient": { "type": "string", "description": "Client phone number that received the agreed budget SMS" },
         "agreedSmsMessage": { "type": "string", "description": "Text of the SMS sent when agreed budget was approved" },
+        "bookingType": { "type": "string", "description": "Optional booking category type e.g. photography_videography" },
+        "packageId": { "type": "string" },
+        "packageTier": { "type": "string", "description": "basic, secondary, tertiary, or custom" },
+        "packageTitle": { "type": "string" },
+        "includedImages": { "type": "number", "description": "Number of edited pictures included in selected package" },
+        "includedVideos": { "type": "number", "description": "Number of videos included in selected package" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userName", "userEmail", "date", "status", "createdAt"]
@@ -543,6 +549,48 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["code", "category", "active"]
+    },
+    "PhotographyPackage": {
+      "title": "Photography & Videography Package",
+      "description": "Configurable Photography & Videography tier package (Basic, Secondary, Tertiary) with custom photo/video counts, previous sample media, Paystack pricing, discounts, and price negotiation settings.",
+      "type": "object",
+      "properties": {
+        "tier": { "type": "string", "description": "Package tier such as basic, secondary, or tertiary" },
+        "tierLabel": { "type": "string", "description": "Human-readable tier heading" },
+        "title": { "type": "string", "description": "Package title" },
+        "description": { "type": "string", "description": "Detailed package summary" },
+        "imageCount": { "type": "number", "description": "Exact number of edited pictures included" },
+        "videoCount": { "type": "number", "description": "Exact number of videos included" },
+        "price": { "type": "number", "description": "Base package price in GH₵" },
+        "isNegotiable": { "type": "boolean", "description": "Whether clients can propose a negotiated budget" },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "discountValue": { "type": "number" },
+        "discountPercent": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "discountLabel": { "type": "string" },
+        "deliverables": { "type": "array", "items": { "type": "string" } },
+        "sampleMedia": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string", "enum": ["image", "video"] },
+              "url": { "type": "string" },
+              "thumbnailUrl": { "type": "string" },
+              "title": { "type": "string" },
+              "caption": { "type": "string" },
+              "addedAt": { "type": "string" }
+            }
+          }
+        },
+        "isActive": { "type": "boolean" },
+        "isDeleted": { "type": "boolean" },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tier", "title", "imageCount", "videoCount", "price"]
     }
   },
   "firestore": {
@@ -657,6 +705,10 @@
     "/free_consultation_codes/{codeId}": {
       "schema": "FreeConsultationCode",
       "description": "Collection of promotional codes and grant vouchers offering 100% free consultations for helpers and inquiries"
+    },
+    "/photography_packages/{packageId}": {
+      "schema": "PhotographyPackage",
+      "description": "Collection of Photography & Videography packages (Basic, Secondary, Tertiary) with photo/video counts, sample media, discounts, and negotiation settings"
     }
   }
 }

@@ -190,6 +190,19 @@ service cloud.firestore {
              data.timestamp is string && data.timestamp.size() > 0 && data.timestamp.size() <= 100;
     }
 
+    function isValidPhotographyPackage(data) {
+      return ('isDeleted' in data && data.isDeleted == true) || (
+        data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+        data.tier is string && data.tier.size() > 0 && data.tier.size() <= 60 &&
+        data.imageCount is number && data.imageCount >= 0 &&
+        data.videoCount is number && data.videoCount >= 0 &&
+        data.price is number && data.price >= 0 &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 3000)) &&
+        (!('sampleMedia' in data) || data.sampleMedia is list) &&
+        (!('deliverables' in data) || data.deliverables is list)
+      );
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -501,6 +514,12 @@ service cloud.firestore {
     match /assets/{assetId} {
       allow read: if isStaff();
       allow write: if isStaff();
+    }
+
+    match /photography_packages/{packageId} {
+      allow read: if true;
+      allow create, update: if isStaff() && isValidPhotographyPackage(request.resource.data);
+      allow delete: if isStaff();
     }
   }
 }

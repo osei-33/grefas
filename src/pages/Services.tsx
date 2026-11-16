@@ -25,6 +25,7 @@ import PaystackPayment from '@/components/PaystackPayment';
 import { usePaystack } from '@/providers/PaystackProvider';
 import { calculateTransactionCharge, useTransactionFee, setLocalTransactionFeeConfig } from '@/lib/transactionFees';
 import { mergeServicesWithDefaults, getServicePricing, DEFAULT_SERVICES, markServiceKeysLocallyDeleted, getLocallyDeletedServiceKeys } from '@/lib/servicePricing';
+import PhotographyPackagesSection from '@/components/PhotographyPackagesSection';
 
 const consultingImg = '/src/assets/images/service_consulting_1782127444377.jpg';
 const entertainmentImg = '/src/assets/images/service_entertainment_1782127460075.jpg';
@@ -2046,15 +2047,17 @@ export default function Services() {
         {/* Tabbed Filter UI */}
         <div className="mt-10 flex flex-wrap gap-2 justify-center">
           <div className="inline-flex flex-wrap items-center gap-1 rounded-xl bg-muted/60 p-1 backdrop-blur-sm border border-border/30">
-            {['All', ...Array.from(new Set(services.map(s => getServiceCategory(s))))].map((tab) => {
+            {Array.from(new Set(['All', ...services.map(s => getServiceCategory(s)), 'Photography & Videography'])).map((tab) => {
               const isActive = activeTab === tab;
               const TabIcon = tab === 'All' 
                 ? (LucideIcons.Layers || LucideIcons.Grid)
-                : tab === 'Consulting' 
-                  ? LucideIcons.Briefcase 
-                  : tab === 'Entertainment'
-                    ? (LucideIcons.Music2 || LucideIcons.Music)
-                    : LucideIcons.Sparkles;
+                : tab === 'Photography & Videography'
+                  ? LucideIcons.Camera
+                  : tab === 'Consulting' 
+                    ? LucideIcons.Briefcase 
+                    : tab === 'Entertainment'
+                      ? (LucideIcons.Music2 || LucideIcons.Music)
+                      : LucideIcons.Sparkles;
               
               return (
                 <button
@@ -2065,7 +2068,7 @@ export default function Services() {
                       ? 'bg-orange-600 text-white shadow-sm' 
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }`}
-                  id={`tab-filter-${tab.toLowerCase()}`}
+                  id={`tab-filter-${tab.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
                 >
                   <TabIcon className="h-4 w-4" />
                   <span>{tab === 'All' ? 'All Services' : tab}</span>
@@ -2226,7 +2229,7 @@ export default function Services() {
                     );
                   })}
                 </motion.div>
-              ) : (
+              ) : activeTab !== 'Photography & Videography' ? (
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -2235,8 +2238,12 @@ export default function Services() {
                 >
                   No services listed in this category yet. Check back soon!
                 </motion.div>
-              )}
+              ) : null}
             </AnimatePresence>
+
+            {(activeTab === 'All' || activeTab === 'Photography & Videography') && (
+              <PhotographyPackagesSection />
+            )}
           </div>
         )}
 

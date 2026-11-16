@@ -52,6 +52,7 @@ const ManageCompanyAssets = React.lazy(() => import('@/components/admin/ManageCo
 const ManageNegotiatedPrices = React.lazy(() => import('@/components/admin/ManageNegotiatedPrices'));
 const ClientManagement = React.lazy(() => import('@/components/admin/ClientManagement'));
 const EmployeeRegistration = React.lazy(() => import('@/components/admin/EmployeeRegistration'));
+const ManagePhotographyPackages = React.lazy(() => import('@/components/admin/ManagePhotographyPackages'));
 import ClientInteractionsFeed from '@/components/admin/ClientInteractionsFeed';
 
 import SEO from '@/components/SEO';
@@ -791,7 +792,7 @@ export default function Admin() {
 
           {/* 3. OPERATIONS & BOOKINGS */}
           {(!menuFilter || 
-            'operations services negotiations negotiated prices budgets intakes bookings appointments careers jobs tasks clients client management crm employee registration employees staff onboarding'.includes(menuFilter.toLowerCase())) && (
+            'operations services photography videography packages negotiations negotiated prices budgets intakes bookings appointments careers jobs tasks clients client management crm employee registration employees staff onboarding'.includes(menuFilter.toLowerCase())) && (
             <div className="space-y-1">
               <div className="px-2 pb-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground/70">
                 Operations & Clients
@@ -843,6 +844,21 @@ export default function Admin() {
                 <Briefcase className={`h-4 w-4 ${isActive('/admin/services') ? 'text-orange-600' : ''}`} />
                 <span>Manage Services</span>
                 {isActive('/admin/services') && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
+              </Link>
+
+              <Link
+                to="/admin/photography-packages"
+                onClick={() => setIsSidebarOpen(false)}
+                className={`flex items-center space-x-2 rounded-lg px-2.5 py-2 text-xs font-semibold transition-all ${
+                  (isActive('/admin/photography-packages') || isActive('/admin/photography'))
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 font-bold' 
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                id="admin-nav-photography-packages"
+              >
+                <Camera className={`h-4 w-4 ${(isActive('/admin/photography-packages') || isActive('/admin/photography')) ? 'text-orange-600' : ''}`} />
+                <span>Photo &amp; Video Packages</span>
+                {(isActive('/admin/photography-packages') || isActive('/admin/photography')) && <div className="ml-auto h-1.5 w-1.5 rounded-full bg-orange-600" />}
               </Link>
 
               <Link
@@ -1205,6 +1221,8 @@ export default function Admin() {
             <Route path="/clients" element={<ClientManagement />} />
             <Route path="/client-management" element={<ClientManagement />} />
             <Route path="/services" element={<ManageServices />} />
+            <Route path="/photography-packages" element={<ManagePhotographyPackages />} />
+            <Route path="/photography" element={<ManagePhotographyPackages />} />
             <Route path="/negotiations" element={<ManageNegotiatedPrices />} />
             <Route path="/negotiated-prices" element={<ManageNegotiatedPrices />} />
             <Route path="/agreed-budgets" element={<ManageNegotiatedPrices />} />
@@ -4587,6 +4605,7 @@ function ManageCareerApplications() {
 }
 
 function ManageServices() {
+  const [servicesSubTab, setServicesSubTab] = useState<'general' | 'photography'>('general');
   const [services, setServices] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -5036,26 +5055,68 @@ function ManageServices() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Manage Services, Discounts & Negotiation</h1>
+          <h1 className="text-3xl font-bold text-foreground">Manage Services, Discounts &amp; Negotiation</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configure service base prices, toggle client price negotiation, and apply promotional discounts to individual or all services.
+            Configure service base prices, toggle client price negotiation, apply promotional discounts, or customize Photography &amp; Videography tiers.
           </p>
         </div>
-        <Button 
-          onClick={() => {
-            if (isAdding) {
-              setIsAdding(false);
-              setEditingId(null);
-              setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting', price: 150, isNegotiable: true, discountPercent: 0, discountAmount: 0, discountLabel: '' });
-            } else {
-              setIsAdding(true);
-            }
-          }} 
-          className="bg-orange-600 hover:bg-orange-700 text-white shrink-0"
-        >
-          {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add Service</>}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="inline-flex rounded-lg bg-muted p-1 border border-border">
+            <button
+              type="button"
+              onClick={() => setServicesSubTab('general')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                servicesSubTab === 'general'
+                  ? 'bg-background text-foreground shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Services &amp; Fees
+            </button>
+            <button
+              type="button"
+              onClick={() => setServicesSubTab('photography')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                servicesSubTab === 'photography'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Camera className="h-3.5 w-3.5" /> Photo &amp; Video Packages
+            </button>
+          </div>
+
+          {servicesSubTab === 'general' && (
+            <Button 
+              onClick={() => {
+                if (isAdding) {
+                  setIsAdding(false);
+                  setEditingId(null);
+                  setNewService({ title: '', description: '', iconName: 'Briefcase', color: 'bg-blue-100 text-blue-600', category: 'Consulting', price: 150, isNegotiable: true, discountPercent: 0, discountAmount: 0, discountLabel: '' });
+                } else {
+                  setIsAdding(true);
+                }
+              }} 
+              className="bg-orange-600 hover:bg-orange-700 text-white shrink-0"
+            >
+              {isAdding ? 'Cancel' : <><Plus className="mr-2 h-4 w-4" /> Add Service</>}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {servicesSubTab === 'photography' ? (
+        <React.Suspense
+          fallback={
+            <div className="min-h-[300px] flex items-center justify-center">
+              <Loader2 className="h-7 w-7 animate-spin text-orange-600" />
+            </div>
+          }
+        >
+          <ManagePhotographyPackages />
+        </React.Suspense>
+      ) : (
+        <>
 
       {/* Dedicated Official Registration & Processing Fee Control Panel */}
       <Card className="border-2 border-orange-500/40 bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-emerald-500/5 shadow-sm">
@@ -5573,6 +5634,8 @@ function ManageServices() {
           onConfirm={confirmDelete}
           onCancel={() => setDeleteId(null)}
         />
+      )}
+        </>
       )}
     </div>
   );
