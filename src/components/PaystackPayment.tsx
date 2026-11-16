@@ -20,6 +20,20 @@ import { usePaystack } from '@/providers/PaystackProvider';
 import { calculateTransactionCharge } from '@/lib/transactionFees';
 import { toast } from 'sonner';
 
+export interface PaystackPricingSummary {
+  packageLabel?: string;
+  basePackagePrice: number;
+  discountAmount?: number;
+  discountLabel?: string;
+  isNegotiated?: boolean;
+  negotiatedAmount?: number | null;
+  extraLineItems?: Array<{
+    label: string;
+    amount: number;
+    tone?: 'default' | 'discount' | 'accent';
+  }>;
+}
+
 export interface PaystackPaymentProps {
   isOpen: boolean;
   onClose: () => void;
@@ -31,6 +45,7 @@ export interface PaystackPaymentProps {
   description?: string;
   metadata?: Record<string, any>;
   isSponsorship?: boolean; // When true, 0% charges. When false/undefined, standard 1% charge applies.
+  pricingSummary?: PaystackPricingSummary;
   onSuccess: (paymentData: {
     reference: string;
     amount: number;
@@ -53,6 +68,7 @@ export default function PaystackPayment({
   description,
   metadata = {},
   isSponsorship = false,
+  pricingSummary,
   onSuccess,
 }: PaystackPaymentProps) {
   const paystackContext = usePaystack();
@@ -448,35 +464,125 @@ export default function PaystackPayment({
                   </div>
                 )}
 
-                {/* Transparent Transaction Fee Breakdown */}
-                <div className="bg-muted/40 rounded-xl p-3 border border-border/50 text-xs space-y-1.5">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Base Amount:</span>
-                    <span className="font-mono font-semibold text-foreground">GH₵ {baseAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      {isSponsorship 
-                        ? 'Sponsorship Exemption:' 
-                        : feeAmount === 0 
-                        ? 'Transaction Processing Fee:' 
-                        : `${feeBreakdown.feePercentageDisplay} Transaction Charge:`}
-                      {isSponsorship ? (
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-1 py-0.5 rounded">0% Fee</span>
-                      ) : feeAmount === 0 ? (
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-1 py-0.5 rounded">0% (Waived)</span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-orange-600 bg-orange-500/10 px-1 py-0.5 rounded">{feeBreakdown.feePercentageDisplay}</span>
+                {/* Transparent Itemized Checkout & Fee Breakdown */}
+                <div className="bg-muted/40 rounded-xl p-3.5 border border-border/60 text-xs space-y-1.5">
+                  {pricingSummary ? (
+                    <>
+                      <div className="flex items-center justify-between pb-1 border-b border-border/50">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Itemized Checkout Summary
+                        </span>
+                        {pricingSummary.packageLabel && (
+                          <span className="text-[10px] font-medium text-muted-foreground truncate max-w-[200px]">
+                            {pricingSummary.packageLabel}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Base Package Price:</span>
+                        <span className="font-mono tabular-nums font-semibold text-foreground">
+                          GH₵ {Number(pricingSummary.basePackagePrice || 0).toFixed(2)}
+                        </span>
+                      </div>
+
+                      {Number(pricingSummary.discountAmount || 0) > 0 && (
+                        <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                          <span>
+                            Applied Discount
+                            {pricingSummary.discountLabel ? ` (${pricingSummary.discountLabel})` : ''}:
+                          </span>
+                          <span className="font-mono tabular-nums">
+                            - GH₵ {Number(pricingSummary.discountAmount || 0).toFixed(2)}
+                          </span>
+                        </div>
                       )}
+
+                      {pricingSummary.isNegotiated && pricingSummary.negotiatedAmount != null && (() => {
+                        const listedAfterDiscount = Math.max(
+                          0,
+                          Number(pricingSummary.basePackagePrice || 0) - Number(pricingSummary.discountAmount || 0)
+                        );
+                        const delta = Number(pricingSummary.negotiatedAmount) - listedAfterDiscount;
+                        return (
+                          <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold">
+                            <span>Negotiated Budget Adjustment:</span>
+                            <span className="font-mono tabular-nums">
+                              {delta < 0
+                                ? `- GH₵ ${Math.abs(delta).toFixed(2)}`
+                                : delta > 0
+                                ? `+ GH₵ ${delta.toFixed(2)}`
+                                : 'GH₵ 0.00'}
+                            </span>
+                          </div>
+                        );
+                      })()}
+
+                      {Array.isArray(pricingSummary.extraLineItems) &&
+                        pricingSummary.extraLineItems.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className={`flex justify-between ${
+                              item.tone === 'discount'
+                                ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                                : item.tone === 'accent'
+                                ? 'text-orange-600 font-semibold'
+                                : 'text-muted-foreground'
+                            }`}
+                          >
+                            <span>{item.label}:</span>
+                            <span className="font-mono tabular-nums font-semibold">
+                              {item.amount < 0
+                                ? `- GH₵ ${Math.abs(item.amount).toFixed(2)}`
+                                : `GH₵ ${item.amount.toFixed(2)}`}
+                            </span>
+                          </div>
+                        ))}
+
+                      <div className="flex justify-between text-muted-foreground pt-0.5 border-t border-border/40">
+                        <span>Package Subtotal:</span>
+                        <span className="font-mono tabular-nums font-semibold text-foreground">
+                          GH₵ {baseAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Base Amount:</span>
+                      <span className="font-mono tabular-nums font-semibold text-foreground">
+                        GH₵ {baseAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      {isSponsorship
+                        ? 'Sponsorship Exemption (0% Fee):'
+                        : feeAmount === 0
+                        ? 'Transaction Processing Fee (Waived):'
+                        : `Transaction Processing Fee (${feeBreakdown.feePercentageDisplay}):`}
                     </span>
-                    <span className={`font-mono font-bold ${isSponsorship || feeAmount === 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                      {isSponsorship ? 'GH₵ 0.00 (Exempt)' : feeAmount === 0 ? 'GH₵ 0.00 (Waived)' : `+ GH₵ ${feeAmount.toFixed(2)}`}
+                    <span
+                      className={`font-mono tabular-nums font-bold ${
+                        isSponsorship || feeAmount === 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-orange-600'
+                      }`}
+                    >
+                      {isSponsorship
+                        ? 'GH₵ 0.00 (Exempt)'
+                        : feeAmount === 0
+                        ? 'GH₵ 0.00 (Waived)'
+                        : `+ GH₵ ${feeAmount.toFixed(2)}`}
                     </span>
                   </div>
                   <div className="h-px bg-border/60 my-1" />
                   <div className="flex justify-between font-bold">
-                    <span className="text-foreground">Total Accurate Payable:</span>
-                    <span className="text-emerald-600 font-mono font-extrabold text-sm">GH₵ {totalPayable.toFixed(2)}</span>
+                    <span className="text-foreground">Final Total Payable:</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-mono tabular-nums font-extrabold text-sm">
+                      GH₵ {totalPayable.toFixed(2)}
+                    </span>
                   </div>
                 </div>
 

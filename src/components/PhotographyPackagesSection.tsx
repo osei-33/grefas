@@ -45,6 +45,10 @@ import {
   ArrowRight,
   Film,
   Send,
+  LayoutGrid,
+  Table2,
+  Minus,
+  Receipt,
 } from 'lucide-react';
 
 interface ConfirmationReceipt {
@@ -58,6 +62,11 @@ interface ConfirmationReceipt {
   clientName: string;
   clientEmail: string;
   clientPhone: string;
+  basePrice: number;
+  discountAmount: number;
+  discountLabel?: string;
+  negotiatedDelta: number;
+  processingFee: number;
   amountPaid: number;
   totalWithFee: number;
   paymentReference: string;
@@ -69,6 +78,7 @@ interface ConfirmationReceipt {
 export default function PhotographyPackagesSection() {
   const [rawPackages, setRawPackages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [packageViewMode, setPackageViewMode] = useState<'all' | 'cards' | 'table'>('all');
 
   // Sample gallery filter & lightbox
   const [mediaFilter, setMediaFilter] = useState<'all' | 'image' | 'video'>('all');
@@ -409,6 +419,11 @@ export default function PhotographyPackagesSection() {
       // non-blocking
     }
 
+    const negotiatedDeltaValue =
+      isNegotiating && proposedVal != null
+        ? proposedVal - selectedPricing.effectivePrice
+        : 0;
+
     setReceipt({
       orderNumber,
       packageTitle: selectedPkg.title,
@@ -420,6 +435,11 @@ export default function PhotographyPackagesSection() {
       clientName: clientName.trim(),
       clientEmail: clientEmail.trim(),
       clientPhone: clientPhone.trim(),
+      basePrice: selectedPricing.originalPrice,
+      discountAmount: selectedPricing.hasDiscount ? selectedPricing.savingsAmount : 0,
+      discountLabel: selectedPricing.discountBadgeText || undefined,
+      negotiatedDelta: negotiatedDeltaValue,
+      processingFee: params.isProposalOnly ? 0 : feeBreakdown.feeAmount,
       amountPaid: params.isProposalOnly ? 0 : activeBaseAmount,
       totalWithFee: params.isProposalOnly ? 0 : Number(params.paidTotal || feeBreakdown.totalAmount),
       paymentReference: params.paymentRef || 'PENDING-APPROVAL',
@@ -461,7 +481,7 @@ export default function PhotographyPackagesSection() {
       className="mt-16 pt-12 border-t border-border/60 scroll-mt-24"
     >
       {/* Section Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5 mb-10">
         <div className="space-y-2 max-w-2xl">
           <div className="flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-widest text-orange-600">
             <Camera className="h-4 w-4" />
@@ -471,19 +491,69 @@ export default function PhotographyPackagesSection() {
             Photography &amp; Videography Packages
           </h2>
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-            Choose a coverage tier tailored to your shoot—each package specifies the exact number of edited pictures and videos included, with secure Paystack checkout and flexible negotiation options where enabled.
+            Compare coverage tiers side by side—each package specifies the exact number of edited pictures and videos included, with secure Paystack checkout and flexible negotiation options where enabled.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground shrink-0">
-          <ShieldCheck className="h-4 w-4 text-emerald-600" />
-          <span>Paid Service · Secured by Paystack</span>
+
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            <span>Secured by Paystack</span>
+          </div>
+
+          {packages.length > 0 && (
+            <div
+              role="group"
+              aria-label="Package layout view"
+              className="inline-flex items-center gap-1 rounded-lg bg-muted/60 p-1 border border-border/60"
+            >
+              <button
+                type="button"
+                onClick={() => setPackageViewMode('all')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  packageViewMode === 'all'
+                    ? 'bg-background text-foreground shadow-xs border border-border/50'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>Cards &amp; Compare</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPackageViewMode('cards')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  packageViewMode === 'cards'
+                    ? 'bg-background text-foreground shadow-xs border border-border/50'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Camera className="h-3.5 w-3.5" />
+                <span>Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPackageViewMode('table')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  packageViewMode === 'table'
+                    ? 'bg-orange-600 text-white shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Table2 className="h-3.5 w-3.5" />
+                <span>Comparison Table</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Packages Comparison Grid */}
+      {/* Packages Cards & Comparison Table */}
       {packages.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
-          {packages.map((pkg) => {
+        <div className="space-y-12">
+          {(packageViewMode === 'all' || packageViewMode === 'cards') && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
+              {packages.map((pkg) => {
             const pricing = getPhotographyPackagePricing(pkg);
             const tierDisplay = pkg.tierLabel || getTierDisplayName(pkg.tier);
             const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
@@ -682,6 +752,330 @@ export default function PhotographyPackagesSection() {
               </Card>
             );
           })}
+            </div>
+          )}
+
+          {(packageViewMode === 'all' || packageViewMode === 'table') && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+                <div>
+                  <div className="text-[11px] font-mono font-bold uppercase tracking-widest text-orange-600 flex items-center gap-1.5">
+                    <Table2 className="h-3.5 w-3.5" /> Side-by-Side Tier Comparison
+                  </div>
+                  <h3 className="text-xl font-bold tracking-tight text-foreground mt-0.5">
+                    Compare Basic, Secondary &amp; Tertiary Packages
+                  </h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  All amounts in Ghana Cedis (GH₵). Processing fees apply transparently at checkout.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[680px] border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        <th className="sticky left-0 z-10 bg-muted/95 backdrop-blur-xs py-4 px-4 font-bold uppercase tracking-wider text-[11px] text-muted-foreground w-[220px] border-r border-border/60">
+                          Package Feature
+                        </th>
+                        {packages.map((pkg) => {
+                          const pricing = getPhotographyPackagePricing(pkg);
+                          const tierDisplay = pkg.tierLabel || getTierDisplayName(pkg.tier);
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <th
+                              key={`cmp-head-${pkg.id}`}
+                              className={`py-4 px-4 align-top border-r last:border-r-0 border-border/50 ${
+                                isHighlighted ? 'bg-orange-500/[0.05]' : ''
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-mono text-[11px] font-black uppercase tracking-widest text-orange-600">
+                                    {tierDisplay}
+                                  </span>
+                                  {isHighlighted && (
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600">
+                                      Most Popular
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-sm font-extrabold text-foreground leading-snug">
+                                  {pkg.title}
+                                </div>
+                                <div className="flex items-baseline gap-1.5 pt-1">
+                                  <span className="text-base font-black font-mono tabular-nums text-foreground">
+                                    GH₵ {pricing.effectivePrice.toLocaleString()}
+                                  </span>
+                                  {pricing.hasDiscount && (
+                                    <span className="text-[11px] line-through font-mono tabular-nums text-muted-foreground">
+                                      GH₵ {pricing.originalPrice.toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-border/60">
+                      {/* Base Package Price */}
+                      <tr className="hover:bg-muted/20 transition-colors">
+                        <td className="sticky left-0 z-10 bg-card py-3.5 px-4 font-semibold text-foreground border-r border-border/60">
+                          Base Package Price
+                        </td>
+                        {packages.map((pkg) => {
+                          const pricing = getPhotographyPackagePricing(pkg);
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <td
+                              key={`cmp-base-${pkg.id}`}
+                              className={`py-3.5 px-4 font-mono tabular-nums text-foreground border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.03]' : ''
+                              }`}
+                            >
+                              GH₵ {pricing.originalPrice.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {/* Active Discount */}
+                      <tr className="hover:bg-muted/20 transition-colors">
+                        <td className="sticky left-0 z-10 bg-card py-3.5 px-4 font-semibold text-foreground border-r border-border/60">
+                          Applied Discount
+                        </td>
+                        {packages.map((pkg) => {
+                          const pricing = getPhotographyPackagePricing(pkg);
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <td
+                              key={`cmp-disc-${pkg.id}`}
+                              className={`py-3.5 px-4 border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.03]' : ''
+                              }`}
+                            >
+                              {pricing.hasDiscount ? (
+                                <span className="font-mono tabular-nums font-bold text-emerald-600 dark:text-emerald-400">
+                                  - GH₵ {pricing.savingsAmount.toFixed(2)} ({pricing.discountBadgeText})
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                  <Minus className="h-3 w-3" /> Standard Rate
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {/* Final Package Rate */}
+                      <tr className="hover:bg-muted/20 transition-colors bg-muted/15">
+                        <td className="sticky left-0 z-10 bg-card py-3.5 px-4 font-bold text-foreground border-r border-border/60">
+                          Package Subtotal Rate
+                        </td>
+                        {packages.map((pkg) => {
+                          const pricing = getPhotographyPackagePricing(pkg);
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <td
+                              key={`cmp-eff-${pkg.id}`}
+                              className={`py-3.5 px-4 font-mono tabular-nums font-black text-sm text-foreground border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.04]' : ''
+                              }`}
+                            >
+                              GH₵ {pricing.effectivePrice.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {/* Edited Pictures Included */}
+                      <tr className="hover:bg-muted/20 transition-colors">
+                        <td className="sticky left-0 z-10 bg-card py-3.5 px-4 font-semibold text-foreground border-r border-border/60">
+                          <span className="inline-flex items-center gap-1.5">
+                            <ImageIcon className="h-3.5 w-3.5 text-orange-600" /> Edited Pictures Included
+                          </span>
+                        </td>
+                        {packages.map((pkg) => {
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <td
+                              key={`cmp-img-${pkg.id}`}
+                              className={`py-3.5 px-4 font-mono tabular-nums font-bold text-foreground border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.03]' : ''
+                              }`}
+                            >
+                              {pkg.imageCount} {pkg.imageCount === 1 ? 'Photo' : 'Photos'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {/* Edited Videos Included */}
+                      <tr className="hover:bg-muted/20 transition-colors">
+                        <td className="sticky left-0 z-10 bg-card py-3.5 px-4 font-semibold text-foreground border-r border-border/60">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Video className="h-3.5 w-3.5 text-orange-600" /> Edited Videos Included
+                          </span>
+                        </td>
+                        {packages.map((pkg) => {
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <td
+                              key={`cmp-vid-${pkg.id}`}
+                              className={`py-3.5 px-4 font-mono tabular-nums font-bold text-foreground border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.03]' : ''
+                              }`}
+                            >
+                              {pkg.videoCount} {pkg.videoCount === 1 ? 'Video' : 'Videos'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {/* Price Negotiation */}
+                      <tr className="hover:bg-muted/20 transition-colors">
+                        <td className="sticky left-0 z-10 bg-card py-3.5 px-4 font-semibold text-foreground border-r border-border/60">
+                          Price Negotiation
+                        </td>
+                        {packages.map((pkg) => {
+                          const pricing = getPhotographyPackagePricing(pkg);
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <td
+                              key={`cmp-neg-${pkg.id}`}
+                              className={`py-3.5 px-4 border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.03]' : ''
+                              }`}
+                            >
+                              {pricing.isNegotiable ? (
+                                <span className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 dark:text-indigo-400">
+                                  <Handshake className="h-3.5 w-3.5" /> Enabled (Propose Offer)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                  <Minus className="h-3.5 w-3.5" /> Fixed Package Rate
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {/* Previous Samples */}
+                      <tr className="hover:bg-muted/20 transition-colors">
+                        <td className="sticky left-0 z-10 bg-card py-3.5 px-4 font-semibold text-foreground border-r border-border/60">
+                          Previous Samples
+                        </td>
+                        {packages.map((pkg) => {
+                          const samples = Array.isArray(pkg.sampleMedia) ? pkg.sampleMedia : [];
+                          const imgSamples = samples.filter((s) => s.type === 'image').length;
+                          const vidSamples = samples.filter((s) => s.type === 'video').length;
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <td
+                              key={`cmp-samp-${pkg.id}`}
+                              className={`py-3.5 px-4 border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.03]' : ''
+                              }`}
+                            >
+                              {samples.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLightboxState({
+                                      items: samples.map((s) => ({ ...s, packageTitle: pkg.title })),
+                                      index: 0,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1.5 font-semibold text-orange-600 hover:underline cursor-pointer font-mono tabular-nums"
+                                >
+                                  <Film className="h-3.5 w-3.5" />
+                                  {imgSamples}P · {vidSamples}V (Preview)
+                                </button>
+                              ) : (
+                                <span className="text-muted-foreground">Portfolio on request</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {/* Key Deliverables Side-by-Side */}
+                      <tr className="hover:bg-muted/20 transition-colors align-top">
+                        <td className="sticky left-0 z-10 bg-card py-4 px-4 font-semibold text-foreground border-r border-border/60">
+                          Key Deliverables &amp; Coverage
+                        </td>
+                        {packages.map((pkg) => {
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          const deliverables = Array.isArray(pkg.deliverables) ? pkg.deliverables : [];
+                          return (
+                            <td
+                              key={`cmp-del-${pkg.id}`}
+                              className={`py-4 px-4 border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.03]' : ''
+                              }`}
+                            >
+                              {deliverables.length > 0 ? (
+                                <ul className="space-y-1.5">
+                                  {deliverables.map((feat, fIdx) => (
+                                    <li key={fIdx} className="flex items-start gap-1.5 text-foreground/90 leading-snug">
+                                      <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                                      <span>{feat}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tbody>
+
+                    <tfoot>
+                      <tr className="border-t border-border bg-muted/30">
+                        <td className="sticky left-0 z-10 bg-muted/95 backdrop-blur-xs py-4 px-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-r border-border/60">
+                          Choose Package
+                        </td>
+                        {packages.map((pkg) => {
+                          const tierDisplay = pkg.tierLabel || getTierDisplayName(pkg.tier);
+                          const isHighlighted = String(pkg.tier).toLowerCase() === 'secondary';
+                          return (
+                            <td
+                              key={`cmp-cta-${pkg.id}`}
+                              className={`py-4 px-4 border-r last:border-r-0 border-border/40 ${
+                                isHighlighted ? 'bg-orange-500/[0.05]' : ''
+                              }`}
+                            >
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => openPackageModal(pkg)}
+                                className={`w-full h-9 text-xs font-bold cursor-pointer flex items-center justify-center gap-1.5 ${
+                                  isHighlighted
+                                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                                    : 'bg-zinc-900 hover:bg-zinc-800 dark:bg-orange-600 dark:hover:bg-orange-700 text-white'
+                                }`}
+                              >
+                                <span>Select {tierDisplay}</span>
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </Button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="py-12 text-center border border-dashed border-border rounded-xl text-sm text-muted-foreground">
@@ -849,18 +1243,52 @@ export default function PhotographyPackagesSection() {
                       </span>
                     </div>
                     <div className="h-px bg-border/60 my-1" />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Base Package Price</span>
+                      <span className="font-mono tabular-nums font-semibold text-foreground">
+                        GH₵ {receipt.basePrice.toFixed(2)}
+                      </span>
+                    </div>
+                    {receipt.discountAmount > 0 && (
+                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <span>
+                          Applied Discount{receipt.discountLabel ? ` (${receipt.discountLabel})` : ''}
+                        </span>
+                        <span className="font-mono tabular-nums">
+                          - GH₵ {receipt.discountAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {receipt.negotiatedDelta !== 0 && (
+                      <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold">
+                        <span>Negotiated Offer Adjustment</span>
+                        <span className="font-mono tabular-nums">
+                          {receipt.negotiatedDelta < 0
+                            ? `- GH₵ ${Math.abs(receipt.negotiatedDelta).toFixed(2)}`
+                            : `+ GH₵ ${receipt.negotiatedDelta.toFixed(2)}`}
+                        </span>
+                      </div>
+                    )}
                     {receipt.isNegotiationProposalOnly ? (
-                      <div className="flex justify-between font-bold">
+                      <div className="flex justify-between font-bold pt-1 border-t border-border/50">
                         <span className="text-muted-foreground">Proposed Budget (Pending Review)</span>
-                        <span className="font-mono text-indigo-600">
-                          GH₵ {(receipt.proposedPrice || 0).toLocaleString()}
+                        <span className="font-mono tabular-nums text-indigo-600">
+                          GH₵ {(receipt.proposedPrice || 0).toFixed(2)}
                         </span>
                       </div>
                     ) : (
                       <>
-                        <div className="flex justify-between font-bold">
-                          <span className="text-muted-foreground">Total Paid via Paystack</span>
-                          <span className="font-mono text-emerald-600 text-sm font-black">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Paystack Processing Fee</span>
+                          <span className="font-mono tabular-nums font-semibold text-foreground">
+                            {receipt.processingFee === 0
+                              ? 'GH₵ 0.00 (Waived)'
+                              : `+ GH₵ ${receipt.processingFee.toFixed(2)}`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between font-bold pt-1 border-t border-border/50">
+                          <span className="text-foreground">Final Total Paid via Paystack</span>
+                          <span className="font-mono tabular-nums text-emerald-600 text-sm font-black">
                             GH₵ {receipt.totalWithFee.toFixed(2)}
                           </span>
                         </div>
@@ -1132,40 +1560,93 @@ export default function PhotographyPackagesSection() {
                     </div>
                   )}
 
-                  {/* Fee & Total Summary */}
-                  {!(isNegotiating && negotiationAction === 'submit_offer') && (
-                    <div className="rounded-xl bg-muted/40 border border-border p-3.5 text-xs space-y-1.5">
-                      {selectedPricing.hasDiscount && !isNegotiating && (
-                        <div className="flex justify-between text-emerald-600 font-semibold">
-                          <span>Discount Applied ({selectedPricing.discountBadgeText})</span>
-                          <span className="font-mono">
-                            - GH₵ {selectedPricing.savingsAmount.toLocaleString()}
+                  {/* Always-Visible Itemized Checkout Summary */}
+                  <div className="rounded-xl bg-muted/40 border border-border p-4 text-xs space-y-2">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-border/60">
+                      <span className="font-bold uppercase tracking-wider text-[11px] text-foreground flex items-center gap-1.5">
+                        <Receipt className="h-3.5 w-3.5 text-orange-600" />
+                        Itemized Checkout Summary
+                      </span>
+                      <span className="text-[11px] font-mono text-muted-foreground">
+                        {(selectedPkg.tierLabel || getTierDisplayName(selectedPkg.tier))} · {selectedPkg.imageCount}P / {selectedPkg.videoCount}V
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Base Package Price ({selectedPkg.title}):</span>
+                      <span className="font-mono tabular-nums font-bold text-foreground">
+                        GH₵ {selectedPricing.originalPrice.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {selectedPricing.hasDiscount && (
+                      <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <span>Applied Discount ({selectedPricing.discountBadgeText}):</span>
+                        <span className="font-mono tabular-nums">
+                          - GH₵ {selectedPricing.savingsAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
+                    {isNegotiating && (() => {
+                      const negDelta = activeBaseAmount - selectedPricing.effectivePrice;
+                      return (
+                        <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold">
+                          <span>Negotiated Client Offer Adjustment:</span>
+                          <span className="font-mono tabular-nums">
+                            {negDelta < 0
+                              ? `- GH₵ ${Math.abs(negDelta).toFixed(2)}`
+                              : negDelta > 0
+                              ? `+ GH₵ ${negDelta.toFixed(2)}`
+                              : 'GH₵ 0.00'}
                           </span>
                         </div>
-                      )}
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>{isNegotiating ? 'Proposed Package Budget:' : 'Package Base Amount:'}</span>
-                        <span className="font-mono font-bold text-foreground">
-                          GH₵ {feeBreakdown.baseAmount.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Processing Charge ({feeBreakdown.feePercentageDisplay}):</span>
-                        <span className="font-mono font-bold text-foreground">
-                          {feeBreakdown.feeAmount === 0
-                            ? 'GH₵ 0.00 (Waived)'
-                            : `+ GH₵ ${feeBreakdown.feeAmount.toFixed(2)}`}
-                        </span>
-                      </div>
-                      <div className="h-px bg-border/60 my-1" />
-                      <div className="flex justify-between font-extrabold text-sm">
-                        <span className="text-foreground">Total Payable via Paystack:</span>
-                        <span className="font-mono text-emerald-600">
-                          GH₵ {feeBreakdown.totalAmount.toFixed(2)}
-                        </span>
-                      </div>
+                      );
+                    })()}
+
+                    <div className="flex justify-between text-muted-foreground pt-1 border-t border-border/40">
+                      <span>{isNegotiating ? 'Negotiated Package Subtotal:' : 'Package Subtotal After Discount:'}</span>
+                      <span className="font-mono tabular-nums font-bold text-foreground">
+                        GH₵ {activeBaseAmount.toFixed(2)}
+                      </span>
                     </div>
-                  )}
+
+                    {!(isNegotiating && negotiationAction === 'submit_offer') ? (
+                      <>
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Paystack Processing Charge ({feeBreakdown.feePercentageDisplay}):</span>
+                          <span className="font-mono tabular-nums font-bold text-foreground">
+                            {feeBreakdown.feeAmount === 0
+                              ? 'GH₵ 0.00 (Waived)'
+                              : `+ GH₵ ${feeBreakdown.feeAmount.toFixed(2)}`}
+                          </span>
+                        </div>
+                        <div className="h-px bg-border/60 my-1" />
+                        <div className="flex justify-between font-extrabold text-sm">
+                          <span className="text-foreground">Final Total Payable via Paystack:</span>
+                          <span className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                            GH₵ {feeBreakdown.totalAmount.toFixed(2)}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Paystack Processing Charge:</span>
+                          <span className="font-mono tabular-nums text-muted-foreground">
+                            Calculated upon offer approval
+                          </span>
+                        </div>
+                        <div className="h-px bg-border/60 my-1" />
+                        <div className="flex justify-between font-extrabold text-sm">
+                          <span className="text-foreground">Proposed Package Total:</span>
+                          <span className="font-mono tabular-nums text-indigo-600 dark:text-indigo-400">
+                            GH₵ {activeBaseAmount.toFixed(2)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2">
                     <Button
@@ -1204,7 +1685,7 @@ export default function PhotographyPackagesSection() {
       </Dialog>
 
       {/* Official Paystack Payment Gateway Component */}
-      {selectedPkg && (
+      {selectedPkg && selectedPricing && (
         <PaystackPayment
           isOpen={showPaystackModal}
           onClose={() => setShowPaystackModal(false)}
@@ -1213,6 +1694,14 @@ export default function PhotographyPackagesSection() {
           fullName={clientName}
           phone={clientPhone}
           title={`${selectedPkg.title} (${selectedPkg.imageCount} Photos, ${selectedPkg.videoCount} Videos)`}
+          pricingSummary={{
+            packageLabel: `${selectedPkg.tierLabel || getTierDisplayName(selectedPkg.tier)} Tier · ${selectedPkg.imageCount}P / ${selectedPkg.videoCount}V`,
+            basePackagePrice: selectedPricing.originalPrice,
+            discountAmount: selectedPricing.hasDiscount ? selectedPricing.savingsAmount : 0,
+            discountLabel: selectedPricing.discountBadgeText || 'Package Discount',
+            isNegotiated: isNegotiating,
+            negotiatedAmount: isNegotiating ? activeBaseAmount : null,
+          }}
           metadata={{
             bookingType: 'photography_videography',
             packageId: selectedPkg.id,

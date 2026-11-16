@@ -3951,6 +3951,14 @@ export default function Services() {
         phone={momoNumber || formData.contact || formData.whatsappNumber || ''}
         title="Movie & Skit Making Form Registration"
         description={`Official Paystack checkout for ${formData.roleType || 'Actor / Skit Performer'} registration`}
+        pricingSummary={{
+          packageLabel: formData.roleType || 'Casting Intake Registration',
+          basePackagePrice: castingPricing.originalPrice,
+          discountAmount: castingPricing.hasDiscount ? castingPricing.savingsAmount : 0,
+          discountLabel: castingPricing.discountBadgeText || 'Service Discount',
+          isNegotiated: isNegotiatingIntakePrice,
+          negotiatedAmount: isNegotiatingIntakePrice ? baseIntakePrice : null,
+        }}
         metadata={{
           formType: 'Movie & Skit Making Form',
           fullName: formData.fullName,
